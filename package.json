@@ -1,0 +1,20 @@
+{
+  "name": "claude-anywhere",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter server dev & pnpm --filter client dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "biome check .",
+    "format": "biome format --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "pnpm@9.15.1",
+  "engines": {
+    "node": ">=20"
+  }
+}
