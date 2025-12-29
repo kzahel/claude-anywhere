@@ -206,15 +206,10 @@ export class SessionReader {
     raw: RawSessionMessage,
     index: number,
   ): Message | null {
-    // Skip system messages for display
-    if (!raw.type || raw.type === "system") return null;
+    // Only process user and assistant messages (skip internal types like queue-operation, file-history-snapshot)
+    if (raw.type !== "user" && raw.type !== "assistant") return null;
 
-    const role: "user" | "assistant" | "system" =
-      raw.type === "user"
-        ? "user"
-        : raw.type === "assistant"
-          ? "assistant"
-          : "system";
+    const role: "user" | "assistant" = raw.type;
 
     let content: string | ContentBlock[];
     if (typeof raw.message?.content === "string") {
@@ -246,6 +241,7 @@ export class SessionReader {
       role,
       content,
       timestamp: raw.timestamp ?? new Date().toISOString(),
+      rawJsonl: raw,
     };
 
     // Include toolUseResult if present

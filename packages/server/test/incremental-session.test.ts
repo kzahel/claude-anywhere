@@ -195,12 +195,11 @@ describe("Incremental Session Loading", () => {
       const json = await res.json();
 
       expect(res.status).toBe(200);
-      // Returns messages after msg1Id (internal types are included as "system" role)
-      expect(json.messages).toHaveLength(2);
-      // First is the file-history-snapshot (system role, index-based id)
-      expect(json.messages[0].role).toBe("system");
-      // Second is the assistant message
-      expect(json.messages[1].id).toBe(msg2Id);
+      // Internal types (queue-operation, file-history-snapshot) are filtered out
+      // Only returns the assistant message after msg1Id
+      expect(json.messages).toHaveLength(1);
+      expect(json.messages[0].id).toBe(msg2Id);
+      expect(json.messages[0].role).toBe("assistant");
     });
   });
 });

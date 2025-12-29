@@ -107,6 +107,29 @@
   margin: var(--space-3) 0;
 }
 
+.text-block table {
+  border-collapse: collapse;
+  margin: var(--space-2) 0;
+  width: 100%;
+  font-size: var(--font-size-sm);
+}
+
+.text-block th,
+.text-block td {
+  border: 1px solid var(--border-color);
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+}
+
+.text-block th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
+.text-block tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
 /* ==========================================================================
    Thinking Blocks - Collapsible Pattern
    ========================================================================== */

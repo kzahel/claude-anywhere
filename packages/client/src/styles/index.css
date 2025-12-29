@@ -217,6 +217,20 @@ h2 {
   font-size: 0.85rem;
 }
 
+/* User prompt metadata (opened files, etc.) */
+.user-prompt-metadata {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--text-dimmed);
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.opened-file {
+  cursor: default;
+}
+
 /* All other messages (assistant responses, tool results) - indented, no background */
 .message-response {
   margin-left: 2rem;

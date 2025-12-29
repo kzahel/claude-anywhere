@@ -65,6 +65,8 @@ export interface Message {
   };
   /** Structured tool result data (from JSONL toolUseResult field) */
   toolUseResult?: unknown;
+  /** Raw JSONL entry for debugging (visible via ctrl+click) */
+  rawJsonl?: unknown;
 }
 
 // Full session with messages

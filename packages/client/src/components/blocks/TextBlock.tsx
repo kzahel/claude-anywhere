@@ -1,5 +1,6 @@
 import { memo } from "react";
 import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Props {
   text: string;
@@ -8,7 +9,7 @@ interface Props {
 export const TextBlock = memo(function TextBlock({ text }: Props) {
   return (
     <div className="text-block">
-      <Markdown>{text}</Markdown>
+      <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
     </div>
   );
 });
