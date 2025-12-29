@@ -136,19 +136,20 @@ export const editRenderer: ToolRenderer<EditInput, EditResult> = {
   },
 
   getUseSummary(input) {
-    return `Edit ${getFileName((input as EditInput).file_path)}`;
+    return getFileName((input as EditInput).file_path);
   },
 
   getResultSummary(result, isError) {
     if (isError) return "Failed";
     const r = result as EditResult;
-    if (!r?.structuredPatch) return "Edited";
+    const fileName = r?.filePath ? getFileName(r.filePath) : "file";
+    if (!r?.structuredPatch) return fileName;
     const additions = r.structuredPatch
       .flatMap((h) => h.lines)
       .filter((l) => l.startsWith("+")).length;
     const deletions = r.structuredPatch
       .flatMap((h) => h.lines)
       .filter((l) => l.startsWith("-")).length;
-    return `+${additions} -${deletions}`;
+    return `${fileName} (+${additions} -${deletions})`;
   },
 };
