@@ -26,6 +26,18 @@ export function useSession(projectId: string, sessionId: string) {
   // Track last message ID for incremental fetching
   const lastMessageIdRef = useRef<string | undefined>(undefined);
 
+  // Add user message optimistically with a temp ID
+  const addUserMessage = useCallback((text: string) => {
+    const tempId = `temp-${Date.now()}`;
+    const msg: Message = {
+      id: tempId,
+      role: "user",
+      content: text,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, msg]);
+  }, []);
+
   // Update lastMessageIdRef when messages change
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
@@ -145,16 +157,50 @@ export function useSession(projectId: string, sessionId: string) {
         const sdkMessage = data as {
           eventType: string;
           type: string;
+          uuid?: string;
           message?: { content: string; role?: string };
         };
         if (sdkMessage.message) {
-          const msg: Message = {
-            id: `msg-${Date.now()}`,
-            role: (sdkMessage.message.role as Message["role"]) || "assistant",
-            content: sdkMessage.message.content,
-            timestamp: new Date().toISOString(),
-          };
-          setMessages((prev) => [...prev, msg]);
+          const role =
+            (sdkMessage.message.role as Message["role"]) || "assistant";
+          const id = sdkMessage.uuid ?? `msg-${Date.now()}`;
+          const content = sdkMessage.message.content;
+
+          setMessages((prev) => {
+            // For user messages, check if we have a temp message with same content
+            if (role === "user") {
+              const tempIdx = prev.findIndex(
+                (m) =>
+                  m.id.startsWith("temp-") &&
+                  m.role === "user" &&
+                  m.content === content,
+              );
+              if (tempIdx >= 0) {
+                // Replace temp message with authoritative one (real UUID)
+                const updated = [...prev];
+                const existing = updated[tempIdx];
+                if (existing) {
+                  updated[tempIdx] = {
+                    id,
+                    role: existing.role,
+                    content: existing.content,
+                    timestamp: existing.timestamp,
+                  };
+                }
+                return updated;
+              }
+            }
+            // Otherwise add new message
+            return [
+              ...prev,
+              {
+                id,
+                role,
+                content,
+                timestamp: new Date().toISOString(),
+              },
+            ];
+          });
         }
       } else if (data.eventType === "status") {
         const statusData = data as { eventType: string; state: string };
@@ -175,5 +221,14 @@ export function useSession(projectId: string, sessionId: string) {
     { onMessage: handleSSEMessage },
   );
 
-  return { session, messages, status, loading, error, connected, setStatus };
+  return {
+    session,
+    messages,
+    status,
+    loading,
+    error,
+    connected,
+    setStatus,
+    addUserMessage,
+  };
 }

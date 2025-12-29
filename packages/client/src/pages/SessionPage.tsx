@@ -28,8 +28,16 @@ function SessionPageContent({
   projectId: string;
   sessionId: string;
 }) {
-  const { session, messages, status, loading, error, connected, setStatus } =
-    useSession(projectId, sessionId);
+  const {
+    session,
+    messages,
+    status,
+    loading,
+    error,
+    connected,
+    setStatus,
+    addUserMessage,
+  } = useSession(projectId, sessionId);
   const [sending, setSending] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
 
@@ -40,6 +48,7 @@ function SessionPageContent({
 
   const handleSend = async (text: string) => {
     setSending(true);
+    addUserMessage(text); // Optimistic display with temp ID
     try {
       if (status.state === "idle") {
         // Resume the session

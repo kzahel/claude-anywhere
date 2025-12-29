@@ -10,6 +10,7 @@ export interface ContentBlock {
 
 export interface SDKMessage {
   type: "system" | "assistant" | "user" | "result" | "error";
+  uuid?: string;
   subtype?: string;
   session_id?: string;
   message?: {

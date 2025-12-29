@@ -38,7 +38,10 @@ describe("Sessions API", () => {
 
       const res = await app.request(`/api/projects/${projectId}/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
         body: JSON.stringify({}),
       });
 
@@ -52,7 +55,10 @@ describe("Sessions API", () => {
 
       const res = await app.request(`/api/projects/${projectId}/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
         body: "not json",
       });
 
@@ -66,7 +72,10 @@ describe("Sessions API", () => {
 
       const res = await app.request("/api/projects/unknown/sessions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
         body: JSON.stringify({ message: "hello" }),
       });
 
@@ -81,7 +90,10 @@ describe("Sessions API", () => {
 
       const res = await app.request(`/api/projects/${projectId}/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
         body: JSON.stringify({ message: "hello" }),
       });
 
@@ -100,7 +112,10 @@ describe("Sessions API", () => {
         `/api/projects/${projectId}/sessions/sess-123/resume`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Claude-Anywhere": "true",
+          },
           body: JSON.stringify({}),
         },
       );
@@ -117,7 +132,10 @@ describe("Sessions API", () => {
         "/api/projects/unknown/sessions/sess-123/resume",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Claude-Anywhere": "true",
+          },
           body: JSON.stringify({ message: "hello" }),
         },
       );
@@ -133,7 +151,10 @@ describe("Sessions API", () => {
         `/api/projects/${projectId}/sessions/sess-123/resume`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Claude-Anywhere": "true",
+          },
           body: JSON.stringify({ message: "continue" }),
         },
       );
@@ -150,7 +171,10 @@ describe("Sessions API", () => {
 
       const res = await app.request("/api/sessions/unknown/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
         body: JSON.stringify({ message: "hello" }),
       });
 
@@ -178,7 +202,10 @@ describe("Sessions API", () => {
 
       const res = await app.request("/api/sessions/unknown/input", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
         body: JSON.stringify({ requestId: "req-1", response: "approve" }),
       });
 

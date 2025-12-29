@@ -140,6 +140,7 @@ export class RealClaudeSDK implements RealClaudeSDKInterface {
       case "assistant":
         return {
           type: "assistant",
+          uuid: (message as { uuid?: string }).uuid,
           session_id: (message as { session_id?: string }).session_id,
           message: {
             content: this.extractContent(message),
@@ -150,6 +151,7 @@ export class RealClaudeSDK implements RealClaudeSDKInterface {
       case "user":
         return {
           type: "user",
+          uuid: (message as { uuid?: string }).uuid,
           session_id: (message as { session_id?: string }).session_id,
           message: {
             content: this.extractContent(message),
