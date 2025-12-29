@@ -220,6 +220,8 @@ h2 {
 /* User prompt metadata (opened files, etc.) */
 .user-prompt-metadata {
   margin-top: var(--space-1);
+  margin-bottom: var(--space-3);
+  padding-left: var(--space-2);
   font-size: var(--font-size-xs);
   color: var(--text-dimmed);
   display: flex;

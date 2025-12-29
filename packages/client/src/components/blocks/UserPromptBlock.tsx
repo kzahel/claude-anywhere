@@ -15,7 +15,11 @@ function OpenedFilesMetadata({ files }: { files: string[] }) {
   return (
     <div className="user-prompt-metadata">
       {files.map((filePath) => (
-        <span key={filePath} className="opened-file" title={filePath}>
+        <span
+          key={filePath}
+          className="opened-file"
+          title={`file was opened in editor: ${filePath}`}
+        >
           {getFilename(filePath)}
         </span>
       ))}
