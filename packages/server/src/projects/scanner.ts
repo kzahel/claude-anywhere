@@ -53,6 +53,7 @@ export class ProjectScanner {
             path: projectPath,
             name: basename(projectPath),
             sessionCount,
+            sessionDir: dirPath,
           });
         }
         continue;
@@ -85,6 +86,7 @@ export class ProjectScanner {
           path: projectPath,
           name: basename(projectPath),
           sessionCount,
+          sessionDir: projectDirPath,
         });
       }
     }
@@ -95,60 +97,6 @@ export class ProjectScanner {
   async getProject(projectId: string): Promise<Project | null> {
     const projects = await this.listProjects();
     return projects.find((p) => p.id === projectId) ?? null;
-  }
-
-  // Get the directory path for a project's sessions
-  getProjectDir(projectPath: string): string | null {
-    // The encoding: project path with / replaced by -
-    // e.g., /home/user/myproject -> -home-user-myproject
-    const encoded = projectPath.replaceAll("/", "-");
-
-    // We need to find which hostname directory contains this project
-    // For now, scan all hostnames
-    // This is a simplification - in production we'd cache this
-    return null; // Will be resolved by findProjectDir
-  }
-
-  async findProjectDir(projectPath: string): Promise<string | null> {
-    try {
-      await access(this.projectsDir);
-    } catch {
-      return null;
-    }
-
-    const encoded = projectPath.replaceAll("/", "-");
-
-    // Check old format first: ~/.claude/projects/-home-user-project/
-    const directPath = join(this.projectsDir, encoded);
-    try {
-      await access(directPath);
-      return directPath;
-    } catch {
-      // Not in old format, try new format
-    }
-
-    // Check hostname format: ~/.claude/projects/hostname/-home-user-project/
-    let hostDirs: string[];
-    try {
-      const entries = await readdir(this.projectsDir, { withFileTypes: true });
-      hostDirs = entries
-        .filter((e) => e.isDirectory() && !e.name.startsWith("-"))
-        .map((e) => e.name);
-    } catch {
-      return null;
-    }
-
-    for (const hostDir of hostDirs) {
-      const projectDirPath = join(this.projectsDir, hostDir, encoded);
-      try {
-        await access(projectDirPath);
-        return projectDirPath;
-      } catch {
-        // Directory doesn't exist, try next hostname
-      }
-    }
-
-    return null;
   }
 
   /**
@@ -212,8 +160,10 @@ export class ProjectScanner {
   private async countSessions(projectDirPath: string): Promise<number> {
     try {
       const files = await readdir(projectDirPath);
-      // Count .jsonl files (session files)
-      return files.filter((f) => f.endsWith(".jsonl")).length;
+      // Count .jsonl files, excluding agent-* (internal subagent warmup sessions)
+      return files.filter(
+        (f) => f.endsWith(".jsonl") && !f.startsWith("agent-"),
+      ).length;
     } catch {
       return 0;
     }

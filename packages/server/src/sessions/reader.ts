@@ -35,7 +35,10 @@ export class SessionReader {
 
     try {
       const files = await readdir(this.sessionDir);
-      const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
+      // Filter out agent-* files (internal subagent warmup sessions)
+      const jsonlFiles = files.filter(
+        (f) => f.endsWith(".jsonl") && !f.startsWith("agent-"),
+      );
 
       for (const file of jsonlFiles) {
         const sessionId = file.replace(".jsonl", "");
@@ -66,7 +69,14 @@ export class SessionReader {
 
     try {
       const content = await readFile(filePath, "utf-8");
-      const lines = content.trim().split("\n");
+      const trimmed = content.trim();
+
+      // Skip empty files
+      if (!trimmed) {
+        return null;
+      }
+
+      const lines = trimmed.split("\n");
       const messages = lines
         .map((line) => {
           try {
@@ -77,6 +87,16 @@ export class SessionReader {
         })
         .filter((m): m is RawSessionMessage => m !== null);
 
+      // Filter to only user/assistant messages (not internal types like file-history-snapshot, queue-operation)
+      const conversationMessages = messages.filter(
+        (m) => m.type === "user" || m.type === "assistant",
+      );
+
+      // Skip sessions with no actual conversation messages
+      if (conversationMessages.length === 0) {
+        return null;
+      }
+
       const stats = await stat(filePath);
       const firstUserMessage = this.findFirstUserMessage(messages);
 
@@ -86,7 +106,7 @@ export class SessionReader {
         title: this.extractTitle(firstUserMessage),
         createdAt: stats.birthtime.toISOString(),
         updatedAt: stats.mtime.toISOString(),
-        messageCount: messages.length,
+        messageCount: conversationMessages.length,
         status: { state: "idle" }, // Will be updated by Supervisor
       };
     } catch {

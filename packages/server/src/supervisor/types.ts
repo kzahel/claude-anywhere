@@ -19,6 +19,7 @@ export interface Project {
   path: string; // absolute path
   name: string; // directory name
   sessionCount: number;
+  sessionDir: string; // path to session directory (e.g., ~/.claude/projects/hostname/-encoded-path/)
 }
 
 // Session status

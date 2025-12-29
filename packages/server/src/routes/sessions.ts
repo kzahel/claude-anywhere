@@ -55,12 +55,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       });
     }
 
-    const sessionDir = await deps.scanner.findProjectDir(project.path);
-    if (!sessionDir) {
-      return c.json({ error: "Session not found" }, 404);
-    }
-
-    const reader = deps.readerFactory(sessionDir);
+    const reader = deps.readerFactory(project.sessionDir);
     const session = await reader.getSession(sessionId, projectId);
     if (!session) {
       return c.json({ error: "Session not found" }, 404);

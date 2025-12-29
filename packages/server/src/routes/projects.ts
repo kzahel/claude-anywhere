@@ -25,13 +25,8 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    // Get sessions for this project
-    const sessionDir = await deps.scanner.findProjectDir(project.path);
-    if (!sessionDir) {
-      return c.json({ project, sessions: [] });
-    }
-
-    const reader = deps.readerFactory(sessionDir);
+    // Get sessions for this project using the stored sessionDir
+    const reader = deps.readerFactory(project.sessionDir);
     const sessions = await reader.listSessions(projectId);
 
     return c.json({ project, sessions });
@@ -46,12 +41,7 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
       return c.json({ error: "Project not found" }, 404);
     }
 
-    const sessionDir = await deps.scanner.findProjectDir(project.path);
-    if (!sessionDir) {
-      return c.json({ sessions: [] });
-    }
-
-    const reader = deps.readerFactory(sessionDir);
+    const reader = deps.readerFactory(project.sessionDir);
     const sessions = await reader.listSessions(projectId);
 
     return c.json({ sessions });
