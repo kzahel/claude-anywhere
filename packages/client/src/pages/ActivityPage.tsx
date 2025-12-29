@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   type FileChangeEvent,
@@ -14,7 +14,7 @@ function formatDate(timestamp: string): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-function getTypeIcon(type: FileChangeEvent["type"]): string {
+function getTypeIcon(type: FileChangeEvent["changeType"]): string {
   switch (type) {
     case "create":
       return "+";
@@ -25,7 +25,7 @@ function getTypeIcon(type: FileChangeEvent["type"]): string {
   }
 }
 
-function getTypeColor(type: FileChangeEvent["type"]): string {
+function getTypeColor(type: FileChangeEvent["changeType"]): string {
   switch (type) {
     case "create":
       return "#4f4";
@@ -36,7 +36,7 @@ function getTypeColor(type: FileChangeEvent["type"]): string {
   }
 }
 
-function getTypeLabel(type: FileChangeEvent["type"]): string {
+function getTypeLabel(type: FileChangeEvent["changeType"]): string {
   switch (type) {
     case "create":
       return "created";
@@ -57,7 +57,9 @@ function getFileTypeLabel(fileType: FileType): string {
       return "Settings";
     case "credentials":
       return "Credentials";
-    default:
+    case "telemetry":
+      return "Telemetry";
+    case "other":
       return "Other";
   }
 }
@@ -67,6 +69,7 @@ const FILE_TYPE_OPTIONS: FileType[] = [
   "agent-session",
   "settings",
   "credentials",
+  "telemetry",
   "other",
 ];
 
@@ -76,19 +79,23 @@ export function ActivityPage() {
   const { events, connected, paused, clearEvents, togglePause } =
     useFileActivity();
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
+
   // Apply filters
-  let displayedEvents = events;
+  let filteredEvents = events;
 
   if (pathFilter) {
     const regex = new RegExp(pathFilter, "i");
-    displayedEvents = displayedEvents.filter((e) => regex.test(e.relativePath));
+    filteredEvents = filteredEvents.filter((e) => regex.test(e.relativePath));
   }
 
   if (typeFilters.size > 0) {
-    displayedEvents = displayedEvents.filter((e) =>
-      typeFilters.has(e.fileType),
-    );
+    filteredEvents = filteredEvents.filter((e) => typeFilters.has(e.fileType));
   }
+
+  // Reverse for chronological order (oldest at top, newest at bottom)
+  const displayedEvents = [...filteredEvents].reverse();
 
   const toggleTypeFilter = (type: FileType) => {
     setTypeFilters((prev) => {
@@ -101,6 +108,24 @@ export function ActivityPage() {
       return next;
     });
   };
+
+  // Track scroll position to know if we should auto-scroll
+  const handleScroll = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const threshold = 20;
+    isAtBottomRef.current =
+      container.scrollHeight - container.scrollTop - container.clientHeight <
+      threshold;
+  };
+
+  // Auto-scroll to bottom when new events arrive (if already at bottom)
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container && isAtBottomRef.current) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [displayedEvents.length]);
 
   // Group events by date
   const eventsByDate = displayedEvents.reduce(
@@ -116,7 +141,16 @@ export function ActivityPage() {
   );
 
   return (
-    <div className="page" style={{ maxWidth: "1000px" }}>
+    <div
+      className="page"
+      style={{
+        maxWidth: "1000px",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
       <nav className="breadcrumb">
         <Link to="/projects">Projects</Link> / Activity
       </nav>
@@ -149,7 +183,7 @@ export function ActivityPage() {
         style={{
           display: "flex",
           gap: "1rem",
-          marginBottom: "1.5rem",
+          marginBottom: "1rem",
           flexWrap: "wrap",
         }}
       >
@@ -192,7 +226,7 @@ export function ActivityPage() {
         style={{
           display: "flex",
           gap: "0.5rem",
-          marginBottom: "1.5rem",
+          marginBottom: "1rem",
           flexWrap: "wrap",
         }}
       >
@@ -233,7 +267,7 @@ export function ActivityPage() {
         style={{
           display: "flex",
           gap: "2rem",
-          marginBottom: "1.5rem",
+          marginBottom: "1rem",
           fontSize: "0.875rem",
           color: "#888",
         }}
@@ -242,88 +276,101 @@ export function ActivityPage() {
         <span>Showing: {displayedEvents.length}</span>
       </div>
 
-      {/* Events */}
-      {Object.entries(eventsByDate).length === 0 ? (
-        <div style={{ textAlign: "center", padding: "3rem", color: "#888" }}>
-          {events.length === 0
-            ? "Waiting for file changes..."
-            : "No events match current filters"}
-        </div>
-      ) : (
-        Object.entries(eventsByDate).map(([date, dateEvents]) => (
-          <div key={date} style={{ marginBottom: "2rem" }}>
-            <h3
-              style={{
-                color: "#888",
-                fontSize: "0.875rem",
-                marginBottom: "0.5rem",
-              }}
-            >
-              {date}
-            </h3>
-            <div
-              style={{
-                background: "#2a2a2a",
-                borderRadius: "8px",
-                overflow: "hidden",
-              }}
-            >
-              {dateEvents.map((event, i) => (
-                <div
-                  key={`${event.timestamp}-${event.path}-${i}`}
-                  style={{
-                    padding: "0.75rem 1rem",
-                    borderBottom:
-                      i < dateEvents.length - 1 ? "1px solid #333" : "none",
-                    display: "grid",
-                    gridTemplateColumns: "80px 24px 100px 1fr",
-                    gap: "0.75rem",
-                    alignItems: "center",
-                    fontFamily: "monospace",
-                    fontSize: "0.875rem",
-                  }}
-                >
-                  <span style={{ color: "#666" }}>
-                    {formatTime(event.timestamp)}
-                  </span>
-                  <span
-                    style={{
-                      color: getTypeColor(event.type),
-                      fontWeight: "bold",
-                      textAlign: "center",
-                    }}
-                    title={getTypeLabel(event.type)}
-                  >
-                    {getTypeIcon(event.type)}
-                  </span>
-                  <span
-                    style={{
-                      color: "#888",
-                      fontSize: "0.75rem",
-                      background: "#333",
-                      padding: "0.25rem 0.5rem",
-                      borderRadius: "4px",
-                      textAlign: "center",
-                    }}
-                  >
-                    {getFileTypeLabel(event.fileType)}
-                  </span>
-                  <span
-                    style={{
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                    title={event.path}
-                  >
-                    {event.relativePath}
-                  </span>
-                </div>
-              ))}
-            </div>
+      {/* Events - scrollable container */}
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        style={{
+          flex: 1,
+          overflow: "auto",
+          minHeight: 0,
+          background: "#1a1a1a",
+          borderRadius: "8px",
+          padding: "1rem",
+        }}
+      >
+        {Object.entries(eventsByDate).length === 0 ? (
+          <div style={{ textAlign: "center", padding: "3rem", color: "#888" }}>
+            {events.length === 0
+              ? "Waiting for file changes..."
+              : "No events match current filters"}
           </div>
-        ))
-      )}
+        ) : (
+          Object.entries(eventsByDate).map(([date, dateEvents]) => (
+            <div key={date} style={{ marginBottom: "1.5rem" }}>
+              <h3
+                style={{
+                  color: "#888",
+                  fontSize: "0.875rem",
+                  marginBottom: "0.5rem",
+                }}
+              >
+                {date}
+              </h3>
+              <div
+                style={{
+                  background: "#2a2a2a",
+                  borderRadius: "8px",
+                  overflow: "hidden",
+                }}
+              >
+                {dateEvents.map((event, i) => (
+                  <div
+                    key={`${event.timestamp}-${event.path}-${i}`}
+                    style={{
+                      padding: "0.75rem 1rem",
+                      borderBottom:
+                        i < dateEvents.length - 1 ? "1px solid #333" : "none",
+                      display: "grid",
+                      gridTemplateColumns: "80px 24px 100px 1fr",
+                      gap: "0.75rem",
+                      alignItems: "center",
+                      fontFamily: "monospace",
+                      fontSize: "0.875rem",
+                    }}
+                  >
+                    <span style={{ color: "#666" }}>
+                      {formatTime(event.timestamp)}
+                    </span>
+                    <span
+                      style={{
+                        color: getTypeColor(event.changeType),
+                        fontWeight: "bold",
+                        textAlign: "center",
+                      }}
+                      title={getTypeLabel(event.changeType)}
+                    >
+                      {getTypeIcon(event.changeType)}
+                    </span>
+                    <span
+                      style={{
+                        color: "#888",
+                        fontSize: "0.75rem",
+                        background: "#333",
+                        padding: "0.25rem 0.5rem",
+                        borderRadius: "4px",
+                        textAlign: "center",
+                      }}
+                    >
+                      {getFileTypeLabel(event.fileType)}
+                    </span>
+                    <span
+                      style={{
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={event.path}
+                    >
+                      {event.relativePath}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

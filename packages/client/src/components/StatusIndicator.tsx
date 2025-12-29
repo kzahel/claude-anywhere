@@ -15,7 +15,7 @@ export function StatusIndicator({ status, connected, onAbort }: Props) {
         {status.state === "owned" && "Running"}
         {status.state === "external" && "External process"}
       </span>
-      {!connected && status.state !== "idle" && (
+      {!connected && status.state === "owned" && (
         <span className="status-disconnected">Reconnecting...</span>
       )}
       {status.state === "owned" && (

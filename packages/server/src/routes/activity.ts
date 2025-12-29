@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { EventBus, FileChangeEvent } from "../watcher/index.js";
+import type { BusEvent, EventBus } from "../watcher/index.js";
 
 export interface ActivityDeps {
   eventBus: EventBus;
@@ -9,7 +9,7 @@ export interface ActivityDeps {
 export function createActivityRoutes(deps: ActivityDeps): Hono {
   const routes = new Hono();
 
-  // GET /api/activity/stream - SSE endpoint for file changes
+  // GET /api/activity/stream - SSE endpoint for file changes and session status
   routes.get("/stream", async (c) => {
     return streamSSE(c, async (stream) => {
       let eventId = 0;
@@ -38,25 +38,24 @@ export function createActivityRoutes(deps: ActivityDeps): Hono {
 
       let closed = false;
 
-      // Subscribe to file change events
-      const unsubscribe = deps.eventBus.subscribe(
-        async (event: FileChangeEvent) => {
-          if (closed) return;
+      // Subscribe to bus events (file changes and session status)
+      const unsubscribe = deps.eventBus.subscribe(async (event: BusEvent) => {
+        if (closed) return;
 
-          try {
-            await stream.writeSSE({
-              id: String(eventId++),
-              event: "file-change",
-              data: JSON.stringify(event),
-            });
-          } catch {
-            // Stream closed
-            closed = true;
-            clearInterval(heartbeatInterval);
-            unsubscribe();
-          }
-        },
-      );
+        try {
+          // Use the event's type as the SSE event name
+          await stream.writeSSE({
+            id: String(eventId++),
+            event: event.type,
+            data: JSON.stringify(event),
+          });
+        } catch {
+          // Stream closed
+          closed = true;
+          clearInterval(heartbeatInterval);
+          unsubscribe();
+        }
+      });
 
       // Handle stream close
       stream.onAbort(() => {

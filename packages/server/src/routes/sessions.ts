@@ -2,12 +2,14 @@ import { Hono } from "hono";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { UserMessage } from "../sdk/types.js";
 import type { SessionReader } from "../sessions/reader.js";
+import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 
 export interface SessionsDeps {
   supervisor: Supervisor;
   scanner: ProjectScanner;
   readerFactory: (sessionDir: string) => SessionReader;
+  externalTracker?: ExternalSessionTracker;
 }
 
 interface StartSessionBody {
@@ -55,16 +57,22 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       });
     }
 
+    // Check if session is being controlled by an external program
+    const isExternal = deps.externalTracker?.isExternal(sessionId) ?? false;
+
     const reader = deps.readerFactory(project.sessionDir);
     const session = await reader.getSession(sessionId, projectId);
     if (!session) {
       return c.json({ error: "Session not found" }, 404);
     }
 
+    // Override status if external activity detected
+    const status = isExternal ? { state: "external" as const } : session.status;
+
     return c.json({
-      session,
+      session: { ...session, status },
       messages: session.messages,
-      status: session.status,
+      status,
     });
   });
 

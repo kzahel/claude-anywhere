@@ -144,9 +144,10 @@ export class FileWatcher {
     const relativePath = path.relative(this.watchDir, fullPath);
 
     const event: FileChangeEvent = {
+      type: "file-change",
       path: fullPath,
       relativePath,
-      type: changeType,
+      changeType,
       timestamp: new Date().toISOString(),
       fileType: this.parseFileType(relativePath),
     };
@@ -174,6 +175,11 @@ export class FileWatcher {
       relativePath.includes("credentials")
     ) {
       return "credentials";
+    }
+
+    // Telemetry (statsig, analytics)
+    if (relativePath.startsWith("statsig/")) {
+      return "telemetry";
     }
 
     return "other";

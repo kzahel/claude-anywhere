@@ -1,25 +1,45 @@
 /**
- * Simple in-memory pub/sub event bus for file change events.
+ * Simple in-memory pub/sub event bus for file change and session status events.
  */
+
+import type { SessionStatus } from "../supervisor/types.js";
 
 export type FileChangeType = "create" | "modify" | "delete";
 
 export interface FileChangeEvent {
+  type: "file-change";
   path: string;
   relativePath: string;
-  type: FileChangeType;
+  changeType: FileChangeType;
   timestamp: string;
   /** Parsed file type based on path */
-  fileType: "session" | "agent-session" | "settings" | "credentials" | "other";
+  fileType:
+    | "session"
+    | "agent-session"
+    | "settings"
+    | "credentials"
+    | "telemetry"
+    | "other";
 }
 
-export type EventHandler = (event: FileChangeEvent) => void;
+export interface SessionStatusEvent {
+  type: "session-status-changed";
+  sessionId: string;
+  projectId: string;
+  status: SessionStatus;
+  timestamp: string;
+}
+
+/** Union of all event types that can be emitted through the bus */
+export type BusEvent = FileChangeEvent | SessionStatusEvent;
+
+export type EventHandler<T = BusEvent> = (event: T) => void;
 
 export class EventBus {
   private subscribers: Set<EventHandler> = new Set();
 
   /**
-   * Subscribe to file change events.
+   * Subscribe to bus events.
    * @returns Unsubscribe function
    */
   subscribe(handler: EventHandler): () => void {
@@ -32,7 +52,7 @@ export class EventBus {
   /**
    * Emit an event to all subscribers.
    */
-  emit(event: FileChangeEvent): void {
+  emit(event: BusEvent): void {
     for (const handler of this.subscribers) {
       try {
         handler(event);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { SessionStatus } from "../types";
 
 export type FileChangeType = "create" | "modify" | "delete";
 export type FileType =
@@ -6,14 +7,24 @@ export type FileType =
   | "agent-session"
   | "settings"
   | "credentials"
+  | "telemetry"
   | "other";
 
 export interface FileChangeEvent {
+  type: "file-change";
   path: string;
   relativePath: string;
-  type: FileChangeType;
+  changeType: FileChangeType;
   timestamp: string;
   fileType: FileType;
+}
+
+export interface SessionStatusEvent {
+  type: "session-status-changed";
+  sessionId: string;
+  projectId: string;
+  status: SessionStatus;
+  timestamp: string;
 }
 
 interface UseFileActivityOptions {
@@ -23,6 +34,8 @@ interface UseFileActivityOptions {
   autoConnect?: boolean;
   /** Callback when a file change occurs */
   onFileChange?: (event: FileChangeEvent) => void;
+  /** Callback when a session status changes */
+  onSessionStatusChange?: (event: SessionStatusEvent) => void;
 }
 
 const API_BASE = "/api";
@@ -33,6 +46,7 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
     maxEvents = DEFAULT_MAX_EVENTS,
     autoConnect = true,
     onFileChange,
+    onSessionStatusChange,
   } = options;
 
   const [events, setEvents] = useState<FileChangeEvent[]>([]);
@@ -45,6 +59,8 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
   );
   const onFileChangeRef = useRef(onFileChange);
   onFileChangeRef.current = onFileChange;
+  const onSessionStatusChangeRef = useRef(onSessionStatusChange);
+  onSessionStatusChangeRef.current = onSessionStatusChange;
 
   const connect = useCallback(() => {
     if (eventSourceRef.current) return;
@@ -74,11 +90,23 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
       }
     };
 
+    const handleSessionStatusChange = (event: MessageEvent) => {
+      if (event.data === undefined || event.data === null) return;
+
+      try {
+        const data = JSON.parse(event.data) as SessionStatusEvent;
+        onSessionStatusChangeRef.current?.(data);
+      } catch {
+        // Ignore malformed JSON
+      }
+    };
+
     es.addEventListener("connected", () => {
       // Connection acknowledged
     });
 
     es.addEventListener("file-change", handleFileChange);
+    es.addEventListener("session-status-changed", handleSessionStatusChange);
     es.addEventListener("heartbeat", () => {
       // Keep-alive, no action needed
     });

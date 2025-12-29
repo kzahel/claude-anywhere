@@ -58,7 +58,16 @@ export function SessionsPage() {
               <Link to={`/projects/${projectId}/sessions/${session.id}`}>
                 <strong>{session.title || "Untitled"}</strong>
                 <span className="meta">
-                  {session.messageCount} messages · {session.status.state}
+                  {session.messageCount} messages
+                  <span
+                    className={`status-badge status-${session.status.state}`}
+                  >
+                    {session.status.state === "external"
+                      ? "Active, External"
+                      : session.status.state === "owned"
+                        ? "Active"
+                        : "Idle"}
+                  </span>
                 </span>
               </Link>
             </li>

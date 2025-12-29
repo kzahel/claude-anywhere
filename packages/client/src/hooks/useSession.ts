@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { Message, SessionStatus } from "../types";
+import type { Message, Session, SessionStatus } from "../types";
+import { type SessionStatusEvent, useFileActivity } from "./useFileActivity";
 import { useSSE } from "./useSSE";
 
 export function useSession(projectId: string, sessionId: string) {
+  const [session, setSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<SessionStatus>({ state: "idle" });
   const [loading, setLoading] = useState(true);
@@ -15,12 +17,27 @@ export function useSession(projectId: string, sessionId: string) {
     api
       .getSession(projectId, sessionId)
       .then((data) => {
+        setSession(data.session);
         setMessages(data.messages);
         setStatus(data.status);
       })
       .catch(setError)
       .finally(() => setLoading(false));
   }, [projectId, sessionId]);
+
+  // Listen for session status changes via SSE
+  const handleSessionStatusChange = useCallback(
+    (event: SessionStatusEvent) => {
+      if (event.sessionId === sessionId) {
+        setStatus(event.status);
+      }
+    },
+    [sessionId],
+  );
+
+  useFileActivity({
+    onSessionStatusChange: handleSessionStatusChange,
+  });
 
   // Subscribe to live updates
   const handleSSEMessage = useCallback(
@@ -54,10 +71,12 @@ export function useSession(projectId: string, sessionId: string) {
     [],
   );
 
+  // Only connect to session stream when we own the session
+  // External sessions are tracked via the activity stream instead
   const { connected } = useSSE(
-    status.state !== "idle" ? `/api/sessions/${sessionId}/stream` : null,
+    status.state === "owned" ? `/api/sessions/${sessionId}/stream` : null,
     { onMessage: handleSSEMessage },
   );
 
-  return { messages, status, loading, error, connected, setStatus };
+  return { session, messages, status, loading, error, connected, setStatus };
 }

@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { MessageInput } from "../components/MessageInput";
 import { MessageList } from "../components/MessageList";
 import { StatusIndicator } from "../components/StatusIndicator";
+import { useActivityDrawer } from "../context/ActivityDrawerContext";
 import { useSession } from "../hooks/useSession";
 
 export function ChatPage() {
@@ -27,11 +28,10 @@ function ChatPageContent({
   projectId: string;
   sessionId: string;
 }) {
-  const { messages, status, loading, error, connected, setStatus } = useSession(
-    projectId,
-    sessionId,
-  );
+  const { session, messages, status, loading, error, connected, setStatus } =
+    useSession(projectId, sessionId);
   const [sending, setSending] = useState(false);
+  const { drawerHeight } = useActivityDrawer();
 
   const handleSend = async (text: string) => {
     setSending(true);
@@ -62,18 +62,29 @@ function ChatPageContent({
   if (error) return <div className="error">Error: {error.message}</div>;
 
   return (
-    <div className="chat-page">
+    <div className="chat-page" style={{ paddingBottom: drawerHeight }}>
       <header className="chat-header">
-        <nav className="breadcrumb">
-          <Link to="/projects">Projects</Link> /{" "}
-          <Link to={`/projects/${projectId}`}>Project</Link> / Session
-        </nav>
+        <div className="chat-header-left">
+          <nav className="breadcrumb">
+            <Link to="/projects">Projects</Link> /{" "}
+            <Link to={`/projects/${projectId}`}>Project</Link> / Session
+          </nav>
+          {session?.title && (
+            <span className="session-title">{session.title}</span>
+          )}
+        </div>
         <StatusIndicator
           status={status}
           connected={connected}
           onAbort={handleAbort}
         />
       </header>
+
+      {status.state === "external" && (
+        <div className="external-session-warning">
+          External session active - enter messages at your own risk!
+        </div>
+      )}
 
       <main className="chat-messages">
         <MessageList messages={messages} />
@@ -86,7 +97,9 @@ function ChatPageContent({
           placeholder={
             status.state === "idle"
               ? "Send a message to resume..."
-              : "Queue a message..."
+              : status.state === "external"
+                ? "External session - send at your own risk..."
+                : "Queue a message..."
           }
         />
       </footer>

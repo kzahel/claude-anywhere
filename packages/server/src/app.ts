@@ -13,6 +13,7 @@ import type {
   RealClaudeSDKInterface,
 } from "./sdk/types.js";
 import { SessionReader } from "./sessions/reader.js";
+import { ExternalSessionTracker } from "./supervisor/ExternalSessionTracker.js";
 import { Supervisor } from "./supervisor/Supervisor.js";
 import type { EventBus } from "./watcher/index.js";
 
@@ -45,6 +46,15 @@ export function createApp(options: AppOptions): Hono {
   const readerFactory = (sessionDir: string) =>
     new SessionReader({ sessionDir });
 
+  // Create external session tracker if eventBus is available
+  const externalTracker = options.eventBus
+    ? new ExternalSessionTracker({
+        eventBus: options.eventBus,
+        supervisor,
+        decayMs: 30000, // 30 seconds
+      })
+    : undefined;
+
   // Health check (outside /api)
   app.route("/health", health);
 
@@ -52,7 +62,12 @@ export function createApp(options: AppOptions): Hono {
   app.route("/api/projects", createProjectsRoutes({ scanner, readerFactory }));
   app.route(
     "/api",
-    createSessionsRoutes({ supervisor, scanner, readerFactory }),
+    createSessionsRoutes({
+      supervisor,
+      scanner,
+      readerFactory,
+      externalTracker,
+    }),
   );
   app.route("/api/processes", createProcessesRoutes({ supervisor }));
   app.route("/api", createStreamRoutes({ supervisor }));

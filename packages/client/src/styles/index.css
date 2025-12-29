@@ -14,6 +14,8 @@ body {
   max-width: 800px;
   margin: 0 auto;
   padding: 2rem;
+  /* Leave space for activity drawer (36px closed, 300px open) */
+  padding-bottom: 320px;
 }
 
 .loading,
@@ -125,6 +127,25 @@ button:disabled {
   align-items: center;
 }
 
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.chat-header-left .breadcrumb {
+  margin-bottom: 0;
+}
+
+.session-title {
+  color: #e0e0e0;
+  font-weight: 500;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-messages {
   flex: 1;
   overflow-y: auto;
@@ -221,4 +242,39 @@ button:disabled {
   padding: 0.25rem 0.75rem;
   background: #a44;
   font-size: 0.875rem;
+}
+
+/* External session warning banner */
+.external-session-warning {
+  background: #554400;
+  border: 1px solid #887700;
+  color: #ffdd44;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* Status badges for session list */
+.status-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: 0.5rem;
+}
+
+.status-badge.status-idle {
+  background: #333;
+  color: #888;
+}
+
+.status-badge.status-owned {
+  background: #1a3a1a;
+  color: #4f4;
+}
+
+.status-badge.status-external {
+  background: #3a3a1a;
+  color: #ff4;
 }
