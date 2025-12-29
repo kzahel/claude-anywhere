@@ -1,0 +1,191 @@
+import { readFile, readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
+import type {
+  ContentBlock,
+  Message,
+  Session,
+  SessionSummary,
+} from "../supervisor/types.js";
+import { SESSION_TITLE_MAX_LENGTH } from "../supervisor/types.js";
+
+export interface SessionReaderOptions {
+  sessionDir: string;
+}
+
+// JSONL message format from claude-code
+interface RawSessionMessage {
+  type: string;
+  message?: {
+    content: string | Array<{ type: string; text?: string }>;
+    role?: string;
+  };
+  timestamp?: string;
+  uuid?: string;
+}
+
+export class SessionReader {
+  private sessionDir: string;
+
+  constructor(options: SessionReaderOptions) {
+    this.sessionDir = options.sessionDir;
+  }
+
+  async listSessions(projectId: string): Promise<SessionSummary[]> {
+    const summaries: SessionSummary[] = [];
+
+    try {
+      const files = await readdir(this.sessionDir);
+      const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
+
+      for (const file of jsonlFiles) {
+        const sessionId = file.replace(".jsonl", "");
+        const summary = await this.getSessionSummary(sessionId, projectId);
+        if (summary) {
+          summaries.push(summary);
+        }
+      }
+    } catch {
+      // Directory doesn't exist or not readable
+      return [];
+    }
+
+    // Sort by updatedAt descending
+    summaries.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+
+    return summaries;
+  }
+
+  async getSessionSummary(
+    sessionId: string,
+    projectId: string,
+  ): Promise<SessionSummary | null> {
+    const filePath = join(this.sessionDir, `${sessionId}.jsonl`);
+
+    try {
+      const content = await readFile(filePath, "utf-8");
+      const lines = content.trim().split("\n");
+      const messages = lines
+        .map((line) => {
+          try {
+            return JSON.parse(line) as RawSessionMessage;
+          } catch {
+            return null;
+          }
+        })
+        .filter((m): m is RawSessionMessage => m !== null);
+
+      const stats = await stat(filePath);
+      const firstUserMessage = this.findFirstUserMessage(messages);
+
+      return {
+        id: sessionId,
+        projectId,
+        title: this.extractTitle(firstUserMessage),
+        createdAt: stats.birthtime.toISOString(),
+        updatedAt: stats.mtime.toISOString(),
+        messageCount: messages.length,
+        status: { state: "idle" }, // Will be updated by Supervisor
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async getSession(
+    sessionId: string,
+    projectId: string,
+  ): Promise<Session | null> {
+    const summary = await this.getSessionSummary(sessionId, projectId);
+    if (!summary) return null;
+
+    const filePath = join(this.sessionDir, `${sessionId}.jsonl`);
+    const content = await readFile(filePath, "utf-8");
+    const lines = content.trim().split("\n");
+
+    const messages: Message[] = [];
+    let messageIndex = 0;
+
+    for (const line of lines) {
+      try {
+        const raw = JSON.parse(line) as RawSessionMessage;
+        const message = this.convertMessage(raw, messageIndex++);
+        if (message) {
+          messages.push(message);
+        }
+      } catch {
+        // Skip malformed lines
+      }
+    }
+
+    return {
+      ...summary,
+      messages,
+    };
+  }
+
+  private findFirstUserMessage(messages: RawSessionMessage[]): string | null {
+    for (const msg of messages) {
+      if (msg.type === "user" && msg.message?.content) {
+        return this.extractContent(msg.message.content);
+      }
+    }
+    return null;
+  }
+
+  private extractTitle(content: string | null): string | null {
+    if (!content) return null;
+    const trimmed = content.trim();
+    if (trimmed.length <= SESSION_TITLE_MAX_LENGTH) return trimmed;
+    return `${trimmed.slice(0, SESSION_TITLE_MAX_LENGTH - 3)}...`;
+  }
+
+  private extractContent(
+    content: string | Array<{ type: string; text?: string }>,
+  ): string {
+    if (typeof content === "string") return content;
+    return content
+      .filter(
+        (block): block is { type: string; text: string } =>
+          block.type === "text" && typeof block.text === "string",
+      )
+      .map((block) => block.text)
+      .join("\n");
+  }
+
+  private convertMessage(
+    raw: RawSessionMessage,
+    index: number,
+  ): Message | null {
+    // Skip system messages for display
+    if (!raw.type || raw.type === "system") return null;
+
+    const role: "user" | "assistant" | "system" =
+      raw.type === "user"
+        ? "user"
+        : raw.type === "assistant"
+          ? "assistant"
+          : "system";
+
+    let content: string | ContentBlock[];
+    if (typeof raw.message?.content === "string") {
+      content = raw.message.content;
+    } else if (Array.isArray(raw.message?.content)) {
+      content = raw.message.content.map((block) => ({
+        type: block.type as ContentBlock["type"],
+        text: block.text,
+      }));
+    } else {
+      content = "";
+    }
+
+    return {
+      id: raw.uuid ?? `msg-${index}`,
+      role,
+      content,
+      timestamp: raw.timestamp ?? new Date().toISOString(),
+    };
+  }
+}
