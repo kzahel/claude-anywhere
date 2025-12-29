@@ -15,7 +15,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
 }: Props) {
   return (
     <details
-      className="thinking-block collapsible"
+      className="thinking-block collapsible timeline-item"
       open={isExpanded}
       onToggle={(e) => {
         if (e.currentTarget.open !== isExpanded) {

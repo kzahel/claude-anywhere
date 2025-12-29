@@ -8,7 +8,7 @@ interface Props {
 
 export const TextBlock = memo(function TextBlock({ text }: Props) {
   return (
-    <div className="text-block">
+    <div className="text-block timeline-item">
       <Markdown remarkPlugins={[remarkGfm]}>{text}</Markdown>
     </div>
   );

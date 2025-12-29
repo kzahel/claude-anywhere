@@ -41,11 +41,9 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   return (
     <div
-      className={`tool-row ${expanded ? "expanded" : "collapsed"} status-${status}`}
+      className={`tool-row timeline-item ${expanded ? "expanded" : "collapsed"} status-${status}`}
     >
       <button type="button" className="tool-row-header" onClick={handleToggle}>
-        <span className={`timeline-dot status-${status}`} />
-
         {status === "pending" && (
           <span className="tool-spinner" aria-label="Running">
             <Spinner />

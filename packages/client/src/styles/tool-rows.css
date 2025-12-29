@@ -1,4 +1,54 @@
 /* ==========================================================================
+   Timeline Items - Base styles for all items in assistant turn
+   ========================================================================== */
+
+/* Base timeline item - adds a dot on the timeline line */
+.timeline-item {
+  position: relative;
+}
+
+.timeline-item::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--timeline-dot-default);
+}
+
+/* Line segment connecting to the next item's dot */
+.timeline-item::after {
+  content: "";
+  position: absolute;
+  left: -12px; /* Center of the dot */
+  top: 18px; /* Just below the dot (dot is at top:10, height:8) */
+  bottom: -10px; /* Extend into next item's space to meet its dot */
+  width: 1px;
+  background: var(--timeline-line-color);
+}
+
+/* Last item in a turn - hide the line below */
+.assistant-turn > :last-child .timeline-item::after {
+  display: none;
+}
+
+/* Tool row status-specific dot colors */
+.tool-row.timeline-item.status-pending::before {
+  background: var(--timeline-dot-working);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.tool-row.timeline-item.status-complete::before {
+  background: var(--timeline-dot-tool);
+}
+
+.tool-row.timeline-item.status-error::before {
+  background: var(--timeline-dot-error);
+}
+
+/* ==========================================================================
    Tool Call Rows - VS Code Style
    ========================================================================== */
 
@@ -13,7 +63,7 @@
   align-items: center;
   gap: 8px;
   height: 28px;
-  padding: 0 8px 0 24px;
+  padding: 0 8px;
   cursor: pointer;
   border-radius: 4px;
   transition: background-color 0.1s;
@@ -30,30 +80,6 @@
 .tool-row-header:focus {
   outline: 1px solid var(--focus-border, #007acc);
   outline-offset: -1px;
-}
-
-/* Timeline dot - uses semantic colors based on state */
-.timeline-dot {
-  position: absolute;
-  left: 8px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--timeline-dot-default);
-  flex-shrink: 0;
-}
-
-.timeline-dot.status-pending {
-  background: var(--timeline-dot-working);
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-.timeline-dot.status-complete {
-  background: var(--timeline-dot-tool); /* Green for completed tool calls */
-}
-
-.timeline-dot.status-error {
-  background: var(--timeline-dot-error);
 }
 
 @keyframes pulse {

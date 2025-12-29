@@ -602,7 +602,7 @@ Quick lookup for minified → semantic names:
 - [ ] Read tool: filename + expandable content
 - [ ] Bash tool: command + output sections
 - [ ] Grep tool: pattern + match count + results
-- [ ] Edit tool: filename + diff preview
+- [x] Edit tool: filename + diff preview
 - [ ] Glob tool: pattern + file list
 - [ ] Task tool: prompt + response
 
