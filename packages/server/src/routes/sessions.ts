@@ -167,11 +167,9 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ request: null });
     }
 
-    if (process.state.type === "waiting-input") {
-      return c.json({ request: process.state.request });
-    }
-
-    return c.json({ request: null });
+    // Use getPendingInputRequest which works for both mock and real SDK
+    const request = process.getPendingInputRequest();
+    return c.json({ request });
   });
 
   // POST /api/sessions/:sessionId/input - Respond to input request
@@ -198,8 +196,19 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       return c.json({ error: "requestId and response are required" }, 400);
     }
 
-    // In real implementation, this would send the response to the SDK
-    // For now, just acknowledge
+    // Normalize response to approve/deny
+    const normalizedResponse =
+      body.response === "approve" || body.response === "allow"
+        ? "approve"
+        : "deny";
+
+    // Call respondToInput which resolves the SDK's canUseTool promise
+    const accepted = process.respondToInput(body.requestId, normalizedResponse);
+
+    if (!accepted) {
+      return c.json({ error: "Invalid request ID or no pending request" }, 400);
+    }
+
     return c.json({ accepted: true });
   });
 

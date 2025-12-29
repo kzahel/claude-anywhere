@@ -1,8 +1,23 @@
 import { serve } from "@hono/node-server";
-import { app } from "./app.js";
+import { createApp } from "./app.js";
+import { loadConfig } from "./config.js";
+import { RealClaudeSDK } from "./sdk/real.js";
 
-const port = Number.parseInt(process.env.PORT || "3400");
+const config = loadConfig();
 
-serve({ fetch: app.fetch, port }, (info) => {
+// Create the real SDK
+const realSdk = new RealClaudeSDK();
+
+// Create the app with real SDK
+const app = createApp({
+  realSdk,
+  projectsDir: config.claudeProjectsDir,
+  idleTimeoutMs: config.idleTimeoutMs,
+  defaultPermissionMode: config.defaultPermissionMode,
+});
+
+serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`Server running at http://localhost:${info.port}`);
+  console.log(`Projects dir: ${config.claudeProjectsDir}`);
+  console.log(`Permission mode: ${config.defaultPermissionMode}`);
 });

@@ -40,6 +40,42 @@ export interface SDKSessionOptions {
   resume?: string; // session ID to resume
 }
 
+// Legacy interface for mock SDK compatibility
 export interface ClaudeSDK {
   startSession(options: SDKSessionOptions): AsyncIterableIterator<SDKMessage>;
+}
+
+// New interface for real SDK with full features
+import type { MessageQueue } from "./messageQueue.js";
+
+export type PermissionMode = "default" | "bypassPermissions" | "acceptEdits";
+
+export interface ToolApprovalResult {
+  behavior: "allow" | "deny";
+  updatedInput?: unknown;
+  message?: string;
+}
+
+export type CanUseTool = (
+  toolName: string,
+  input: unknown,
+  options: { signal: AbortSignal },
+) => Promise<ToolApprovalResult>;
+
+export interface StartSessionOptions {
+  cwd: string;
+  initialMessage: UserMessage;
+  resumeSessionId?: string;
+  permissionMode?: PermissionMode;
+  onToolApproval?: CanUseTool;
+}
+
+export interface StartSessionResult {
+  iterator: AsyncIterableIterator<SDKMessage>;
+  queue: MessageQueue;
+  abort: () => void;
+}
+
+export interface RealClaudeSDKInterface {
+  startSession(options: StartSessionOptions): Promise<StartSessionResult>;
 }

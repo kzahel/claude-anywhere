@@ -6,14 +6,18 @@ import { createProcessesRoutes } from "./routes/processes.js";
 import { createProjectsRoutes } from "./routes/projects.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createStreamRoutes } from "./routes/stream.js";
-import type { ClaudeSDK } from "./sdk/types.js";
+import type { ClaudeSDK, PermissionMode, RealClaudeSDKInterface } from "./sdk/types.js";
 import { SessionReader } from "./sessions/reader.js";
 import { Supervisor } from "./supervisor/Supervisor.js";
 
 export interface AppOptions {
-  sdk: ClaudeSDK;
+  /** Legacy SDK interface for mock SDK (for testing) */
+  sdk?: ClaudeSDK;
+  /** Real SDK interface with full features */
+  realSdk?: RealClaudeSDKInterface;
   projectsDir?: string; // override for testing
   idleTimeoutMs?: number;
+  defaultPermissionMode?: PermissionMode;
 }
 
 export function createApp(options: AppOptions): Hono {
@@ -26,7 +30,9 @@ export function createApp(options: AppOptions): Hono {
   const scanner = new ProjectScanner({ projectsDir: options.projectsDir });
   const supervisor = new Supervisor({
     sdk: options.sdk,
+    realSdk: options.realSdk,
     idleTimeoutMs: options.idleTimeoutMs,
+    defaultPermissionMode: options.defaultPermissionMode,
   });
   const readerFactory = (sessionDir: string) =>
     new SessionReader({ sessionDir });

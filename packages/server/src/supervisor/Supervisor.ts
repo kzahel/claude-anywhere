@@ -1,23 +1,41 @@
 import { randomUUID } from "node:crypto";
-import type { ClaudeSDK, UserMessage } from "../sdk/types.js";
-import { Process } from "./Process.js";
+import type {
+  ClaudeSDK,
+  PermissionMode,
+  RealClaudeSDKInterface,
+  UserMessage,
+} from "../sdk/types.js";
+import { Process, type ProcessConstructorOptions } from "./Process.js";
 import type { ProcessInfo, ProcessOptions } from "./types.js";
 import { encodeProjectId } from "./types.js";
 
 export interface SupervisorOptions {
-  sdk: ClaudeSDK;
+  /** Legacy SDK interface for mock SDK */
+  sdk?: ClaudeSDK;
+  /** Real SDK interface with full features */
+  realSdk?: RealClaudeSDKInterface;
   idleTimeoutMs?: number;
+  /** Default permission mode for new sessions */
+  defaultPermissionMode?: PermissionMode;
 }
 
 export class Supervisor {
   private processes: Map<string, Process> = new Map();
   private sessionToProcess: Map<string, string> = new Map(); // sessionId -> processId
-  private sdk: ClaudeSDK;
+  private sdk: ClaudeSDK | null;
+  private realSdk: RealClaudeSDKInterface | null;
   private idleTimeoutMs?: number;
+  private defaultPermissionMode: PermissionMode;
 
   constructor(options: SupervisorOptions) {
-    this.sdk = options.sdk;
+    this.sdk = options.sdk ?? null;
+    this.realSdk = options.realSdk ?? null;
     this.idleTimeoutMs = options.idleTimeoutMs;
+    this.defaultPermissionMode = options.defaultPermissionMode ?? "default";
+
+    if (!this.sdk && !this.realSdk) {
+      throw new Error("Either sdk or realSdk must be provided");
+    }
   }
 
   async startSession(
@@ -26,11 +44,73 @@ export class Supervisor {
   ): Promise<Process> {
     const projectId = encodeProjectId(projectPath);
 
-    // Start new SDK session
-    const iterator = this.sdk.startSession({ cwd: projectPath });
+    // Use real SDK if available
+    if (this.realSdk) {
+      return this.startRealSession(projectPath, projectId, message);
+    }
 
-    // Create process with a temporary session ID (will be updated from SDK)
-    const sessionId = randomUUID(); // Temporary - real SDK provides this
+    // Fall back to legacy mock SDK
+    return this.startLegacySession(projectPath, projectId, message);
+  }
+
+  /**
+   * Start a session using the real SDK with full features.
+   */
+  private async startRealSession(
+    projectPath: string,
+    projectId: string,
+    message: UserMessage,
+    resumeSessionId?: string,
+  ): Promise<Process> {
+    // Create a placeholder process first (needed for tool approval callback)
+    const tempSessionId = resumeSessionId ?? randomUUID();
+
+    // We'll create the process after we have the iterator
+    // but we need to pass the tool approval handler to the SDK
+    let process: Process;
+
+    const { iterator, queue, abort } = await this.realSdk!.startSession({
+      cwd: projectPath,
+      initialMessage: message,
+      resumeSessionId,
+      permissionMode: this.defaultPermissionMode,
+      onToolApproval: async (toolName, input, opts) => {
+        // Delegate to the process's handleToolApproval
+        return process.handleToolApproval(toolName, input, opts);
+      },
+    });
+
+    const options: ProcessConstructorOptions = {
+      projectPath,
+      projectId,
+      sessionId: tempSessionId,
+      idleTimeoutMs: this.idleTimeoutMs,
+      queue,
+      abortFn: abort,
+    };
+
+    process = new Process(iterator, options);
+
+    this.registerProcess(process);
+
+    return process;
+  }
+
+  /**
+   * Start a session using the legacy mock SDK.
+   */
+  private startLegacySession(
+    projectPath: string,
+    projectId: string,
+    message: UserMessage,
+    resumeSessionId?: string,
+  ): Process {
+    const iterator = this.sdk!.startSession({
+      cwd: projectPath,
+      resume: resumeSessionId,
+    });
+
+    const sessionId = resumeSessionId ?? randomUUID();
 
     const options: ProcessOptions = {
       projectPath,
@@ -67,25 +147,13 @@ export class Supervisor {
 
     const projectId = encodeProjectId(projectPath);
 
-    // Resume SDK session
-    const iterator = this.sdk.startSession({
-      cwd: projectPath,
-      resume: sessionId,
-    });
+    // Use real SDK if available
+    if (this.realSdk) {
+      return this.startRealSession(projectPath, projectId, message, sessionId);
+    }
 
-    const options: ProcessOptions = {
-      projectPath,
-      projectId,
-      sessionId,
-      idleTimeoutMs: this.idleTimeoutMs,
-    };
-
-    const process = new Process(iterator, options);
-
-    this.registerProcess(process);
-    process.queueMessage(message);
-
-    return process;
+    // Fall back to legacy mock SDK
+    return this.startLegacySession(projectPath, projectId, message, sessionId);
   }
 
   getProcess(processId: string): Process | undefined {
