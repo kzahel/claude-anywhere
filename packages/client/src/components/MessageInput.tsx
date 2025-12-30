@@ -1,4 +1,5 @@
 import { type KeyboardEvent, useState } from "react";
+import { ENTER_SENDS_MESSAGE } from "../constants";
 import type { PermissionMode } from "../types";
 
 const MODE_ORDER: PermissionMode[] = [
@@ -44,9 +45,22 @@ export function MessageInput({
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Enter" && (e.shiftKey || e.ctrlKey)) {
-      e.preventDefault();
-      handleSubmit();
+    if (e.key === "Enter") {
+      if (ENTER_SENDS_MESSAGE) {
+        // Enter sends, Ctrl+Enter adds newline
+        if (e.ctrlKey || e.shiftKey) {
+          // Allow default behavior (newline)
+          return;
+        }
+        e.preventDefault();
+        handleSubmit();
+      } else {
+        // Ctrl+Enter sends, Enter adds newline
+        if (e.ctrlKey || e.shiftKey) {
+          e.preventDefault();
+          handleSubmit();
+        }
+      }
     }
   };
 
