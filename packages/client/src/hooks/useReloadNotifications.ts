@@ -82,7 +82,13 @@ export function useReloadNotifications() {
       }
     };
 
+    const handleBackendReloaded = () => {
+      // Backend restarted - clear the banner in all tabs
+      setPendingReloads((prev) => ({ ...prev, backend: false }));
+    };
+
     es.addEventListener("source-change", handleSourceChange);
+    es.addEventListener("backend-reloaded", handleBackendReloaded);
     es.addEventListener("heartbeat", () => {
       // Keep-alive, no action needed
     });

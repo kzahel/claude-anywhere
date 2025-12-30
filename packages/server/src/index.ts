@@ -57,4 +57,11 @@ serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`Server running at http://localhost:${info.port}`);
   console.log(`Projects dir: ${config.claudeProjectsDir}`);
   console.log(`Permission mode: ${config.defaultPermissionMode}`);
+
+  // Notify all connected clients that the backend has restarted
+  // This allows other tabs to clear their "reload needed" banner
+  eventBus.emit({
+    type: "backend-reloaded",
+    timestamp: new Date().toISOString(),
+  });
 });

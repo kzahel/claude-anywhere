@@ -46,12 +46,19 @@ export interface SourceChangeEvent {
   timestamp: string;
 }
 
+/** Event emitted when the backend server has restarted (for multi-tab sync) */
+export interface BackendReloadedEvent {
+  type: "backend-reloaded";
+  timestamp: string;
+}
+
 /** Union of all event types that can be emitted through the bus */
 export type BusEvent =
   | FileChangeEvent
   | SessionStatusEvent
   | SessionCreatedEvent
-  | SourceChangeEvent;
+  | SourceChangeEvent
+  | BackendReloadedEvent;
 
 export type EventHandler<T = BusEvent> = (event: T) => void;
 
