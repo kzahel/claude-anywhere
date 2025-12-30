@@ -38,7 +38,15 @@ function processMessage(
   pendingToolCalls: Map<string, number>,
   orphanedToolIds: Set<string>,
 ): void {
-  const content = msg.content;
+  // Get content from nested message object (SDK structure) or top-level
+  const content =
+    msg.content ??
+    (msg.message as { content?: string | ContentBlock[] } | undefined)?.content;
+
+  // Get role from nested message or top-level
+  const role =
+    msg.role ??
+    (msg.message as { role?: "user" | "assistant" } | undefined)?.role;
 
   // String content = user prompt
   if (typeof content === "string") {
@@ -58,7 +66,7 @@ function processMessage(
 
   // Check if this is a user message with only tool_result blocks
   const isToolResultMessage =
-    msg.role === "user" && content.every((b) => b.type === "tool_result");
+    role === "user" && content.every((b) => b.type === "tool_result");
 
   if (isToolResultMessage) {
     // Attach results to pending tool calls
@@ -71,7 +79,7 @@ function processMessage(
   }
 
   // Check if this is a real user prompt (not tool results)
-  if (msg.role === "user") {
+  if (role === "user") {
     items.push({
       type: "user_prompt",
       id: msg.id,

@@ -115,12 +115,13 @@ export function useSession(projectId: string, sessionId: string) {
   const lastMessageIdRef = useRef<string | undefined>(undefined);
 
   // Add user message optimistically with a temp ID
+  // Uses SDK message structure: { type, message: { role, content } }
   const addUserMessage = useCallback((text: string) => {
     const tempId = `temp-${Date.now()}`;
     const msg: Message = {
       id: tempId,
-      role: "user",
-      content: text,
+      type: "user",
+      message: { role: "user", content: text },
       timestamp: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, msg]);
@@ -345,12 +346,18 @@ export function useSession(projectId: string, sessionId: string) {
           }
 
           // For user messages, check if we have a temp message to replace
-          if (incoming.role === "user") {
+          // SDK messages have content nested in message.content
+          const getMessageContent = (m: Message) =>
+            m.content ??
+            (m.message as { content?: unknown } | undefined)?.content;
+
+          if (incoming.type === "user") {
             const tempIdx = prev.findIndex(
               (m) =>
                 m.id.startsWith("temp-") &&
-                m.role === "user" &&
-                JSON.stringify(m.content) === JSON.stringify(incoming.content),
+                m.type === "user" &&
+                JSON.stringify(getMessageContent(m)) ===
+                  JSON.stringify(getMessageContent(incoming)),
             );
             if (tempIdx >= 0) {
               // Replace temp message with authoritative one (real UUID + all fields)

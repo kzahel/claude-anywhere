@@ -55,6 +55,11 @@ export interface Message {
   role?: "user" | "assistant" | "system";
   content?: string | ContentBlock[];
   timestamp?: string;
+  // SDK message structure - content and role nested in message object
+  message?: {
+    role?: "user" | "assistant";
+    content?: string | ContentBlock[];
+  };
   // DAG structure
   parentUuid?: string | null;
   // Tool use related
