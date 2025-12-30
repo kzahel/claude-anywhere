@@ -66,6 +66,18 @@ export function useReloadNotifications() {
 
     es.onopen = () => {
       setConnected(true);
+      // On (re)connect, sync with server's dirty state
+      // If server restarted, backendDirty will be false - clear the banner
+      fetch(`${API_BASE}/dev/status`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: DevStatus | null) => {
+          if (data && !data.backendDirty) {
+            setPendingReloads((prev) => ({ ...prev, backend: false }));
+          }
+        })
+        .catch(() => {
+          // Ignore errors
+        });
     };
 
     const handleSourceChange = (event: MessageEvent) => {
