@@ -50,11 +50,17 @@ export class Process {
   private idleTimeoutMs: number;
   private iteratorDone = false;
 
+  /** In-memory message history for mock SDK (real SDK persists to disk) */
+  private messageHistory: SDKMessage[] = [];
+
   /** Pending tool approval request (from canUseTool callback) */
   private pendingToolApproval: PendingToolApproval | null = null;
 
   /** Current permission mode for tool approvals */
   private _permissionMode: PermissionMode = "default";
+
+  /** Version counter for permission mode changes (for multi-tab sync) */
+  private _modeVersion = 0;
 
   /** Resolvers waiting for the real session ID */
   private sessionIdResolvers: Array<(id: string) => void> = [];
@@ -99,12 +105,18 @@ export class Process {
     return this._permissionMode;
   }
 
+  get modeVersion(): number {
+    return this._modeVersion;
+  }
+
   /**
    * Update the permission mode for this process.
-   * Affects how subsequent tool approvals are handled.
+   * Increments modeVersion and emits a mode-change event for multi-tab sync.
    */
   setPermissionMode(mode: PermissionMode): void {
     this._permissionMode = mode;
+    this._modeVersion++;
+    this.emit({ type: "mode-change", mode, version: this._modeVersion });
   }
 
   /**
@@ -149,6 +161,14 @@ export class Process {
       startedAt: this.startedAt.toISOString(),
       queueDepth: this.queueDepth,
     };
+  }
+
+  /**
+   * Get the in-memory message history.
+   * Used by mock SDK sessions where messages aren't persisted to disk.
+   */
+  getMessageHistory(): SDKMessage[] {
+    return [...this.messageHistory];
   }
 
   /**
@@ -324,6 +344,9 @@ export class Process {
         }
 
         const message = result.value;
+
+        // Store message in history (for mock SDK that doesn't persist to disk)
+        this.messageHistory.push(message);
 
         // Extract session ID from init message
         if (

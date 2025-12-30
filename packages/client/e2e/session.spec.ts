@@ -26,14 +26,12 @@ test.describe("Session Flow", () => {
     await page.click(".new-session-form button");
 
     // Wait for assistant message to appear
-    await expect(page.locator(".message-assistant")).toBeVisible({
+    await expect(page.locator(".assistant-turn")).toBeVisible({
       timeout: 10000,
     });
 
     // Should contain some response text (scenarios cycle, content varies)
-    await expect(
-      page.locator(".message-assistant .message-content"),
-    ).not.toBeEmpty();
+    await expect(page.locator(".assistant-turn .text-block")).not.toBeEmpty();
   });
 
   test("shows processing indicator during response", async ({ page }) => {
@@ -68,7 +66,7 @@ test.describe("Session Flow", () => {
     await page.click(".new-session-form button");
 
     // Wait for response and idle status (status indicator hidden when idle)
-    await expect(page.locator(".message-assistant")).toBeVisible({
+    await expect(page.locator(".assistant-turn")).toBeVisible({
       timeout: 10000,
     });
     await expect(page.locator(".status-indicator")).not.toBeVisible({

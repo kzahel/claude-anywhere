@@ -110,6 +110,7 @@ export interface ProcessInfo {
 export type ProcessEvent =
   | { type: "message"; message: SDKMessage }
   | { type: "state-change"; state: ProcessState }
+  | { type: "mode-change"; mode: PermissionMode; version: number }
   | { type: "error"; error: Error }
   | { type: "complete" };
 

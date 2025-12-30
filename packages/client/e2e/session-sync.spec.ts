@@ -11,14 +11,14 @@ test.describe("Session Sync", () => {
     await page.click(".new-session-form button");
 
     // Wait for assistant response
-    await expect(page.locator(".message-assistant")).toBeVisible({
+    await expect(page.locator(".assistant-turn")).toBeVisible({
       timeout: 10000,
     });
 
     // Verify user message is visible
-    await expect(page.locator(".message-user")).toBeVisible();
+    await expect(page.locator(".message-user-prompt")).toBeVisible();
     const userMessageText = await page
-      .locator(".message-user .message-content")
+      .locator(".message-user-prompt .text-block")
       .textContent();
 
     // Get the current URL (session page)
@@ -31,13 +31,15 @@ test.describe("Session Sync", () => {
     await expect(page.locator(".session-messages")).toBeVisible();
 
     // User message should still be visible after reload
-    await expect(page.locator(".message-user")).toBeVisible({ timeout: 5000 });
-    await expect(page.locator(".message-user .message-content")).toHaveText(
+    await expect(page.locator(".message-user-prompt")).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.locator(".message-user-prompt .text-block")).toHaveText(
       userMessageText || "",
     );
 
     // Assistant message should still be visible after reload
-    await expect(page.locator(".message-assistant")).toBeVisible({
+    await expect(page.locator(".assistant-turn")).toBeVisible({
       timeout: 5000,
     });
   });
@@ -55,7 +57,7 @@ test.describe("Session Sync", () => {
     await page.click(".new-session-form button");
 
     // Wait for assistant response
-    await expect(page.locator(".message-assistant")).toBeVisible({
+    await expect(page.locator(".assistant-turn")).toBeVisible({
       timeout: 10000,
     });
 
@@ -70,16 +72,18 @@ test.describe("Session Sync", () => {
     await expect(page2.locator(".session-messages")).toBeVisible();
 
     // Second tab should see both user and assistant messages
-    await expect(page2.locator(".message-user")).toBeVisible({ timeout: 5000 });
-    await expect(page2.locator(".message-assistant")).toBeVisible({
+    await expect(page2.locator(".message-user-prompt")).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page2.locator(".assistant-turn")).toBeVisible({
       timeout: 5000,
     });
 
     // Verify the user message content matches
     const firstTabUserMessage = await page
-      .locator(".message-user .message-content")
+      .locator(".message-user-prompt .text-block")
       .textContent();
-    await expect(page2.locator(".message-user .message-content")).toHaveText(
+    await expect(page2.locator(".message-user-prompt .text-block")).toHaveText(
       firstTabUserMessage || "",
     );
   });
@@ -97,7 +101,7 @@ test.describe("Session Sync", () => {
     await page.click(".new-session-form button");
 
     // Wait for assistant response and idle status
-    await expect(page.locator(".message-assistant")).toBeVisible({
+    await expect(page.locator(".assistant-turn")).toBeVisible({
       timeout: 10000,
     });
     await expect(page.locator(".status-text")).toHaveText("Idle", {
@@ -113,11 +117,13 @@ test.describe("Session Sync", () => {
 
     // Wait for second tab to load and connect
     await expect(page2.locator(".session-messages")).toBeVisible();
-    await expect(page2.locator(".message-user")).toBeVisible({ timeout: 5000 });
+    await expect(page2.locator(".message-user-prompt")).toBeVisible({
+      timeout: 5000,
+    });
 
     // Count initial messages in second tab
     const initialUserMessageCount = await page2
-      .locator(".message-user")
+      .locator(".message-user-prompt")
       .count();
 
     // Send a follow-up message from the first tab
@@ -126,14 +132,14 @@ test.describe("Session Sync", () => {
     await page.locator(".message-input button").click();
 
     // The new user message should appear in the second tab
-    await expect(page2.locator(".message-user")).toHaveCount(
+    await expect(page2.locator(".message-user-prompt")).toHaveCount(
       initialUserMessageCount + 1,
       { timeout: 5000 },
     );
 
     // Verify the content of the new message in second tab
-    const lastUserMessage = page2.locator(".message-user").last();
-    await expect(lastUserMessage.locator(".message-content")).toHaveText(
+    const lastUserMessage = page2.locator(".message-user-prompt").last();
+    await expect(lastUserMessage.locator(".text-block")).toHaveText(
       "Follow-up from first tab",
     );
   });

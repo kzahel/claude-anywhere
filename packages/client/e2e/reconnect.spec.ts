@@ -12,7 +12,7 @@ test.describe("SSE Streaming", () => {
     await page.click(".new-session-form button");
 
     // Wait for assistant message to appear (session streaming works)
-    await expect(page.locator(".message-assistant")).toBeVisible({
+    await expect(page.locator(".assistant-turn")).toBeVisible({
       timeout: 10000,
     });
 
@@ -22,8 +22,6 @@ test.describe("SSE Streaming", () => {
     });
 
     // Verify we received a complete response
-    await expect(
-      page.locator(".message-assistant .message-content"),
-    ).not.toBeEmpty();
+    await expect(page.locator(".assistant-turn .text-block")).not.toBeEmpty();
   });
 });

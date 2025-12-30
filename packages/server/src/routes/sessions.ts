@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import type { ProjectScanner } from "../projects/scanner.js";
-import type { PermissionMode, UserMessage } from "../sdk/types.js";
+import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
 import type { SessionReader } from "../sessions/reader.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
+import type { ContentBlock, Message } from "../supervisor/types.js";
 
 export interface SessionsDeps {
   supervisor: Supervisor;
@@ -22,6 +23,45 @@ interface StartSessionBody {
 interface InputResponseBody {
   requestId: string;
   response: "approve" | "deny" | string;
+}
+
+/**
+ * Convert SDK messages to client Message format.
+ * Used for mock SDK sessions where messages aren't persisted to disk.
+ */
+function sdkMessagesToClientMessages(sdkMessages: SDKMessage[]): Message[] {
+  const messages: Message[] = [];
+  for (const msg of sdkMessages) {
+    // Only include user and assistant messages with content
+    if (
+      (msg.type === "user" || msg.type === "assistant") &&
+      msg.message?.content
+    ) {
+      const rawContent = msg.message.content;
+      // User messages: string content works with preprocessMessages
+      // Assistant messages: need ContentBlock[] format for preprocessMessages to render
+      let content: string | ContentBlock[];
+      if (msg.type === "user") {
+        content =
+          typeof rawContent === "string"
+            ? rawContent
+            : JSON.stringify(rawContent);
+      } else {
+        content =
+          typeof rawContent === "string"
+            ? [{ type: "text" as const, text: rawContent }]
+            : (rawContent as ContentBlock[]);
+      }
+
+      messages.push({
+        id: msg.uuid ?? `msg-${Date.now()}-${messages.length}`,
+        role: msg.type,
+        content,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+  return messages;
 }
 
 export function createSessionsRoutes(deps: SessionsDeps): Hono {
@@ -59,6 +99,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           state: "owned" as const,
           processId: process.id,
           permissionMode: process.permissionMode,
+          modeVersion: process.modeVersion,
         }
       : isExternal
         ? { state: "external" as const }
@@ -67,6 +108,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     if (!session) {
       // Session file doesn't exist yet - only valid if we own the process
       if (process) {
+        // Get messages from process memory (for mock SDK that doesn't persist to disk)
+        const processMessages = sdkMessagesToClientMessages(
+          process.getMessageHistory(),
+        );
         return c.json({
           session: {
             id: sessionId,
@@ -74,11 +119,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
             title: null,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            messageCount: 0,
+            messageCount: processMessages.length,
             status,
-            messages: [],
+            messages: processMessages,
           },
-          messages: [],
+          messages: processMessages,
           status,
         });
       }
@@ -128,6 +173,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     return c.json({
       sessionId: process.sessionId,
       processId: process.id,
+      permissionMode: process.permissionMode,
+      modeVersion: process.modeVersion,
     });
   });
 
@@ -166,7 +213,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       body.mode,
     );
 
-    return c.json({ processId: process.id });
+    return c.json({
+      processId: process.id,
+      permissionMode: process.permissionMode,
+      modeVersion: process.modeVersion,
+    });
   });
 
   // POST /api/sessions/:sessionId/messages - Queue message

@@ -33,6 +33,16 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         }),
       });
 
+      // Replay buffered messages (for mock SDK that doesn't persist to disk)
+      // This ensures clients that connect after messages were emitted still receive them
+      for (const message of process.getMessageHistory()) {
+        await stream.writeSSE({
+          id: String(eventId++),
+          event: "message",
+          data: JSON.stringify(message),
+        });
+      }
+
       // Heartbeat interval
       const heartbeatInterval = setInterval(async () => {
         try {
