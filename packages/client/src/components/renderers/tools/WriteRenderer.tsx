@@ -131,11 +131,11 @@ function WriteCollapsedPreview({
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (!isError && result?.file) {
+      if (!isError) {
         setIsModalOpen(true);
       }
     },
-    [isError, result?.file],
+    [isError],
   );
 
   const handleClose = useCallback(() => {
@@ -176,12 +176,22 @@ function WriteCollapsedPreview({
           {isTruncated && <div className="write-preview-fade" />}
         </div>
       </button>
-      {isModalOpen && result?.file && (
+      {isModalOpen && (
         <Modal
           title={<span className="file-path">{fileName}</span>}
           onClose={handleClose}
         >
-          <WriteModalContent file={result.file} />
+          <WriteModalContent
+            file={
+              result?.file ?? {
+                filePath,
+                content,
+                numLines: lineCount,
+                startLine: 1,
+                totalLines: lineCount,
+              }
+            }
+          />
         </Modal>
       )}
     </>
@@ -207,20 +217,18 @@ export const writeRenderer: ToolRenderer<WriteInput, WriteResult> = {
     if (isError) return "Error";
     const r = result as WriteResult;
     if (r?.file) {
-      return `${getFileName(r.file.filePath)} · ${r.file.numLines} lines`;
+      return getFileName(r.file.filePath);
     }
     // Fall back to input if result not ready
     if (input) {
-      const i = input as WriteInput;
-      const lineCount = i.content.split("\n").length;
-      return `${getFileName(i.file_path)} · ${lineCount} lines`;
+      return getFileName((input as WriteInput).file_path);
     }
     return "Writing...";
   },
 
-  renderInteractiveSummary(input, result, isError, _context) {
+  renderCollapsedPreview(input, result, isError, _context) {
     return (
-      <WriteInteractiveSummary
+      <WriteCollapsedPreview
         input={input as WriteInput}
         result={result as WriteResult | undefined}
         isError={isError}

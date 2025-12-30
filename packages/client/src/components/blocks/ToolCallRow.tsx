@@ -23,10 +23,12 @@ export const ToolCallRow = memo(function ToolCallRow({
   const hasInteractiveSummary = toolRegistry.hasInteractiveSummary(toolName);
   // Check if this tool has a collapsed preview
   const hasCollapsedPreview = toolRegistry.hasCollapsedPreview(toolName);
+  // Tools with collapsed preview or interactive summary don't expand
+  const isNonExpandable = hasInteractiveSummary || hasCollapsedPreview;
 
   // Edit and TodoWrite tools are expanded by default
   const [expanded, setExpanded] = useState(
-    !hasInteractiveSummary && (toolName === "Edit" || toolName === "TodoWrite"),
+    !isNonExpandable && (toolName === "Edit" || toolName === "TodoWrite"),
   );
 
   const summary = useMemo(() => {
@@ -34,7 +36,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   }, [toolName, toolInput, toolResult, status]);
 
   const handleToggle = () => {
-    if (!hasInteractiveSummary) {
+    if (!isNonExpandable) {
       setExpanded(!expanded);
     }
   };
@@ -53,18 +55,18 @@ export const ToolCallRow = memo(function ToolCallRow({
 
   return (
     <div
-      className={`tool-row timeline-item ${expanded ? "expanded" : "collapsed"} status-${status} ${hasInteractiveSummary ? "interactive" : ""}`}
+      className={`tool-row timeline-item ${expanded ? "expanded" : "collapsed"} status-${status} ${isNonExpandable ? "interactive" : ""}`}
     >
       <div
-        className={`tool-row-header ${hasInteractiveSummary ? "non-expandable" : ""}`}
-        onClick={hasInteractiveSummary ? undefined : handleToggle}
+        className={`tool-row-header ${isNonExpandable ? "non-expandable" : ""}`}
+        onClick={isNonExpandable ? undefined : handleToggle}
         onKeyDown={
-          hasInteractiveSummary
+          isNonExpandable
             ? undefined
             : (e) => e.key === "Enter" && handleToggle()
         }
-        role={hasInteractiveSummary ? "presentation" : "button"}
-        tabIndex={hasInteractiveSummary ? undefined : 0}
+        role={isNonExpandable ? "presentation" : "button"}
+        tabIndex={isNonExpandable ? undefined : 0}
       >
         {status === "pending" && (
           <span className="tool-spinner" aria-label="Running">
@@ -100,15 +102,15 @@ export const ToolCallRow = memo(function ToolCallRow({
           </span>
         )}
 
-        {!hasInteractiveSummary && (
+        {!isNonExpandable && (
           <span className="expand-chevron" aria-hidden="true">
             {expanded ? "▾" : "▸"}
           </span>
         )}
       </div>
 
-      {/* Collapsed preview - shown when collapsed and tool supports it */}
-      {!expanded && !hasInteractiveSummary && hasCollapsedPreview && (
+      {/* Collapsed preview - shown when tool supports it (non-expandable) */}
+      {hasCollapsedPreview && (
         <div className="tool-row-collapsed-preview">
           {toolRegistry.renderCollapsedPreview(
             toolName,
@@ -120,7 +122,7 @@ export const ToolCallRow = memo(function ToolCallRow({
         </div>
       )}
 
-      {expanded && !hasInteractiveSummary && (
+      {expanded && !isNonExpandable && (
         <div className="tool-row-content">
           {status === "pending" || status === "aborted" ? (
             <ToolUseExpanded
