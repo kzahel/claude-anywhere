@@ -310,7 +310,8 @@ h2 {
   border: 1px solid #444;
   border-radius: 8px;
   color: inherit;
-  font-size: 1rem;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
   resize: none;
 }
 
