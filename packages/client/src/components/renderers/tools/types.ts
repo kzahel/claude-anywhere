@@ -306,4 +306,14 @@ export interface ToolRenderer<TInput = unknown, TResult = unknown> {
   getUseSummary?(input: TInput): string;
   /** Summary for collapsed tool_result view */
   getResultSummary?(result: TResult, isError: boolean): string;
+  /**
+   * Render an interactive summary that replaces the expand/collapse behavior.
+   * When provided, the row won't expand - instead clicking invokes this component.
+   */
+  renderInteractiveSummary?(
+    input: TInput,
+    result: TResult | undefined,
+    isError: boolean,
+    context: RenderContext,
+  ): ReactNode;
 }

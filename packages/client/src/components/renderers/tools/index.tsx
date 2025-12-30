@@ -37,6 +37,25 @@ class ToolRendererRegistry {
   ): ReactNode {
     return this.get(toolName).renderToolResult(result, isError, context);
   }
+
+  hasInteractiveSummary(toolName: string): boolean {
+    const renderer = this.get(toolName);
+    return typeof renderer.renderInteractiveSummary === "function";
+  }
+
+  renderInteractiveSummary(
+    toolName: string,
+    input: unknown,
+    result: unknown,
+    isError: boolean,
+    context: RenderContext,
+  ): ReactNode {
+    const renderer = this.get(toolName);
+    if (renderer.renderInteractiveSummary) {
+      return renderer.renderInteractiveSummary(input, result, isError, context);
+    }
+    return null;
+  }
 }
 
 /**

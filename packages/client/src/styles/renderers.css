@@ -284,6 +284,76 @@ details[open] .collapsible__icon {
   gap: 0.5rem;
 }
 
+.file-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: transparent;
+  border: 1px solid var(--vscode-widget-border, #454545);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  font-family: "SF Mono", Monaco, monospace;
+  font-size: 0.8125rem;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.file-link-button:hover {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.file-link-button .file-range {
+  color: #888;
+}
+
+.file-link-button .file-line-count {
+  color: #666;
+  margin-left: auto;
+}
+
+/* Inline file link for interactive summary */
+.file-link-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: "SF Mono", Monaco, monospace;
+  font-size: inherit;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.15s;
+}
+
+.file-link-inline:hover {
+  text-decoration-color: currentColor;
+}
+
+.file-line-count-inline {
+  color: #666;
+  font-size: 0.85em;
+  text-decoration: none;
+}
+
+.read-error-inline {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+/* Non-expandable tool row header */
+.tool-row-header.non-expandable {
+  cursor: default;
+}
+
+.tool-row.interactive .tool-summary {
+  flex: 1;
+}
+
 .file-header {
   display: flex;
   align-items: center;

@@ -19,9 +19,12 @@ export const ToolCallRow = memo(function ToolCallRow({
   toolResult,
   status,
 }: Props) {
+  // Check if this tool has interactive summary (no expand/collapse)
+  const hasInteractiveSummary = toolRegistry.hasInteractiveSummary(toolName);
+
   // Edit and TodoWrite tools are expanded by default
   const [expanded, setExpanded] = useState(
-    toolName === "Edit" || toolName === "TodoWrite",
+    !hasInteractiveSummary && (toolName === "Edit" || toolName === "TodoWrite"),
   );
 
   const summary = useMemo(() => {
@@ -29,7 +32,9 @@ export const ToolCallRow = memo(function ToolCallRow({
   }, [toolName, toolInput, toolResult, status]);
 
   const handleToggle = () => {
-    setExpanded(!expanded);
+    if (!hasInteractiveSummary) {
+      setExpanded(!expanded);
+    }
   };
 
   // Create a minimal render context for tool renderers
@@ -41,11 +46,24 @@ export const ToolCallRow = memo(function ToolCallRow({
     [status],
   );
 
+  // Get structured result for interactive summary
+  const structuredResult = toolResult?.structured ?? toolResult?.content;
+
   return (
     <div
-      className={`tool-row timeline-item ${expanded ? "expanded" : "collapsed"} status-${status}`}
+      className={`tool-row timeline-item ${expanded ? "expanded" : "collapsed"} status-${status} ${hasInteractiveSummary ? "interactive" : ""}`}
     >
-      <button type="button" className="tool-row-header" onClick={handleToggle}>
+      <div
+        className={`tool-row-header ${hasInteractiveSummary ? "non-expandable" : ""}`}
+        onClick={hasInteractiveSummary ? undefined : handleToggle}
+        onKeyDown={
+          hasInteractiveSummary
+            ? undefined
+            : (e) => e.key === "Enter" && handleToggle()
+        }
+        role={hasInteractiveSummary ? "presentation" : "button"}
+        tabIndex={hasInteractiveSummary ? undefined : 0}
+      >
         {status === "pending" && (
           <span className="tool-spinner" aria-label="Running">
             <Spinner />
@@ -58,19 +76,34 @@ export const ToolCallRow = memo(function ToolCallRow({
         )}
 
         <span className="tool-name">{toolName}</span>
-        <span className="tool-summary">
-          {summary}
-          {status === "aborted" && (
-            <span className="tool-aborted-label"> (interrupted)</span>
-          )}
-        </span>
 
-        <span className="expand-chevron" aria-hidden="true">
-          {expanded ? "▾" : "▸"}
-        </span>
-      </button>
+        {hasInteractiveSummary && status === "complete" ? (
+          <span className="tool-summary interactive-summary">
+            {toolRegistry.renderInteractiveSummary(
+              toolName,
+              toolInput,
+              structuredResult,
+              toolResult?.isError ?? false,
+              renderContext,
+            )}
+          </span>
+        ) : (
+          <span className="tool-summary">
+            {summary}
+            {status === "aborted" && (
+              <span className="tool-aborted-label"> (interrupted)</span>
+            )}
+          </span>
+        )}
 
-      {expanded && (
+        {!hasInteractiveSummary && (
+          <span className="expand-chevron" aria-hidden="true">
+            {expanded ? "▾" : "▸"}
+          </span>
+        )}
+      </div>
+
+      {expanded && !hasInteractiveSummary && (
         <div className="tool-row-content">
           {status === "pending" || status === "aborted" ? (
             <ToolUseExpanded

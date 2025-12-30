@@ -1,5 +1,4 @@
-import { useState } from "react";
-import type { RenderContext } from "../types";
+import { useEffect, useState } from "react";
 import type {
   ImageFile,
   ReadInput,
@@ -7,8 +6,6 @@ import type {
   TextFile,
   ToolRenderer,
 } from "./types";
-
-const MAX_LINES_COLLAPSED = 30;
 
 /**
  * Extract filename from path
@@ -36,52 +33,110 @@ function ReadToolUse({ input }: { input: ReadInput }) {
 }
 
 /**
- * Text file result - shows content with line numbers
+ * Modal for viewing file contents
+ */
+function FileContentModal({
+  file,
+  onClose,
+}: {
+  file: TextFile;
+  onClose: () => void;
+}) {
+  const fileName = getFileName(file.filePath);
+  const lines = file.content.split("\n");
+  const showRange = file.startLine > 1 || file.numLines < file.totalLines;
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="diff-modal-overlay"
+      onClick={onClose}
+      onKeyDown={(e) => e.key === "Escape" && onClose()}
+      role="presentation"
+    >
+      <div
+        className="diff-modal"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        <div className="diff-modal-header">
+          <span className="file-path">
+            {fileName}
+            {showRange && (
+              <span className="file-range">
+                {" "}
+                (lines {file.startLine}-{file.startLine + file.numLines - 1} of{" "}
+                {file.totalLines})
+              </span>
+            )}
+          </span>
+          <button
+            type="button"
+            className="diff-modal-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="diff-modal-content">
+          <div className="file-content-with-lines">
+            <div className="line-numbers">
+              {lines.map((_, i) => {
+                const lineNum = file.startLine + i;
+                return <div key={`line-${lineNum}`}>{lineNum}</div>;
+              })}
+            </div>
+            <pre className="line-content">
+              <code>{file.content}</code>
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Text file result - clickable filename that opens modal
  */
 function TextFileResult({ file }: { file: TextFile }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  const lines = file.content.split("\n");
-  const needsCollapse = lines.length > MAX_LINES_COLLAPSED;
-  const displayLines =
-    needsCollapse && !isExpanded ? lines.slice(0, MAX_LINES_COLLAPSED) : lines;
-
+  const [showModal, setShowModal] = useState(false);
   const fileName = getFileName(file.filePath);
   const showRange = file.startLine > 1 || file.numLines < file.totalLines;
 
   return (
-    <div className="read-text-result">
-      <div className="file-header">
-        <span className="file-path">{fileName}</span>
-        {showRange && (
-          <span className="file-range">
-            lines {file.startLine}-{file.startLine + file.numLines - 1} of{" "}
-            {file.totalLines}
-          </span>
-        )}
-      </div>
-      <div className="file-content-with-lines">
-        <div className="line-numbers">
-          {displayLines.map((_, i) => {
-            const lineNum = file.startLine + i;
-            return <div key={`line-${lineNum}`}>{lineNum}</div>;
-          })}
-          {needsCollapse && !isExpanded && <div>...</div>}
-        </div>
-        <pre className="line-content">
-          <code>{displayLines.join("\n")}</code>
-        </pre>
-      </div>
-      {needsCollapse && (
+    <>
+      <div className="read-text-result">
         <button
           type="button"
-          className="expand-button"
-          onClick={() => setIsExpanded(!isExpanded)}
+          className="file-link-button"
+          onClick={() => setShowModal(true)}
         >
-          {isExpanded ? "Show less" : `Show all ${lines.length} lines`}
+          {fileName}
+          {showRange && (
+            <span className="file-range">
+              {" "}
+              (lines {file.startLine}-{file.startLine + file.numLines - 1})
+            </span>
+          )}
+          <span className="file-line-count">{file.numLines} lines</span>
         </button>
+      </div>
+      {showModal && (
+        <FileContentModal file={file} onClose={() => setShowModal(false)} />
       )}
-    </div>
+    </>
   );
 }
 
@@ -137,6 +192,56 @@ function ReadToolResult({
   return <TextFileResult file={result.file as TextFile} />;
 }
 
+/**
+ * Interactive summary for Read tool - clickable filename that opens modal
+ */
+function ReadInteractiveSummary({
+  input,
+  result,
+  isError,
+}: {
+  input: ReadInput;
+  result: ReadResult | undefined;
+  isError: boolean;
+}) {
+  const [showModal, setShowModal] = useState(false);
+  const fileName = getFileName(input.file_path);
+
+  if (isError) {
+    return <span className="read-error-inline">Error reading {fileName}</span>;
+  }
+
+  if (!result?.file) {
+    return <span>{fileName}</span>;
+  }
+
+  if (result.type === "image") {
+    // For images, just show the filename (no modal needed, would need different handling)
+    return <span>{fileName} (image)</span>;
+  }
+
+  const file = result.file as TextFile;
+
+  return (
+    <>
+      <button
+        type="button"
+        className="file-link-inline"
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowModal(true);
+        }}
+      >
+        {fileName}
+        <span className="file-line-count-inline">{file.numLines} lines</span>
+      </button>
+      {showModal && (
+        <FileContentModal file={file} onClose={() => setShowModal(false)} />
+      )}
+    </>
+  );
+}
+
 export const readRenderer: ToolRenderer<ReadInput, ReadResult> = {
   tool: "Read",
 
@@ -155,8 +260,21 @@ export const readRenderer: ToolRenderer<ReadInput, ReadResult> = {
   getResultSummary(result, isError) {
     if (isError) return "Error";
     const r = result as ReadResult;
-    if (r?.type === "image") return "Image";
-    const file = r?.file as TextFile | undefined;
-    return file ? `${file.numLines} lines` : "File";
+    if (!r?.file) return "Reading...";
+    const fileName = getFileName(
+      r.type === "image" ? "image" : (r.file as TextFile).filePath,
+    );
+    if (r.type === "image") return "Image";
+    return fileName;
+  },
+
+  renderInteractiveSummary(input, result, isError, _context) {
+    return (
+      <ReadInteractiveSummary
+        input={input as ReadInput}
+        result={result as ReadResult | undefined}
+        isError={isError}
+      />
+    );
   },
 };
