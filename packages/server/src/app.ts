@@ -8,6 +8,7 @@ import { createProcessesRoutes } from "./routes/processes.js";
 import { createProjectsRoutes } from "./routes/projects.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
 import { createStreamRoutes } from "./routes/stream.js";
+import { type UploadDeps, createUploadRoutes } from "./routes/upload.js";
 import type {
   ClaudeSDK,
   PermissionMode,
@@ -28,6 +29,8 @@ export interface AppOptions {
   defaultPermissionMode?: PermissionMode;
   /** EventBus for file change events */
   eventBus?: EventBus;
+  /** WebSocket upgrader from @hono/node-ws (optional) */
+  upgradeWebSocket?: UploadDeps["upgradeWebSocket"];
 }
 
 export function createApp(options: AppOptions): Hono {
@@ -91,6 +94,17 @@ export function createApp(options: AppOptions): Hono {
   );
   app.route("/api/processes", createProcessesRoutes({ supervisor }));
   app.route("/api", createStreamRoutes({ supervisor }));
+
+  // Upload routes (WebSocket file uploads)
+  if (options.upgradeWebSocket) {
+    app.route(
+      "/api",
+      createUploadRoutes({
+        scanner,
+        upgradeWebSocket: options.upgradeWebSocket,
+      }),
+    );
+  }
 
   // Activity routes (file watching)
   if (options.eventBus) {

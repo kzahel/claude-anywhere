@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { Modal } from "../../ui/Modal";
 import type { ToolRenderer, WriteInput, WriteResult } from "./types";
 
 const MAX_LINES_COLLAPSED = 30;
+const PREVIEW_LINES = 3;
 
 /**
  * Extract filename from path
@@ -20,6 +22,31 @@ function WriteToolUse({ input }: { input: WriteInput }) {
     <div className="write-tool-use">
       <span className="file-path">{fileName}</span>
       <span className="write-info">{lineCount} lines</span>
+    </div>
+  );
+}
+
+/**
+ * Modal content for viewing full file contents
+ */
+function WriteModalContent({
+  file,
+}: {
+  file: WriteResult["file"];
+}) {
+  const lines = file.content.split("\n");
+
+  return (
+    <div className="file-content-with-lines">
+      <div className="line-numbers">
+        {lines.map((_, i) => {
+          const lineNum = file.startLine + i;
+          return <div key={`line-${lineNum}`}>{lineNum}</div>;
+        })}
+      </div>
+      <pre className="line-content">
+        <code>{file.content}</code>
+      </pre>
     </div>
   );
 }
@@ -86,6 +113,81 @@ function WriteToolResult({
   );
 }
 
+/**
+ * Collapsed preview showing line count and code preview with fade
+ * Clicking opens a modal with the full content
+ */
+function WriteCollapsedPreview({
+  input,
+  result,
+  isError,
+}: {
+  input: WriteInput;
+  result: WriteResult | undefined;
+  isError: boolean;
+}) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!isError && result?.file) {
+        setIsModalOpen(true);
+      }
+    },
+    [isError, result?.file],
+  );
+
+  const handleClose = useCallback(() => {
+    setIsModalOpen(false);
+  }, []);
+
+  // Use result data if available, otherwise fall back to input
+  const content = result?.file?.content ?? input.content;
+  const filePath = result?.file?.filePath ?? input.file_path;
+  const fileName = getFileName(filePath);
+  const lines = content.split("\n");
+  const lineCount = result?.file?.numLines ?? lines.length;
+  const previewLines = lines.slice(0, PREVIEW_LINES);
+  const isTruncated = lines.length > PREVIEW_LINES;
+
+  if (isError) {
+    return (
+      <div className="write-collapsed-preview write-collapsed-error">
+        <span className="write-preview-error">Failed to write file</span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="write-collapsed-preview"
+        onClick={handleClick}
+      >
+        <div className="write-preview-lines">{lineCount} lines</div>
+        <div
+          className={`write-preview-content ${isTruncated ? "write-preview-truncated" : ""}`}
+        >
+          <pre>
+            <code>{previewLines.join("\n")}</code>
+          </pre>
+          {isTruncated && <div className="write-preview-fade" />}
+        </div>
+      </button>
+      {isModalOpen && result?.file && (
+        <Modal
+          title={<span className="file-path">{fileName}</span>}
+          onClose={handleClose}
+        >
+          <WriteModalContent file={result.file} />
+        </Modal>
+      )}
+    </>
+  );
+}
+
 export const writeRenderer: ToolRenderer<WriteInput, WriteResult> = {
   tool: "Write",
 
@@ -101,9 +203,28 @@ export const writeRenderer: ToolRenderer<WriteInput, WriteResult> = {
     return getFileName((input as WriteInput).file_path);
   },
 
-  getResultSummary(result, isError) {
+  getResultSummary(result, isError, input?) {
     if (isError) return "Error";
     const r = result as WriteResult;
-    return r?.file ? `${r.file.numLines} lines` : "File";
+    if (r?.file) {
+      return `${getFileName(r.file.filePath)} · ${r.file.numLines} lines`;
+    }
+    // Fall back to input if result not ready
+    if (input) {
+      const i = input as WriteInput;
+      const lineCount = i.content.split("\n").length;
+      return `${getFileName(i.file_path)} · ${lineCount} lines`;
+    }
+    return "Writing...";
+  },
+
+  renderInteractiveSummary(input, result, isError, _context) {
+    return (
+      <WriteInteractiveSummary
+        input={input as WriteInput}
+        result={result as WriteResult | undefined}
+        isError={isError}
+      />
+    );
   },
 };

@@ -24,3 +24,15 @@ export {
   assertUrlProjectId,
   asDirProjectId,
 } from "./projectId.js";
+
+export type {
+  UploadedFile,
+  UploadStartMessage,
+  UploadEndMessage,
+  UploadCancelMessage,
+  UploadProgressMessage,
+  UploadCompleteMessage,
+  UploadErrorMessage,
+  UploadClientMessage,
+  UploadServerMessage,
+} from "./upload.js";

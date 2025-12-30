@@ -1,5 +1,7 @@
 import * as path from "node:path";
 import { serve } from "@hono/node-server";
+import { createNodeWebSocket } from "@hono/node-ws";
+import { Hono } from "hono";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { detectClaudeCli } from "./sdk/cli-detection.js";
@@ -44,16 +46,25 @@ if (process.env.NO_BACKEND_RELOAD === "true") {
   sourceWatcher.start();
 }
 
-// Create the app with real SDK
+// Create WebSocket support
+// Note: createNodeWebSocket needs an app reference, but we create it before the real app
+// because we need the upgradeWebSocket function to pass to createApp
+const wsApp = new Hono();
+const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({
+  app: wsApp,
+});
+
+// Create the app with real SDK and WebSocket support
 const app = createApp({
   realSdk,
   projectsDir: config.claudeProjectsDir,
   idleTimeoutMs: config.idleTimeoutMs,
   defaultPermissionMode: config.defaultPermissionMode,
   eventBus,
+  upgradeWebSocket,
 });
 
-serve({ fetch: app.fetch, port: config.port }, (info) => {
+const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`Server running at http://localhost:${info.port}`);
   console.log(`Projects dir: ${config.claudeProjectsDir}`);
   console.log(`Permission mode: ${config.defaultPermissionMode}`);
@@ -65,3 +76,6 @@ serve({ fetch: app.fetch, port: config.port }, (info) => {
     timestamp: new Date().toISOString(),
   });
 });
+
+// Inject WebSocket handling into the server
+injectWebSocket(server);

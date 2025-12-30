@@ -18,6 +18,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@claude-anywhere/shared": "workspace:*",
     "@hono/node-server": "^1.13.7",
+    "@hono/node-ws": "^1.2.0",
     "hono": "^4.6.14"
   },
   "devDependencies": {
