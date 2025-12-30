@@ -278,6 +278,71 @@ describe("Process", () => {
       expect(process.permissionMode).toBe("plan");
     });
 
+    it("initializes modeVersion to 0", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      expect(process.modeVersion).toBe(0);
+    });
+
+    it("increments modeVersion when mode changes", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      expect(process.modeVersion).toBe(0);
+
+      process.setPermissionMode("acceptEdits");
+      expect(process.modeVersion).toBe(1);
+
+      process.setPermissionMode("bypassPermissions");
+      expect(process.modeVersion).toBe(2);
+
+      process.setPermissionMode("plan");
+      expect(process.modeVersion).toBe(3);
+    });
+
+    it("emits mode-change event when mode changes", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      const events: ProcessEvent[] = [];
+      process.subscribe((event) => {
+        if (event.type === "mode-change") {
+          events.push(event);
+        }
+      });
+
+      process.setPermissionMode("acceptEdits");
+      process.setPermissionMode("bypassPermissions");
+
+      expect(events).toHaveLength(2);
+      expect(events[0]).toEqual({
+        type: "mode-change",
+        mode: "acceptEdits",
+        version: 1,
+      });
+      expect(events[1]).toEqual({
+        type: "mode-change",
+        mode: "bypassPermissions",
+        version: 2,
+      });
+    });
+
     it("handleToolApproval auto-approves in bypassPermissions mode", async () => {
       const iterator = createMockIterator([]);
       const process = new Process(iterator, {

@@ -5,7 +5,7 @@ import { MessageInput } from "../components/MessageInput";
 import { MessageList } from "../components/MessageList";
 import { StatusIndicator } from "../components/StatusIndicator";
 import { useSession } from "../hooks/useSession";
-import type { PermissionMode, Project } from "../types";
+import type { Project } from "../types";
 
 export function SessionPage() {
   const { projectId, sessionId } = useParams<{
@@ -33,29 +33,22 @@ function SessionPageContent({
     messages,
     status,
     processState,
+    permissionMode,
     loading,
     error,
     connected,
     setStatus,
     setProcessState,
+    setPermissionMode,
     addUserMessage,
   } = useSession(projectId, sessionId);
   const [sending, setSending] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
-  const [permissionMode, setPermissionMode] =
-    useState<PermissionMode>("default");
 
   // Fetch project info for breadcrumb
   useEffect(() => {
     api.getProject(projectId).then((data) => setProject(data.project));
   }, [projectId]);
-
-  // Sync permission mode from server when session is owned
-  useEffect(() => {
-    if (status.state === "owned" && status.permissionMode) {
-      setPermissionMode(status.permissionMode);
-    }
-  }, [status]);
 
   const handleSend = async (text: string) => {
     setSending(true);

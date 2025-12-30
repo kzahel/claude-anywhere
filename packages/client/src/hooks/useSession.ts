@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { Message, Session, SessionStatus } from "../types";
+import type { Message, PermissionMode, Session, SessionStatus } from "../types";
 import {
   type FileChangeEvent,
   type SessionStatusEvent,
@@ -19,6 +19,29 @@ export function useSession(projectId: string, sessionId: string) {
   const [processState, setProcessState] = useState<ProcessState>("idle");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+
+  // Permission mode state and version tracking for multi-tab sync
+  const [permissionMode, setPermissionModeState] =
+    useState<PermissionMode>("default");
+  const [modeVersion, setModeVersion] = useState<number>(0);
+  const lastKnownModeVersionRef = useRef<number>(0);
+
+  // Update permission mode and track the version for race condition handling
+  const setPermissionMode = useCallback((mode: PermissionMode) => {
+    setPermissionModeState(mode);
+  }, []);
+
+  // Apply server mode update only if version is >= our last known version
+  const applyServerModeUpdate = useCallback(
+    (mode: PermissionMode, version: number) => {
+      if (version >= lastKnownModeVersionRef.current) {
+        lastKnownModeVersionRef.current = version;
+        setPermissionModeState(mode);
+        setModeVersion(version);
+      }
+    },
+    [],
+  );
 
   // Throttle state for incremental fetching
   const throttleRef = useRef<{
@@ -58,10 +81,21 @@ export function useSession(projectId: string, sessionId: string) {
         setSession(data.session);
         setMessages(data.messages);
         setStatus(data.status);
+        // Sync permission mode from server if owned
+        if (
+          data.status.state === "owned" &&
+          data.status.permissionMode &&
+          data.status.modeVersion !== undefined
+        ) {
+          applyServerModeUpdate(
+            data.status.permissionMode,
+            data.status.modeVersion,
+          );
+        }
       })
       .catch(setError)
       .finally(() => setLoading(false));
-  }, [projectId, sessionId]);
+  }, [projectId, sessionId, applyServerModeUpdate]);
 
   // Fetch only new messages (incremental update)
   const fetchNewMessages = useCallback(async () => {
@@ -221,9 +255,35 @@ export function useSession(projectId: string, sessionId: string) {
       } else if (data.eventType === "complete") {
         setProcessState("idle");
         setStatus({ state: "idle" });
+      } else if (data.eventType === "connected") {
+        // Sync permission mode from connected event
+        const connectedData = data as {
+          eventType: string;
+          permissionMode?: PermissionMode;
+          modeVersion?: number;
+        };
+        if (
+          connectedData.permissionMode &&
+          connectedData.modeVersion !== undefined
+        ) {
+          applyServerModeUpdate(
+            connectedData.permissionMode,
+            connectedData.modeVersion,
+          );
+        }
+      } else if (data.eventType === "mode-change") {
+        // Handle mode change from another tab/client
+        const modeData = data as {
+          eventType: string;
+          permissionMode?: PermissionMode;
+          modeVersion?: number;
+        };
+        if (modeData.permissionMode && modeData.modeVersion !== undefined) {
+          applyServerModeUpdate(modeData.permissionMode, modeData.modeVersion);
+        }
       }
     },
-    [],
+    [applyServerModeUpdate],
   );
 
   // Only connect to session stream when we own the session
@@ -238,11 +298,14 @@ export function useSession(projectId: string, sessionId: string) {
     messages,
     status,
     processState,
+    permissionMode,
+    modeVersion,
     loading,
     error,
     connected,
     setStatus,
     setProcessState,
+    setPermissionMode,
     addUserMessage,
   };
 }

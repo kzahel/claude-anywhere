@@ -51,7 +51,12 @@ export const api = {
   },
 
   startSession: (projectId: string, message: string, mode?: PermissionMode) =>
-    fetchJSON<{ sessionId: string; processId: string }>(
+    fetchJSON<{
+      sessionId: string;
+      processId: string;
+      permissionMode: PermissionMode;
+      modeVersion: number;
+    }>(
       `/projects/${projectId}/sessions`,
       { method: "POST", body: JSON.stringify({ message, mode }) },
     ),
@@ -62,7 +67,11 @@ export const api = {
     message: string,
     mode?: PermissionMode,
   ) =>
-    fetchJSON<{ processId: string }>(
+    fetchJSON<{
+      processId: string;
+      permissionMode: PermissionMode;
+      modeVersion: number;
+    }>(
       `/projects/${projectId}/sessions/${sessionId}/resume`,
       { method: "POST", body: JSON.stringify({ message, mode }) },
     ),

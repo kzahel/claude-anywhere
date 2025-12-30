@@ -30,6 +30,8 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
           processId: process.id,
           sessionId: process.sessionId,
           state: process.state.type,
+          permissionMode: process.permissionMode,
+          modeVersion: process.modeVersion,
         }),
       });
 
@@ -81,6 +83,17 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
                   ...(event.state.type === "waiting-input"
                     ? { request: event.state.request }
                     : {}),
+                }),
+              });
+              break;
+
+            case "mode-change":
+              await stream.writeSSE({
+                id: String(eventId++),
+                event: "mode-change",
+                data: JSON.stringify({
+                  permissionMode: event.mode,
+                  modeVersion: event.version,
                 }),
               });
               break;

@@ -19,5 +19,10 @@ export type PermissionMode =
  */
 export type SessionStatus =
   | { state: "idle" }
-  | { state: "owned"; processId: string; permissionMode?: PermissionMode }
+  | {
+      state: "owned";
+      processId: string;
+      permissionMode?: PermissionMode;
+      modeVersion?: number;
+    }
   | { state: "external" };
