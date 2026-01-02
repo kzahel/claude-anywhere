@@ -33,7 +33,7 @@ export interface Config {
   maxUploadSizeBytes: number;
   /** Maximum queue size for pending requests. 0 = unlimited (default: 100) */
   maxQueueSize: number;
-  /** Directory for log files. Default: .claude-anywhere/logs */
+  /** Directory for log files. Default: ~/.claude-anywhere/logs */
   logDir: string;
   /** Log filename. Default: server.log */
   logFile: string;
@@ -89,7 +89,7 @@ export function loadConfig(): Config {
     // Logging configuration
     logDir:
       process.env.LOG_DIR ??
-      path.join(process.cwd(), ".claude-anywhere", "logs"),
+      path.join(os.homedir(), ".claude-anywhere", "logs"),
     logFile: process.env.LOG_FILE ?? "server.log",
     logLevel: parseLogLevel(process.env.LOG_LEVEL),
     logFileLevel: parseLogLevel(

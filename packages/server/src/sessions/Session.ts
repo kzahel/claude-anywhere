@@ -36,32 +36,28 @@ export interface SessionDeps {
  * Session extends SessionView with server-side capabilities.
  */
 export class Session extends SessionView {
-  /** Project this session belongs to */
-  readonly projectId: UrlProjectId;
-
-  /** Whether session is archived */
-  readonly isArchived: boolean;
-
-  /** Whether session is starred */
-  readonly isStarred: boolean;
-
   private deps: SessionDeps;
 
-  constructor(
-    id: string,
-    projectId: UrlProjectId,
-    deps: SessionDeps,
-    autoTitle: string | null,
-    fullTitle: string | null,
-    customTitle?: string,
-    isArchived?: boolean,
-    isStarred?: boolean,
-  ) {
-    super(id, autoTitle, fullTitle, customTitle);
-    this.projectId = projectId;
+  private constructor(summary: AppSessionSummary, deps: SessionDeps) {
+    super(
+      summary.id,
+      summary.projectId,
+      summary.title,
+      summary.fullTitle,
+      summary.customTitle,
+      summary.createdAt,
+      summary.updatedAt,
+      summary.messageCount,
+      summary.status,
+      summary.isArchived ?? false,
+      summary.isStarred ?? false,
+      summary.pendingInputType,
+      summary.processState,
+      summary.lastSeenAt,
+      summary.hasUnread ?? false,
+      summary.contextUsage,
+    );
     this.deps = deps;
-    this.isArchived = isArchived ?? false;
-    this.isStarred = isStarred ?? false;
   }
 
   /**
@@ -85,47 +81,26 @@ export class Session extends SessionView {
       return null;
     }
 
-    // Get auto-generated title from cache/reader (may be cached)
-    const autoTitle = await deps.indexService.getSessionTitle(
-      deps.sessionDir,
-      projectId,
-      sessionId,
-      deps.reader,
-    );
-
-    // Get custom metadata
+    // Get custom metadata to merge in
     const metadata = deps.metadataService.getMetadata(sessionId);
 
-    return new Session(
-      sessionId,
-      projectId,
-      deps,
-      autoTitle,
-      summary.fullTitle,
-      metadata?.customTitle,
-      metadata?.isArchived,
-      metadata?.isStarred,
-    );
+    // Merge metadata into summary
+    const enrichedSummary: AppSessionSummary = {
+      ...summary,
+      customTitle: metadata?.customTitle,
+      isArchived: metadata?.isArchived,
+      isStarred: metadata?.isStarred,
+    };
+
+    return new Session(enrichedSummary, deps);
   }
 
   /**
    * Create a Session from an existing AppSessionSummary (already loaded data).
    * Useful when you've already fetched the summary via other means.
    */
-  static fromSummary(
-    summary: AppSessionSummary,
-    deps: SessionDeps,
-  ): Session {
-    return new Session(
-      summary.id,
-      summary.projectId,
-      deps,
-      summary.title,
-      summary.fullTitle,
-      summary.customTitle,
-      summary.isArchived,
-      summary.isStarred,
-    );
+  static fromSummary(summary: AppSessionSummary, deps: SessionDeps): Session {
+    return new Session(summary, deps);
   }
 
   /**
@@ -172,27 +147,26 @@ export class Session extends SessionView {
 
   /**
    * Convert to a plain object suitable for API responses.
-   * Includes all SessionView properties plus metadata.
+   * Returns the full session summary with all fields.
    */
-  toJSON(): {
-    id: string;
-    projectId: UrlProjectId;
-    autoTitle: string | null;
-    fullTitle: string | null;
-    customTitle: string | undefined;
-    displayTitle: string;
-    isArchived: boolean;
-    isStarred: boolean;
-  } {
+  toJSON(): AppSessionSummary {
     return {
       id: this.id,
       projectId: this.projectId,
-      autoTitle: this.autoTitle,
+      title: this.autoTitle,
       fullTitle: this.fullTitle,
       customTitle: this.customTitle,
-      displayTitle: this.displayTitle,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+      messageCount: this.messageCount,
+      status: this.status,
       isArchived: this.isArchived,
       isStarred: this.isStarred,
+      pendingInputType: this.pendingInputType,
+      processState: this.processState,
+      lastSeenAt: this.lastSeenAt,
+      hasUnread: this.hasUnread,
+      contextUsage: this.contextUsage,
     };
   }
 }

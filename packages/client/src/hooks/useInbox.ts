@@ -107,6 +107,11 @@ function createEmptyTierOrder(): TierOrder {
   };
 }
 
+export interface UseInboxOptions {
+  /** Filter to a specific project (base64url-encoded project path) */
+  projectId?: string;
+}
+
 /**
  * Hook to fetch and poll inbox data with UI-stable ordering.
  *
@@ -115,6 +120,7 @@ function createEmptyTierOrder(): TierOrder {
  * - Polls every 30 seconds to stay fresh
  * - Maintains stable item order within tiers during polling
  * - Provides explicit refresh() to force full re-sort
+ * - Optionally filters to a single project
  *
  * Stability guarantees:
  * - Items within a tier maintain their position during polls
@@ -122,7 +128,8 @@ function createEmptyTierOrder(): TierOrder {
  * - Items can move between tiers (that's meaningful state change)
  * - Calling refresh() triggers a full sort by server order
  */
-export function useInbox() {
+export function useInbox(options: UseInboxOptions = {}) {
+  const { projectId } = options;
   const [inbox, setInbox] = useState<InboxResponse>({
     needsAttention: [],
     active: [],
@@ -144,30 +151,33 @@ export function useInbox() {
    * Fetches inbox data and applies stable ordering.
    * @param forceFullSort - If true, uses server sort order instead of stable merge
    */
-  const fetchInbox = useCallback(async (forceFullSort = false) => {
-    try {
-      const data = await api.getInbox();
+  const fetchInbox = useCallback(
+    async (forceFullSort = false) => {
+      try {
+        const data = await api.getInbox(projectId);
 
-      if (!hasInitialLoadRef.current || forceFullSort) {
-        // Initial load or explicit refresh: use server's sort order
-        setInbox(data);
-        tierOrderRef.current = extractTierOrder(data);
-        hasInitialLoadRef.current = true;
-      } else {
-        // Subsequent fetches: merge with stable ordering
-        const mergedData = mergeWithStableOrder(data, tierOrderRef.current);
-        setInbox(mergedData);
-        // Update tier order to include any new items
-        tierOrderRef.current = extractTierOrder(mergedData);
+        if (!hasInitialLoadRef.current || forceFullSort) {
+          // Initial load or explicit refresh: use server's sort order
+          setInbox(data);
+          tierOrderRef.current = extractTierOrder(data);
+          hasInitialLoadRef.current = true;
+        } else {
+          // Subsequent fetches: merge with stable ordering
+          const mergedData = mergeWithStableOrder(data, tierOrderRef.current);
+          setInbox(mergedData);
+          // Update tier order to include any new items
+          tierOrderRef.current = extractTierOrder(mergedData);
+        }
+
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        setLoading(false);
       }
-
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [projectId],
+  );
 
   /**
    * Force a full refresh with server-provided sort order.
@@ -190,11 +200,30 @@ export function useInbox() {
   }, [fetchInbox]);
 
   // Subscribe to SSE events for real-time updates
+  // When filtering by projectId, only refetch for events from that project
   useFileActivity({
-    onProcessStateChange: debouncedRefetch,
-    onSessionStatusChange: debouncedRefetch,
+    onFileChange: (event) => {
+      // Refetch on session file changes (new messages may change hasUnread status)
+      if (event.fileType === "session" || event.fileType === "agent-session") {
+        debouncedRefetch();
+      }
+    },
+    onProcessStateChange: (event) => {
+      if (!projectId || event.projectId === projectId) {
+        debouncedRefetch();
+      }
+    },
+    onSessionStatusChange: (event) => {
+      if (!projectId || event.projectId === projectId) {
+        debouncedRefetch();
+      }
+    },
     onSessionSeen: debouncedRefetch,
-    onSessionCreated: debouncedRefetch,
+    onSessionCreated: (event) => {
+      if (!projectId || event.session.projectId === projectId) {
+        debouncedRefetch();
+      }
+    },
   });
 
   // Initial fetch
@@ -234,6 +263,8 @@ export function useInbox() {
     unread24h: inbox.unread24h,
     /** Full inbox response (all tiers) */
     inbox,
+    /** Project ID filter (if set) */
+    projectId,
     /** True while loading initial data */
     loading,
     /** Error from the last fetch attempt, if any */

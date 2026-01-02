@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { type UploadedFile, api, uploadFile } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
@@ -60,10 +60,8 @@ export interface NewSessionFormProps {
   rows?: number;
   /** Placeholder text for the textarea */
   placeholder?: string;
-  /** Compact mode: no header, no mode selector, inline layout (default: false) */
+  /** Compact mode: no header, no mode selector (default: false) */
   compact?: boolean;
-  /** Show a cancel link that navigates back to the project (default: false) */
-  showCancel?: boolean;
 }
 
 export function NewSessionForm({
@@ -73,7 +71,6 @@ export function NewSessionForm({
   rows = 6,
   placeholder = "Describe what you'd like Claude to help you with...",
   compact = false,
-  showCancel = false,
 }: NewSessionFormProps) {
   const navigate = useNavigate();
   const [message, setMessage, draftControls] = useDraftPersistence(
@@ -300,123 +297,131 @@ export function NewSessionForm({
 
   const hasContent = message.trim() || pendingFiles.length > 0;
 
-  // Compact mode: inline form with file attachments, no header or mode selector
+  // Shared input area with toolbar (textarea + attach/voice on left, send on right)
+  const inputArea = (
+    <>
+      <textarea
+        ref={textareaRef}
+        value={displayText}
+        onChange={(e) => {
+          setInterimTranscript("");
+          setMessage(e.target.value);
+        }}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        placeholder={placeholder}
+        disabled={isStarting}
+        rows={rows}
+        className="new-session-form-textarea"
+      />
+      <div className="new-session-form-toolbar">
+        <div className="new-session-form-toolbar-left">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={handleFileSelect}
+          />
+          <button
+            type="button"
+            className="toolbar-button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isStarting}
+            aria-label="Attach files"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
+          <VoiceInputButton
+            ref={voiceButtonRef}
+            onTranscript={handleVoiceTranscript}
+            onInterimTranscript={handleInterimTranscript}
+            disabled={isStarting}
+            className="toolbar-button"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={handleStartSession}
+          disabled={isStarting || !hasContent}
+          className="send-button"
+          aria-label="Start session"
+        >
+          <span className="send-icon">{isStarting ? "..." : "↑"}</span>
+        </button>
+      </div>
+      {pendingFiles.length > 0 && (
+        <div className="pending-files-list">
+          {pendingFiles.map((pf) => {
+            const progress = uploadProgress[pf.id];
+            return (
+              <div key={pf.id} className="pending-file-chip">
+                {pf.previewUrl && (
+                  <img
+                    src={pf.previewUrl}
+                    alt=""
+                    className="pending-file-preview"
+                  />
+                )}
+                <div className="pending-file-info">
+                  <span className="pending-file-name">{pf.file.name}</span>
+                  <span className="pending-file-size">
+                    {progress
+                      ? `${Math.round((progress.uploaded / progress.total) * 100)}%`
+                      : formatSize(pf.file.size)}
+                  </span>
+                </div>
+                {!isStarting && (
+                  <button
+                    type="button"
+                    className="pending-file-remove"
+                    onClick={() => handleRemoveFile(pf.id)}
+                    aria-label={`Remove ${pf.file.name}`}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+
+  // Compact mode: just the input area, no header or mode selector
   if (compact) {
     return (
       <div
         className={`new-session-form new-session-form-compact ${interimTranscript ? "voice-recording" : ""}`}
       >
-        <div className="new-session-form-compact-input">
-          <textarea
-            ref={textareaRef}
-            value={displayText}
-            onChange={(e) => {
-              setInterimTranscript("");
-              setMessage(e.target.value);
-            }}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={placeholder}
-            disabled={isStarting}
-            rows={rows}
-          />
-          <div className="new-session-form-compact-actions">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              style={{ display: "none" }}
-              onChange={handleFileSelect}
-            />
-            <button
-              type="button"
-              className="attach-button-compact"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isStarting}
-              aria-label="Attach files"
-            >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-              </svg>
-            </button>
-            <VoiceInputButton
-              ref={voiceButtonRef}
-              onTranscript={handleVoiceTranscript}
-              onInterimTranscript={handleInterimTranscript}
-              disabled={isStarting}
-              className="voice-button-compact"
-            />
-            <button
-              type="button"
-              onClick={handleStartSession}
-              disabled={isStarting || !hasContent}
-              className="send-button submit-button"
-              aria-label="Start session"
-            >
-              <span className="send-icon">{isStarting ? "..." : "↑"}</span>
-            </button>
-          </div>
-        </div>
-        {pendingFiles.length > 0 && (
-          <div className="pending-files-list-compact">
-            {pendingFiles.map((pf) => {
-              const progress = uploadProgress[pf.id];
-              return (
-                <div key={pf.id} className="pending-file-chip">
-                  {pf.previewUrl && (
-                    <img
-                      src={pf.previewUrl}
-                      alt=""
-                      className="pending-file-preview"
-                    />
-                  )}
-                  <div className="pending-file-info">
-                    <span className="pending-file-name">{pf.file.name}</span>
-                    <span className="pending-file-size">
-                      {progress
-                        ? `${Math.round((progress.uploaded / progress.total) * 100)}%`
-                        : formatSize(pf.file.size)}
-                    </span>
-                  </div>
-                  {!isStarting && (
-                    <button
-                      type="button"
-                      className="pending-file-remove"
-                      onClick={() => handleRemoveFile(pf.id)}
-                      aria-label={`Remove ${pf.file.name}`}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        aria-hidden="true"
-                      >
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {inputArea}
       </div>
     );
   }
 
-  // Full mode: form with header, file attachments, and mode selector
+  // Full mode: form with header, input area, and mode selector
   return (
     <div
       className={`new-session-form new-session-container ${interimTranscript ? "voice-recording" : ""}`}
@@ -426,109 +431,7 @@ export function NewSessionForm({
         <p className="new-session-subtitle">What would you like to work on?</p>
       </div>
 
-      {/* Message Input Area */}
-      <div className="new-session-input-area">
-        <textarea
-          ref={textareaRef}
-          value={displayText}
-          onChange={(e) => {
-            setInterimTranscript("");
-            setMessage(e.target.value);
-          }}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          placeholder={placeholder}
-          disabled={isStarting}
-          rows={rows}
-          className="new-session-textarea"
-        />
-
-        {/* File Attachments Section */}
-        <div className="new-session-attachments">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            style={{ display: "none" }}
-            onChange={handleFileSelect}
-          />
-
-          <button
-            type="button"
-            className="attach-files-button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isStarting}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-            </svg>
-            Attach files
-          </button>
-          <VoiceInputButton
-            ref={voiceButtonRef}
-            onTranscript={handleVoiceTranscript}
-            onInterimTranscript={handleInterimTranscript}
-            disabled={isStarting}
-            className="voice-input-button-full"
-          />
-
-          {pendingFiles.length > 0 && (
-            <div className="pending-files-list">
-              {pendingFiles.map((pf) => {
-                const progress = uploadProgress[pf.id];
-                return (
-                  <div key={pf.id} className="pending-file-chip">
-                    {pf.previewUrl && (
-                      <img
-                        src={pf.previewUrl}
-                        alt=""
-                        className="pending-file-preview"
-                      />
-                    )}
-                    <div className="pending-file-info">
-                      <span className="pending-file-name">{pf.file.name}</span>
-                      <span className="pending-file-size">
-                        {progress
-                          ? `${Math.round((progress.uploaded / progress.total) * 100)}%`
-                          : formatSize(pf.file.size)}
-                      </span>
-                    </div>
-                    {!isStarting && (
-                      <button
-                        type="button"
-                        className="pending-file-remove"
-                        onClick={() => handleRemoveFile(pf.id)}
-                        aria-label={`Remove ${pf.file.name}`}
-                      >
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          aria-hidden="true"
-                        >
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+      <div className="new-session-input-area">{inputArea}</div>
 
       {/* Permission Mode Selection */}
       <div className="new-session-mode-section">
@@ -550,44 +453,6 @@ export function NewSessionForm({
             </button>
           ))}
         </div>
-      </div>
-
-      {/* Submit Button */}
-      <div className="new-session-actions">
-        {showCancel && (
-          <Link to={`/projects/${projectId}`} className="cancel-button">
-            Cancel
-          </Link>
-        )}
-        <button
-          type="button"
-          onClick={handleStartSession}
-          disabled={isStarting || !hasContent}
-          className="start-session-button submit-button"
-        >
-          {isStarting ? (
-            <>
-              <span className="spinner" />
-              Starting...
-            </>
-          ) : (
-            <>
-              Start Session
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <line x1="5" y1="12" x2="19" y2="12" />
-                <polyline points="12 5 19 12 12 19" />
-              </svg>
-            </>
-          )}
-        </button>
       </div>
     </div>
   );

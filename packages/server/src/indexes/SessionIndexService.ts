@@ -9,8 +9,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { UrlProjectId } from "@claude-anywhere/shared";
+import { getLogger } from "../logging/logger.js";
 import type { SessionReader } from "../sessions/reader.js";
 import type { SessionSummary } from "../supervisor/types.js";
+
+const logger = getLogger();
 
 export interface CachedSessionSummary {
   title: string | null;
@@ -23,6 +26,8 @@ export interface CachedSessionSummary {
   indexedBytes: number;
   /** File mtime in milliseconds since epoch at time of indexing */
   fileMtime: number;
+  /** True if session has no user/assistant messages (metadata-only file) */
+  isEmpty?: boolean;
 }
 
 export interface SessionIndexState {
@@ -85,12 +90,12 @@ export class SessionIndexService {
     // Check memory cache first
     const cached = this.indexCache.get(cacheKey);
     if (cached) {
-      console.log(
+      logger.debug(
         `[SessionIndexService] Memory cache hit for project (${Object.keys(cached.sessions).length} sessions)`,
       );
       return cached;
     }
-    console.log(
+    logger.debug(
       `[SessionIndexService] Memory cache miss, loading from disk: ${indexPath}`,
     );
 
@@ -118,9 +123,9 @@ export class SessionIndexService {
     } catch (error) {
       // File doesn't exist or is invalid - start fresh
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.warn(
-          `[SessionIndexService] Failed to load index for ${sessionDir}, starting fresh:`,
-          error,
+        logger.warn(
+          { err: error },
+          `[SessionIndexService] Failed to load index for ${sessionDir}, starting fresh`,
         );
       }
       const fresh: SessionIndexState = {
@@ -173,9 +178,9 @@ export class SessionIndexService {
       const content = JSON.stringify(index, null, 2);
       await fs.writeFile(indexPath, content, "utf-8");
     } catch (error) {
-      console.error(
-        `[SessionIndexService] Failed to save index for ${sessionDir}:`,
-        error,
+      logger.error(
+        { err: error },
+        `[SessionIndexService] Failed to save index for ${sessionDir}`,
       );
       throw error;
     }
@@ -220,8 +225,13 @@ export class SessionIndexService {
             cached.fileMtime === mtime &&
             cached.indexedBytes === size
           ) {
+            // Cache hit - skip if empty (no user/assistant messages)
+            if (cached.isEmpty) {
+              // Empty session - already cached, skip silently
+              continue;
+            }
             // Cache hit - reconstruct SessionSummary from cache
-            console.log(
+            logger.debug(
               `[SessionIndexService] Cache HIT for ${sessionId} (mtime=${mtime}, size=${size})`,
             );
             summaries.push({
@@ -237,7 +247,7 @@ export class SessionIndexService {
             });
           } else {
             // Cache miss - parse the file
-            console.log(
+            logger.debug(
               `[SessionIndexService] Cache MISS for ${sessionId}: cached=${!!cached}, mtime match=${cached?.fileMtime === mtime}, size match=${cached?.indexedBytes === size}`,
             );
             const summary = await reader.getSessionSummary(
@@ -257,6 +267,19 @@ export class SessionIndexService {
                 contextUsage: summary.contextUsage,
                 indexedBytes: size,
                 fileMtime: mtime,
+              };
+              indexChanged = true;
+            } else {
+              // Empty session (no user/assistant messages) - cache it to avoid re-parsing
+              index.sessions[sessionId] = {
+                title: null,
+                fullTitle: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                messageCount: 0,
+                indexedBytes: size,
+                fileMtime: mtime,
+                isEmpty: true,
               };
               indexChanged = true;
             }
@@ -342,6 +365,10 @@ export class SessionIndexService {
         cached.fileMtime === mtime &&
         cached.indexedBytes === size
       ) {
+        // Return null for empty sessions
+        if (cached.isEmpty) {
+          return null;
+        }
         return cached.title;
       }
 
@@ -361,6 +388,19 @@ export class SessionIndexService {
         };
         await this.saveIndex(sessionDir);
         return summary.title;
+      } else {
+        // Empty session - cache it to avoid re-parsing
+        index.sessions[sessionId] = {
+          title: null,
+          fullTitle: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          messageCount: 0,
+          indexedBytes: size,
+          fileMtime: mtime,
+          isEmpty: true,
+        };
+        await this.saveIndex(sessionDir);
       }
     } catch {
       // File error - return null

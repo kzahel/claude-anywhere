@@ -22,7 +22,7 @@ import {
 import { useSSE } from "./useSSE";
 import { getStreamingEnabled } from "./useStreamingEnabled";
 
-export type ProcessState = "idle" | "running" | "waiting-input";
+export type ProcessState = "idle" | "running" | "waiting-input" | "hold";
 
 /** Content from a subagent (Task tool) */
 export interface AgentContent {
@@ -123,6 +123,31 @@ export function useSession(
       }
     },
     [],
+  );
+
+  // Set hold state (soft pause) for the session
+  const setHold = useCallback(
+    async (hold: boolean) => {
+      // Only works if there's an active process
+      if (status.state !== "owned" && status.state !== "external") {
+        console.warn("Cannot set hold: no active process");
+        return;
+      }
+
+      try {
+        const result = await api.setHold(sessionId, hold);
+        // Process state will be updated via SSE state-change event
+        // but we can optimistically update if needed
+        if (result.state === "hold") {
+          setProcessState("hold");
+        } else if (result.state === "running") {
+          setProcessState("running");
+        }
+      } catch (err) {
+        console.warn("Failed to set hold:", err);
+      }
+    },
+    [sessionId, status.state],
   );
 
   // Throttle state for incremental fetching
@@ -924,6 +949,7 @@ export function useSession(
     toolUseToAgent, // Mapping from Task tool_use_id → agentId (for rendering during streaming)
     status,
     processState,
+    isHeld: processState === "hold", // Derived from process state
     pendingInputRequest,
     actualSessionId, // Real session ID from server (may differ from URL during temp→real transition)
     permissionMode: localMode, // UI-selected mode (sent with next message)
@@ -936,6 +962,7 @@ export function useSession(
     setStatus,
     setProcessState,
     setPermissionMode,
+    setHold, // Set hold (soft pause) state
     addUserMessage,
     removeOptimisticMessage,
   };

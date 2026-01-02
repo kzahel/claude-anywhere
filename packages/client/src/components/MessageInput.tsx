@@ -15,6 +15,7 @@ import {
 import { useModelSettings } from "../hooks/useModelSettings";
 import type { ContextUsage, PermissionMode } from "../types";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
+import { ModeSelector } from "./ModeSelector";
 import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
 /** Progress info for an in-flight upload */
@@ -35,20 +36,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-const MODE_ORDER: PermissionMode[] = [
-  "default",
-  "acceptEdits",
-  "plan",
-  "bypassPermissions",
-];
-
-const MODE_LABELS: Record<PermissionMode, string> = {
-  default: "Ask before edits",
-  acceptEdits: "Edit automatically",
-  plan: "Plan mode",
-  bypassPermissions: "Bypass permissions",
-};
-
 interface Props {
   onSend: (text: string) => void;
   disabled?: boolean;
@@ -56,6 +43,8 @@ interface Props {
   mode?: PermissionMode;
   onModeChange?: (mode: PermissionMode) => void;
   isModePending?: boolean;
+  isHeld?: boolean;
+  onHoldChange?: (held: boolean) => void;
   isRunning?: boolean;
   isThinking?: boolean;
   onStop?: () => void;
@@ -87,6 +76,8 @@ export function MessageInput({
   mode = "default",
   onModeChange,
   isModePending,
+  isHeld,
+  onHoldChange,
   isRunning,
   isThinking,
   onStop,
@@ -205,16 +196,6 @@ export function MessageInput({
       // This allows text paste to still work normally
       e.preventDefault();
       onAttach(files);
-    }
-  };
-
-  const handleModeClick = () => {
-    if (!onModeChange) return;
-    const currentIndex = MODE_ORDER.indexOf(mode);
-    const nextIndex = (currentIndex + 1) % MODE_ORDER.length;
-    const nextMode = MODE_ORDER[nextIndex];
-    if (nextMode) {
-      onModeChange(nextMode);
     }
   };
 
@@ -341,21 +322,15 @@ export function MessageInput({
         {!collapsed && (
           <div className="message-input-toolbar">
             <div className="message-input-left">
-              <button
-                type="button"
-                className="mode-button"
-                onClick={handleModeClick}
-                disabled={!onModeChange}
-                title="Click to cycle through permission modes"
-              >
-                <span className={`mode-dot mode-${mode}`} />
-                {MODE_LABELS[mode]}
-                {isModePending && (
-                  <span className="mode-pending-hint">
-                    (set on next message)
-                  </span>
-                )}
-              </button>
+              {onModeChange && (
+                <ModeSelector
+                  mode={mode}
+                  onModeChange={onModeChange}
+                  isModePending={isModePending}
+                  isHeld={isHeld}
+                  onHoldChange={onHoldChange}
+                />
+              )}
               <button
                 type="button"
                 className="attach-button"
@@ -367,7 +342,17 @@ export function MessageInput({
                     : "Send a message first to enable attachments"
                 }
               >
-                <span className="attach-icon">+</span>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                </svg>
                 {attachments.length > 0 && (
                   <span className="attach-count">{attachments.length}</span>
                 )}

@@ -161,6 +161,7 @@ export function createApp(
       supervisor,
       notificationService: options.notificationService,
       sessionIndexService: options.sessionIndexService,
+      sessionMetadataService: options.sessionMetadataService,
     }),
   );
 

@@ -84,6 +84,8 @@ function SessionPageContent({
     setStatus,
     setProcessState,
     setPermissionMode,
+    setHold,
+    isHeld,
     addUserMessage,
     removeOptimisticMessage,
   } = useSession(projectId, sessionId, initialStatus);
@@ -127,8 +129,14 @@ function SessionPageContent({
 
   // Track user engagement to mark session as "seen"
   // Only enabled when not in external session (we own or it's idle)
-  // Use the max of session.updatedAt and lastSSEActivityAt to ensure we track
-  // activity from subagent content (which doesn't update parent session file mtime)
+  //
+  // We use two timestamps:
+  // - activityAt: max(file mtime, SSE activity) - triggers the mark-seen action
+  // - updatedAt: file mtime only - the timestamp we record
+  //
+  // This separation prevents a race condition where SSE timestamps (client clock)
+  // could be ahead of file mtime (server disk write time), causing sessions to
+  // never become unread again after viewing.
   const sessionUpdatedAt = session?.updatedAt ?? null;
   const activityAt = useMemo(() => {
     if (!sessionUpdatedAt && !lastSSEActivityAt) return null;
@@ -142,7 +150,8 @@ function SessionPageContent({
 
   useEngagementTracking({
     sessionId,
-    updatedAt: activityAt,
+    activityAt,
+    updatedAt: sessionUpdatedAt,
     lastSeenAt: session?.lastSeenAt,
     enabled: status.state !== "external",
   });
@@ -630,6 +639,8 @@ function SessionPageContent({
                 mode={permissionMode}
                 onModeChange={setPermissionMode}
                 isModePending={isModePending}
+                isHeld={isHeld}
+                onHoldChange={setHold}
                 isRunning={status.state === "owned"}
                 isThinking={processState === "running"}
                 onStop={handleAbort}

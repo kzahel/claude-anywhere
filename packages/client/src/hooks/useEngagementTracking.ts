@@ -11,7 +11,15 @@ import { api } from "../api/client";
  * We mark as seen when:
  * 1. Tab is focused (document.hasFocus())
  * 2. User has interacted recently (within last 30 seconds)
- * 3. Session has new content (updatedAt > lastSeenAt)
+ * 3. Session has new content (activityAt > lastSeenAt)
+ *
+ * Important: We use two different timestamps:
+ * - activityAt: Triggers the mark-seen action (includes SSE streaming activity)
+ * - updatedAt: The timestamp we record (file mtime, used by hasUnread comparison)
+ *
+ * This separation prevents a race condition where SSE timestamps (client clock)
+ * could be ahead of file mtime (server disk write time), causing sessions to
+ * never become unread again.
  *
  * Debounces API calls to avoid excessive writes.
  */
@@ -22,7 +30,17 @@ const DEBOUNCE_MS = 2_000; // 2 seconds
 interface UseEngagementTrackingOptions {
   /** Session ID to track */
   sessionId: string;
-  /** ISO timestamp of when session was last updated */
+  /**
+   * ISO timestamp that triggers the mark-seen action.
+   * Can include SSE activity timestamps to immediately mark content as seen
+   * while viewing live streams.
+   */
+  activityAt: string | null;
+  /**
+   * ISO timestamp to record when marking seen (file mtime).
+   * This is what hasUnread() compares against, so it must match the file's
+   * actual updatedAt to avoid race conditions.
+   */
   updatedAt: string | null;
   /** ISO timestamp of when user last viewed this session */
   lastSeenAt?: string;
@@ -31,11 +49,17 @@ interface UseEngagementTrackingOptions {
 }
 
 export function useEngagementTracking(options: UseEngagementTrackingOptions) {
-  const { sessionId, updatedAt, lastSeenAt, enabled = true } = options;
+  const {
+    sessionId,
+    activityAt,
+    updatedAt,
+    lastSeenAt,
+    enabled = true,
+  } = options;
 
   // Track last user interaction time
   const lastInteractionRef = useRef<number>(Date.now());
-  // Track if we've already marked this content as seen
+  // Track if we've already marked this content as seen (by activityAt)
   const markedSeenRef = useRef<string | null>(null);
   // Debounce timer
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,11 +67,12 @@ export function useEngagementTracking(options: UseEngagementTrackingOptions) {
   const mountedRef = useRef(true);
 
   // Check if there's new content to mark as seen
+  // Uses activityAt for triggering (includes SSE activity)
   const hasNewContent = useCallback(() => {
-    if (!updatedAt) return false;
+    if (!activityAt) return false;
     if (!lastSeenAt) return true; // Never seen before
-    return updatedAt > lastSeenAt;
-  }, [updatedAt, lastSeenAt]);
+    return activityAt > lastSeenAt;
+  }, [activityAt, lastSeenAt]);
 
   // Check if user is actively engaged
   const isEngaged = useCallback(() => {
@@ -58,12 +83,13 @@ export function useEngagementTracking(options: UseEngagementTrackingOptions) {
   }, []);
 
   // Mark session as seen (debounced)
+  // Records updatedAt (file mtime), but triggers based on activityAt
   const markSeen = useCallback(() => {
     if (!enabled || !mountedRef.current) return;
-    if (!updatedAt) return;
+    if (!activityAt || !updatedAt) return;
 
-    // Don't re-mark if we've already marked this content
-    if (markedSeenRef.current === updatedAt) return;
+    // Don't re-mark if we've already marked this activity
+    if (markedSeenRef.current === activityAt) return;
 
     // Clear any pending debounce
     if (debounceTimerRef.current) {
@@ -77,8 +103,10 @@ export function useEngagementTracking(options: UseEngagementTrackingOptions) {
       if (!hasNewContent()) return;
 
       try {
+        // Record the file's updatedAt, not activityAt
+        // This ensures hasUnread() comparisons work correctly
         await api.markSessionSeen(sessionId, updatedAt);
-        markedSeenRef.current = updatedAt;
+        markedSeenRef.current = activityAt;
       } catch (error) {
         console.warn(
           "[useEngagementTracking] Failed to mark session as seen:",
@@ -86,7 +114,7 @@ export function useEngagementTracking(options: UseEngagementTrackingOptions) {
         );
       }
     }, DEBOUNCE_MS);
-  }, [enabled, sessionId, updatedAt, isEngaged, hasNewContent]);
+  }, [enabled, sessionId, activityAt, updatedAt, isEngaged, hasNewContent]);
 
   // Track user interactions
   useEffect(() => {
@@ -145,16 +173,16 @@ export function useEngagementTracking(options: UseEngagementTrackingOptions) {
     };
   }, [enabled, hasNewContent, isEngaged, markSeen]);
 
-  // Check for new content when it changes
+  // Check for new content when activityAt changes
   useEffect(() => {
     if (!enabled) return;
-    if (!updatedAt) return;
+    if (!activityAt) return;
 
     // If content is new and user is engaged, mark as seen
     if (hasNewContent() && isEngaged()) {
       markSeen();
     }
-  }, [enabled, updatedAt, hasNewContent, isEngaged, markSeen]);
+  }, [enabled, activityAt, hasNewContent, isEngaged, markSeen]);
 
   // Cleanup
   useEffect(() => {
@@ -173,14 +201,14 @@ export function useEngagementTracking(options: UseEngagementTrackingOptions) {
 
     try {
       await api.markSessionSeen(sessionId, updatedAt);
-      markedSeenRef.current = updatedAt;
+      markedSeenRef.current = activityAt;
     } catch (error) {
       console.warn(
         "[useEngagementTracking] Failed to force mark session as seen:",
         error,
       );
     }
-  }, [enabled, sessionId, updatedAt]);
+  }, [enabled, sessionId, activityAt, updatedAt]);
 
   return {
     /** Manually mark the session as seen (bypasses engagement check) */

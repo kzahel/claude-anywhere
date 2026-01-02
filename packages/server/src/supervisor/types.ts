@@ -10,7 +10,6 @@ import type { PermissionMode, SDKMessage } from "../sdk/types.js";
 // Constants
 export const DEFAULT_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 export const DEFAULT_IDLE_PREEMPT_THRESHOLD_MS = 10 * 1000; // 10 seconds - workers idle longer than this can be preempted
-export const SESSION_TITLE_MAX_LENGTH = 120;
 
 // Re-export path utilities for backward compatibility
 // See packages/server/src/projects/paths.ts for full documentation on encoding schemes
@@ -142,6 +141,7 @@ export type ProcessState =
   | { type: "running" }
   | { type: "idle"; since: Date }
   | { type: "waiting-input"; request: InputRequest }
+  | { type: "hold"; since: Date }
   | { type: "terminated"; reason: string; error?: Error };
 
 // Process info (for API responses)
@@ -156,6 +156,7 @@ export interface ProcessInfo {
   startedAt: string;
   queueDepth: number;
   idleSince?: string; // ISO timestamp when entered idle
+  holdSince?: string; // ISO timestamp when entered hold
   terminationReason?: string; // why it terminated
   terminatedAt?: string; // when it terminated (ISO timestamp)
 }

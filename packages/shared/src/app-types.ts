@@ -157,6 +157,7 @@ export type ProcessStateType =
   | "running"
   | "idle"
   | "waiting-input"
+  | "hold"
   | "terminated";
 
 /** Context usage information extracted from the last assistant message */

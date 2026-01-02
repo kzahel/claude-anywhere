@@ -562,13 +562,58 @@ describe("Inbox Routes", () => {
   });
 
   describe("archived sessions", () => {
+    it("excludes archived sessions from all tiers", async () => {
+      const project = createProject("proj1", "myproject", "/sessions/proj1");
+
+      // Archived session that would qualify for needsAttention
+      const archivedSession = createSession(
+        "archived-sess",
+        "proj1",
+        minutesAgo(5),
+        { isArchived: true },
+      );
+
+      vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
+      sessionsByDir.set("/sessions/proj1", [archivedSession]);
+
+      // Mock process with pending input - would normally put it in needsAttention
+      processMap.set("archived-sess", {
+        getPendingInputRequest: () => ({
+          type: "tool-approval",
+          id: "req1",
+          prompt: "Allow?",
+        }),
+        state: { type: "waiting-input" },
+      });
+
+      const result = await makeRequest({
+        scanner: mockScanner,
+        readerFactory: mockReaderFactory,
+        supervisor: mockSupervisor,
+        notificationService: mockNotificationService,
+        sessionIndexService: mockSessionIndexService,
+      });
+
+      // Archived session should be excluded from ALL tiers
+      expect(result.needsAttention).toHaveLength(0);
+      expect(result.active).toHaveLength(0);
+      expect(result.recentActivity).toHaveLength(0);
+      expect(result.unread8h).toHaveLength(0);
+      expect(result.unread24h).toHaveLength(0);
+    });
+
     it("excludes archived sessions from unread tiers", async () => {
       const project = createProject("proj1", "myproject", "/sessions/proj1");
 
       // Archived unread session within 8 hours
-      const archivedSession = createSession("archived-sess", "proj1", hoursAgo(4), {
-        isArchived: true,
-      });
+      const archivedSession = createSession(
+        "archived-sess",
+        "proj1",
+        hoursAgo(4),
+        {
+          isArchived: true,
+        },
+      );
       // Non-archived unread session within 8 hours
       const normalSession = createSession("normal-sess", "proj1", hoursAgo(4));
 
@@ -594,9 +639,14 @@ describe("Inbox Routes", () => {
       const project = createProject("proj1", "myproject", "/sessions/proj1");
 
       // Archived unread session within 24 hours (but outside 8h)
-      const archivedSession = createSession("archived-sess", "proj1", hoursAgo(12), {
-        isArchived: true,
-      });
+      const archivedSession = createSession(
+        "archived-sess",
+        "proj1",
+        hoursAgo(12),
+        {
+          isArchived: true,
+        },
+      );
 
       vi.mocked(mockScanner.listProjects).mockResolvedValue([project]);
       sessionsByDir.set("/sessions/proj1", [archivedSession]);

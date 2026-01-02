@@ -4,26 +4,86 @@ import {
   getSessionDisplayTitle,
   SESSION_TITLE_MAX_LENGTH,
 } from "../../src/session/SessionView.js";
-import type { AppSessionSummary } from "../../src/app-types.js";
+import type {
+  AppSessionSummary,
+  AppSessionStatus,
+} from "../../src/app-types.js";
+import type { UrlProjectId } from "../../src/projectId.js";
+
+// Helper to create a minimal valid SessionView for testing
+function createView(
+  overrides: Partial<{
+    id: string;
+    projectId: UrlProjectId;
+    autoTitle: string | null;
+    fullTitle: string | null;
+    customTitle: string | undefined;
+    createdAt: string;
+    updatedAt: string;
+    messageCount: number;
+    status: AppSessionStatus;
+    isArchived: boolean;
+    isStarred: boolean;
+    pendingInputType: "tool-approval" | "user-question" | undefined;
+    processState:
+      | "running"
+      | "idle"
+      | "waiting-input"
+      | "terminated"
+      | undefined;
+    lastSeenAt: string | undefined;
+    hasUnread: boolean;
+    contextUsage: { inputTokens: number; percentage: number } | undefined;
+  }> = {},
+): SessionView {
+  return new SessionView(
+    overrides.id ?? "session-123",
+    overrides.projectId ?? ("project-123" as UrlProjectId),
+    "autoTitle" in overrides ? overrides.autoTitle! : "Auto title",
+    "fullTitle" in overrides ? overrides.fullTitle! : "Full auto title",
+    overrides.customTitle,
+    overrides.createdAt ?? "2024-01-01T00:00:00Z",
+    overrides.updatedAt ?? "2024-01-02T00:00:00Z",
+    overrides.messageCount ?? 10,
+    overrides.status ?? { state: "idle" },
+    overrides.isArchived ?? false,
+    overrides.isStarred ?? false,
+    overrides.pendingInputType,
+    overrides.processState,
+    overrides.lastSeenAt,
+    overrides.hasUnread ?? false,
+    overrides.contextUsage,
+  );
+}
 
 describe("SessionView", () => {
   describe("constructor", () => {
     it("creates instance with all properties", () => {
-      const view = new SessionView(
-        "session-123",
-        "Auto title",
-        "Full auto title that is longer",
-        "Custom title",
-      );
+      const view = createView({
+        id: "session-abc",
+        autoTitle: "My title",
+        fullTitle: "My full title",
+        customTitle: "Custom name",
+        isArchived: true,
+        isStarred: true,
+        hasUnread: true,
+      });
 
-      expect(view.id).toBe("session-123");
-      expect(view.autoTitle).toBe("Auto title");
-      expect(view.fullTitle).toBe("Full auto title that is longer");
-      expect(view.customTitle).toBe("Custom title");
+      expect(view.id).toBe("session-abc");
+      expect(view.autoTitle).toBe("My title");
+      expect(view.fullTitle).toBe("My full title");
+      expect(view.customTitle).toBe("Custom name");
+      expect(view.isArchived).toBe(true);
+      expect(view.isStarred).toBe(true);
+      expect(view.hasUnread).toBe(true);
     });
 
     it("allows null titles", () => {
-      const view = new SessionView("session-123", null, null);
+      const view = createView({
+        autoTitle: null,
+        fullTitle: null,
+        customTitle: undefined,
+      });
 
       expect(view.autoTitle).toBeNull();
       expect(view.fullTitle).toBeNull();
@@ -33,120 +93,159 @@ describe("SessionView", () => {
 
   describe("displayTitle", () => {
     it("returns customTitle when set", () => {
-      const view = new SessionView(
-        "session-123",
-        "Auto title",
-        "Full title",
-        "Custom title",
-      );
-
+      const view = createView({ customTitle: "Custom title" });
       expect(view.displayTitle).toBe("Custom title");
     });
 
     it("returns autoTitle when no customTitle", () => {
-      const view = new SessionView("session-123", "Auto title", "Full title");
-
+      const view = createView({ autoTitle: "Auto title" });
       expect(view.displayTitle).toBe("Auto title");
     });
 
     it("returns 'Untitled' when no titles", () => {
-      const view = new SessionView("session-123", null, null);
-
+      const view = createView({ autoTitle: null, fullTitle: null });
       expect(view.displayTitle).toBe("Untitled");
     });
 
     it("prefers customTitle over autoTitle", () => {
-      const view = new SessionView(
-        "session-123",
-        "Auto title",
-        "Full title",
-        "My custom name",
-      );
-
-      expect(view.displayTitle).toBe("My custom name");
+      const view = createView({
+        autoTitle: "Auto",
+        customTitle: "Custom",
+      });
+      expect(view.displayTitle).toBe("Custom");
     });
   });
 
   describe("hasCustomTitle", () => {
     it("returns true when customTitle is set", () => {
-      const view = new SessionView(
-        "session-123",
-        "Auto",
-        "Full",
-        "Custom",
-      );
-
+      const view = createView({ customTitle: "Custom" });
       expect(view.hasCustomTitle).toBe(true);
     });
 
     it("returns false when customTitle is undefined", () => {
-      const view = new SessionView("session-123", "Auto", "Full");
-
+      const view = createView();
       expect(view.hasCustomTitle).toBe(false);
     });
 
     it("returns false when customTitle is empty string", () => {
-      const view = new SessionView("session-123", "Auto", "Full", "");
-
+      const view = createView({ customTitle: "" });
       expect(view.hasCustomTitle).toBe(false);
     });
   });
 
   describe("tooltipTitle", () => {
     it("returns fullTitle when available", () => {
-      const view = new SessionView(
-        "session-123",
-        "Short title",
-        "This is the full title with more details",
-      );
-
-      expect(view.tooltipTitle).toBe("This is the full title with more details");
+      const view = createView({
+        autoTitle: "Short",
+        fullTitle: "Full long title",
+      });
+      expect(view.tooltipTitle).toBe("Full long title");
     });
 
     it("falls back to autoTitle when fullTitle is null", () => {
-      const view = new SessionView("session-123", "Auto title", null);
-
-      expect(view.tooltipTitle).toBe("Auto title");
+      const view = createView({ autoTitle: "Auto", fullTitle: null });
+      expect(view.tooltipTitle).toBe("Auto");
     });
 
     it("returns null when both are null", () => {
-      const view = new SessionView("session-123", null, null);
-
+      const view = createView({ autoTitle: null, fullTitle: null });
       expect(view.tooltipTitle).toBeNull();
     });
   });
 
   describe("isTruncated", () => {
     it("returns true when autoTitle differs from fullTitle", () => {
-      const view = new SessionView(
-        "session-123",
-        "Short...",
-        "Short title that was truncated",
-      );
-
+      const view = createView({
+        autoTitle: "Short...",
+        fullTitle: "Short title that was truncated",
+      });
       expect(view.isTruncated).toBe(true);
     });
 
     it("returns false when autoTitle equals fullTitle", () => {
-      const view = new SessionView(
-        "session-123",
-        "Same title",
-        "Same title",
-      );
-
+      const view = createView({
+        autoTitle: "Same",
+        fullTitle: "Same",
+      });
       expect(view.isTruncated).toBe(false);
     });
 
     it("returns false when autoTitle is null", () => {
-      const view = new SessionView("session-123", null, "Full title");
-
+      const view = createView({ autoTitle: null, fullTitle: "Full" });
       expect(view.isTruncated).toBe(false);
     });
 
     it("returns false when fullTitle is null", () => {
-      const view = new SessionView("session-123", "Auto title", null);
-
+      const view = createView({ autoTitle: "Auto", fullTitle: null });
       expect(view.isTruncated).toBe(false);
+    });
+  });
+
+  describe("status getters", () => {
+    it("isActive returns true when status is owned", () => {
+      const view = createView({
+        status: { state: "owned", processId: "proc-1" },
+      });
+      expect(view.isActive).toBe(true);
+      expect(view.isIdle).toBe(false);
+      expect(view.isExternal).toBe(false);
+    });
+
+    it("isIdle returns true when status is idle", () => {
+      const view = createView({ status: { state: "idle" } });
+      expect(view.isIdle).toBe(true);
+      expect(view.isActive).toBe(false);
+      expect(view.isExternal).toBe(false);
+    });
+
+    it("isExternal returns true when status is external", () => {
+      const view = createView({ status: { state: "external" } });
+      expect(view.isExternal).toBe(true);
+      expect(view.isActive).toBe(false);
+      expect(view.isIdle).toBe(false);
+    });
+  });
+
+  describe("process state getters", () => {
+    it("isRunning returns true when processState is running", () => {
+      const view = createView({ processState: "running" });
+      expect(view.isRunning).toBe(true);
+    });
+
+    it("isWaitingForInput returns true when processState is waiting-input", () => {
+      const view = createView({ processState: "waiting-input" });
+      expect(view.isWaitingForInput).toBe(true);
+    });
+
+    it("returns false for undefined processState", () => {
+      const view = createView({ processState: undefined });
+      expect(view.isRunning).toBe(false);
+      expect(view.isWaitingForInput).toBe(false);
+    });
+  });
+
+  describe("needsAttention", () => {
+    it("returns true when hasUnread is true", () => {
+      const view = createView({ hasUnread: true });
+      expect(view.needsAttention).toBe(true);
+    });
+
+    it("returns true when pendingInputType is set", () => {
+      const view = createView({ pendingInputType: "tool-approval" });
+      expect(view.needsAttention).toBe(true);
+    });
+
+    it("returns true when both unread and pending", () => {
+      const view = createView({
+        hasUnread: true,
+        pendingInputType: "user-question",
+      });
+      expect(view.needsAttention).toBe(true);
+    });
+
+    it("returns false when no unread and no pending", () => {
+      const view = createView({ hasUnread: false });
+      expect(view.needsAttention).toBe(false);
     });
   });
 
@@ -154,29 +253,44 @@ describe("SessionView", () => {
     it("creates SessionView from AppSessionSummary", () => {
       const summary: AppSessionSummary = {
         id: "session-456",
-        projectId: "project-123" as any,
+        projectId: "project-123" as UrlProjectId,
         title: "Auto title",
         fullTitle: "Full auto title",
         customTitle: "Custom name",
         createdAt: "2024-01-01T00:00:00Z",
         updatedAt: "2024-01-02T00:00:00Z",
         messageCount: 10,
-        status: { state: "idle" },
+        status: { state: "owned", processId: "proc-1" },
+        isArchived: true,
+        isStarred: true,
+        pendingInputType: "tool-approval",
+        processState: "waiting-input",
+        lastSeenAt: "2024-01-01T12:00:00Z",
+        hasUnread: true,
+        contextUsage: { inputTokens: 5000, percentage: 25 },
       };
 
       const view = SessionView.from(summary);
 
       expect(view.id).toBe("session-456");
+      expect(view.projectId).toBe("project-123");
       expect(view.autoTitle).toBe("Auto title");
       expect(view.fullTitle).toBe("Full auto title");
       expect(view.customTitle).toBe("Custom name");
       expect(view.displayTitle).toBe("Custom name");
+      expect(view.isArchived).toBe(true);
+      expect(view.isStarred).toBe(true);
+      expect(view.isActive).toBe(true);
+      expect(view.isWaitingForInput).toBe(true);
+      expect(view.hasUnread).toBe(true);
+      expect(view.needsAttention).toBe(true);
+      expect(view.contextUsage).toEqual({ inputTokens: 5000, percentage: 25 });
     });
 
-    it("handles summary without customTitle", () => {
+    it("handles summary without optional fields", () => {
       const summary: AppSessionSummary = {
         id: "session-789",
-        projectId: "project-123" as any,
+        projectId: "project-123" as UrlProjectId,
         title: "Auto title",
         fullTitle: "Full title",
         createdAt: "2024-01-01T00:00:00Z",
@@ -189,6 +303,11 @@ describe("SessionView", () => {
 
       expect(view.customTitle).toBeUndefined();
       expect(view.displayTitle).toBe("Auto title");
+      expect(view.isArchived).toBe(false);
+      expect(view.isStarred).toBe(false);
+      expect(view.hasUnread).toBe(false);
+      expect(view.pendingInputType).toBeUndefined();
+      expect(view.processState).toBeUndefined();
     });
   });
 
@@ -198,15 +317,18 @@ describe("SessionView", () => {
         id: "session-123",
         title: "Auto",
         customTitle: "Custom",
+        isStarred: true,
       });
 
       expect(view.id).toBe("session-123");
       expect(view.autoTitle).toBe("Auto");
-      expect(view.fullTitle).toBeNull();
       expect(view.customTitle).toBe("Custom");
+      expect(view.displayTitle).toBe("Custom");
+      expect(view.isStarred).toBe(true);
+      expect(view.isArchived).toBe(false);
     });
 
-    it("handles minimal data", () => {
+    it("handles minimal data with defaults", () => {
       const view = SessionView.fromPartial({ id: "session-123" });
 
       expect(view.id).toBe("session-123");
@@ -214,6 +336,10 @@ describe("SessionView", () => {
       expect(view.fullTitle).toBeNull();
       expect(view.customTitle).toBeUndefined();
       expect(view.displayTitle).toBe("Untitled");
+      expect(view.messageCount).toBe(0);
+      expect(view.isIdle).toBe(true);
+      expect(view.isArchived).toBe(false);
+      expect(view.isStarred).toBe(false);
     });
   });
 });

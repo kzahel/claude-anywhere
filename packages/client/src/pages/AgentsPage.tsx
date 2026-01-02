@@ -1,10 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { NavigationSidebar } from "../components/NavigationSidebar";
 import { PageHeader } from "../components/PageHeader";
-import { useMediaQuery } from "../hooks/useMediaQuery";
 import { type ProcessInfo, useProcesses } from "../hooks/useProcesses";
-import { useSidebarPreference } from "../hooks/useSidebarPreference";
+import { useNavigationLayout } from "../layouts";
 
 /**
  * Format uptime duration from start time to now.
@@ -172,100 +170,66 @@ function ProcessCard({ process, isTerminated = false }: ProcessCardProps) {
 export function AgentsPage() {
   const { processes, terminatedProcesses, loading, error, activeCount } =
     useProcesses();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Desktop layout hooks
-  const isWideScreen = useMediaQuery("(min-width: 1100px)");
-  const { isExpanded, toggleExpanded } = useSidebarPreference();
+  const { openSidebar, isWideScreen } = useNavigationLayout();
 
   return (
-    <div className={`session-page ${isWideScreen ? "desktop-layout" : ""}`}>
-      {/* Desktop sidebar - always visible on wide screens */}
-      {isWideScreen && (
-        <aside
-          className={`sidebar-desktop ${!isExpanded ? "sidebar-collapsed" : ""}`}
-        >
-          <NavigationSidebar
-            isOpen={true}
-            onClose={() => {}}
-            isDesktop={true}
-            isCollapsed={!isExpanded}
-            onToggleExpanded={toggleExpanded}
-          />
-        </aside>
-      )}
-
-      {/* Mobile sidebar - modal overlay */}
-      {!isWideScreen && (
-        <NavigationSidebar
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main content wrapper for desktop centering */}
+    <div
+      className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
+    >
       <div
         className={
-          isWideScreen ? "main-content-wrapper" : "main-content-mobile"
+          isWideScreen
+            ? "main-content-constrained"
+            : "main-content-mobile-inner"
         }
       >
-        <div
-          className={
-            isWideScreen
-              ? "main-content-constrained"
-              : "main-content-mobile-inner"
-          }
-        >
-          <PageHeader
-            title="Agents"
-            onOpenSidebar={() => setSidebarOpen(true)}
-          />
+        <PageHeader title="Agents" onOpenSidebar={openSidebar} />
 
-          <main className="sessions-page-content">
-            {loading && <p className="loading">Loading agents...</p>}
+        <main className="sessions-page-content">
+          {loading && <p className="loading">Loading agents...</p>}
 
-            {error && (
-              <p className="error">Error loading agents: {error.message}</p>
-            )}
+          {error && (
+            <p className="error">Error loading agents: {error.message}</p>
+          )}
 
-            {!loading && !error && (
-              <>
-                <section className="agents-section">
-                  <h2>
-                    Active Agents
-                    {activeCount > 0 && (
-                      <span className="agents-count-badge">{activeCount}</span>
-                    )}
-                  </h2>
-                  {processes.length === 0 ? (
-                    <p className="agents-empty">No active agents</p>
-                  ) : (
-                    <div className="agents-list">
-                      {processes.map((process) => (
-                        <ProcessCard key={process.id} process={process} />
-                      ))}
-                    </div>
+          {!loading && !error && (
+            <>
+              <section className="agents-section">
+                <h2>
+                  Active Agents
+                  {activeCount > 0 && (
+                    <span className="agents-count-badge">{activeCount}</span>
                   )}
-                </section>
-
-                {terminatedProcesses.length > 0 && (
-                  <section className="agents-section">
-                    <h2>Recently Terminated</h2>
-                    <div className="agents-list">
-                      {terminatedProcesses.map((process) => (
-                        <ProcessCard
-                          key={process.id}
-                          process={process}
-                          isTerminated
-                        />
-                      ))}
-                    </div>
-                  </section>
+                </h2>
+                {processes.length === 0 ? (
+                  <p className="agents-empty">No active agents</p>
+                ) : (
+                  <div className="agents-list">
+                    {processes.map((process) => (
+                      <ProcessCard key={process.id} process={process} />
+                    ))}
+                  </div>
                 )}
-              </>
-            )}
-          </main>
-        </div>
+              </section>
+
+              {terminatedProcesses.length > 0 && (
+                <section className="agents-section">
+                  <h2>Recently Terminated</h2>
+                  <div className="agents-list">
+                    {terminatedProcesses.map((process) => (
+                      <ProcessCard
+                        key={process.id}
+                        process={process}
+                        isTerminated
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
+          )}
+        </main>
       </div>
     </div>
   );

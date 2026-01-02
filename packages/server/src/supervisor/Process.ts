@@ -71,6 +71,13 @@ export class Process {
   private sessionIdResolvers: Array<(id: string) => void> = [];
   private sessionIdResolved = false;
 
+  /** Whether the process is held (soft pause) */
+  private _isHeld = false;
+  /** When hold mode was activated */
+  private _holdSince: Date | null = null;
+  /** Resolver to wake up the iterator loop when resumed */
+  private _holdResolve: (() => void) | null = null;
+
   constructor(
     private sdkIterator: AsyncIterator<SDKMessage>,
     options: ProcessConstructorOptions,
@@ -133,6 +140,88 @@ export class Process {
   }
 
   /**
+   * Whether the process is currently held (soft pause).
+   */
+  get isHeld(): boolean {
+    return this._isHeld;
+  }
+
+  /**
+   * When the hold started, if currently held.
+   */
+  get holdSince(): Date | null {
+    return this._holdSince;
+  }
+
+  /**
+   * Set hold mode (soft pause) for this process.
+   * When held, the iterator loop will pause before calling next().
+   * When resumed, it continues from where it left off.
+   */
+  setHold(enabled: boolean): void {
+    if (enabled === this._isHeld) {
+      return; // No change
+    }
+
+    const log = getLogger();
+    this._isHeld = enabled;
+
+    if (enabled) {
+      // Entering hold mode
+      this._holdSince = new Date();
+      this.clearIdleTimer(); // Don't auto-complete while held
+      this.setState({ type: "hold", since: this._holdSince });
+      log.info(
+        {
+          event: "process_hold_enabled",
+          sessionId: this._sessionId,
+          processId: this.id,
+          projectId: this.projectId,
+        },
+        `Process held: ${this._sessionId}`,
+      );
+    } else {
+      // Resuming from hold
+      log.info(
+        {
+          event: "process_hold_disabled",
+          sessionId: this._sessionId,
+          processId: this.id,
+          projectId: this.projectId,
+          holdDurationMs: this._holdSince
+            ? Date.now() - this._holdSince.getTime()
+            : 0,
+        },
+        `Process resumed: ${this._sessionId}`,
+      );
+      this._holdSince = null;
+
+      // Wake up the iterator loop
+      if (this._holdResolve) {
+        this._holdResolve();
+        this._holdResolve = null;
+      }
+
+      // Transition back to running (or idle if iterator is done)
+      if (this.iteratorDone) {
+        this.transitionToIdle();
+      } else {
+        this.setState({ type: "running" });
+      }
+    }
+  }
+
+  /**
+   * Wait until hold mode is disabled.
+   * Called by processMessages() when held.
+   */
+  private waitUntilResumed(): Promise<void> {
+    return new Promise((resolve) => {
+      this._holdResolve = resolve;
+    });
+  }
+
+  /**
    * Update the permission mode for this process.
    * Increments modeVersion and emits a mode-change event for multi-tab sync.
    */
@@ -173,6 +262,13 @@ export class Process {
 
     this.clearIdleTimer();
     this.iteratorDone = true;
+
+    // Wake up hold wait if held (so processMessages loop can exit)
+    if (this._holdResolve) {
+      this._holdResolve();
+      this._holdResolve = null;
+    }
+    this._isHeld = false;
 
     // Resolve all pending tool approvals with denial
     for (const pending of this.pendingToolApprovals.values()) {
@@ -221,6 +317,8 @@ export class Process {
       stateType = "waiting-input";
     } else if (this._state.type === "idle") {
       stateType = "idle";
+    } else if (this._state.type === "hold") {
+      stateType = "hold";
     } else {
       stateType = "running";
     }
@@ -240,6 +338,11 @@ export class Process {
     // Add idleSince if idle
     if (this._state.type === "idle") {
       info.idleSince = this._state.since.toISOString();
+    }
+
+    // Add holdSince if held
+    if (this._state.type === "hold") {
+      info.holdSince = this._state.since.toISOString();
     }
 
     return info;
@@ -644,6 +747,15 @@ export class Process {
   private async processMessages(): Promise<void> {
     try {
       while (!this.iteratorDone) {
+        // Check if held - pause before calling iterator.next()
+        if (this._isHeld) {
+          await this.waitUntilResumed();
+          // After resuming, check if we should continue or if terminated while held
+          if (this.iteratorDone || this._state.type === "terminated") {
+            break;
+          }
+        }
+
         const result = await this.sdkIterator.next();
 
         if (result.done) {

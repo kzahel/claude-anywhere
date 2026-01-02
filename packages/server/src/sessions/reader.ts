@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   type AgentStatus,
   type UrlProjectId,
+  SESSION_TITLE_MAX_LENGTH,
   isIdeMetadata,
   stripIdeMetadata,
 } from "@claude-anywhere/shared";
@@ -13,7 +14,6 @@ import type {
   Session,
   SessionSummary,
 } from "../supervisor/types.js";
-import { SESSION_TITLE_MAX_LENGTH } from "../supervisor/types.js";
 
 // Claude model context window size (200K tokens)
 const CONTEXT_WINDOW_SIZE = 200_000;

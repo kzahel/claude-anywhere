@@ -167,13 +167,5 @@ export interface Project {
   lastActivity: string | null;
 }
 
-/**
- * Get the display title for a session.
- * Priority: customTitle > title > "Untitled"
- */
-export function getSessionDisplayTitle(
-  session: Pick<SessionSummary, "customTitle" | "title"> | null | undefined,
-): string {
-  if (!session) return "Untitled";
-  return session.customTitle ?? session.title ?? "Untitled";
-}
+// Re-export session display title utility from shared
+export { getSessionDisplayTitle } from "@claude-anywhere/shared";

@@ -9,8 +9,10 @@
  * 5. unread24h - Sessions with hasUnread and updatedAt within 24 hours (not in tiers 1-4)
  */
 
+import { getSessionDisplayTitle } from "@claude-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
+import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { SessionReader } from "../sessions/reader.js";
@@ -27,16 +29,18 @@ export interface InboxDeps {
   supervisor?: Supervisor;
   notificationService?: NotificationService;
   sessionIndexService?: SessionIndexService;
+  sessionMetadataService?: SessionMetadataService;
 }
 
 export interface InboxItem {
   sessionId: string;
   projectId: string;
   projectName: string;
-  sessionTitle: string | null;
+  sessionTitle: string;
   updatedAt: string;
   pendingInputType?: PendingInputType;
   processState?: ProcessStateType;
+  hasUnread?: boolean;
 }
 
 export interface InboxResponse {
@@ -58,10 +62,17 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 export function createInboxRoutes(deps: InboxDeps): Hono {
   const routes = new Hono();
 
-  // GET /api/inbox - Get prioritized inbox of sessions across all projects
+  // GET /api/inbox - Get prioritized inbox of sessions
+  // Optional query param: projectId - filter to a single project
   routes.get("/", async (c) => {
     const now = Date.now();
-    const projects = await deps.scanner.listProjects();
+    const filterProjectId = c.req.query("projectId");
+    const allProjects = await deps.scanner.listProjects();
+
+    // Filter to single project if projectId query param provided
+    const projects = filterProjectId
+      ? allProjects.filter((p) => p.id === filterProjectId)
+      : allProjects;
 
     // Collect all sessions with enriched data
     const allSessions: Array<{
@@ -70,6 +81,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       pendingInputType?: PendingInputType;
       processState?: ProcessStateType;
       hasUnread?: boolean;
+      customTitle?: string;
     }> = [];
 
     for (const project of projects) {
@@ -89,6 +101,13 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
 
       // Enrich each session with process state and notification data
       for (const session of sessions) {
+        // Check if session is archived (from metadata service)
+        const metadata = deps.sessionMetadataService?.getMetadata(session.id);
+        const isArchived = metadata?.isArchived ?? session.isArchived ?? false;
+
+        // Skip archived sessions entirely - they should never appear in inbox
+        if (isArchived) continue;
+
         let pendingInputType: PendingInputType | undefined;
         let processState: ProcessStateType | undefined;
 
@@ -119,6 +138,7 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
           pendingInputType,
           processState,
           hasUnread,
+          customTitle: metadata?.customTitle ?? session.customTitle,
         });
       }
     }
@@ -138,10 +158,14 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       sessionId: item.session.id,
       projectId: item.session.projectId,
       projectName: item.projectName,
-      sessionTitle: item.session.customTitle ?? item.session.title,
+      sessionTitle: getSessionDisplayTitle({
+        customTitle: item.customTitle,
+        title: item.session.title,
+      }),
       updatedAt: item.session.updatedAt,
       pendingInputType: item.pendingInputType,
       processState: item.processState,
+      hasUnread: item.hasUnread,
     });
 
     // Tier 1: needsAttention - sessions with pending input
@@ -171,10 +195,9 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       }
     }
 
-    // Tier 4: unread8h - unread and updated within 8 hours (exclude archived)
+    // Tier 4: unread8h - unread and updated within 8 hours
     for (const item of allSessions) {
       if (assignedSessionIds.has(item.session.id)) continue;
-      if (item.session.isArchived) continue; // Archived sessions are treated as read
       if (item.hasUnread) {
         const updatedAt = new Date(item.session.updatedAt).getTime();
         if (now - updatedAt <= EIGHT_HOURS_MS) {
@@ -184,10 +207,9 @@ export function createInboxRoutes(deps: InboxDeps): Hono {
       }
     }
 
-    // Tier 5: unread24h - unread and updated within 24 hours (exclude archived)
+    // Tier 5: unread24h - unread and updated within 24 hours
     for (const item of allSessions) {
       if (assignedSessionIds.has(item.session.id)) continue;
-      if (item.session.isArchived) continue; // Archived sessions are treated as read
       if (item.hasUnread) {
         const updatedAt = new Date(item.session.updatedAt).getTime();
         if (now - updatedAt <= TWENTY_FOUR_HOURS_MS) {

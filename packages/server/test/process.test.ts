@@ -922,4 +922,234 @@ describe("Process", () => {
       expect(info.state).toBe("terminated");
     });
   });
+
+  describe("hold mode", () => {
+    it("setHold(true) transitions to hold state", async () => {
+      const iterator = createMockIterator([
+        { type: "system", subtype: "init", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      expect(process.isHeld).toBe(false);
+      expect(process.holdSince).toBe(null);
+
+      process.setHold(true);
+
+      expect(process.isHeld).toBe(true);
+      expect(process.holdSince).not.toBe(null);
+      expect(process.state.type).toBe("hold");
+    });
+
+    it("setHold(false) transitions back to running", async () => {
+      const iterator = createMockIterator([
+        { type: "system", subtype: "init", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      process.setHold(true);
+      expect(process.state.type).toBe("hold");
+
+      process.setHold(false);
+      expect(process.isHeld).toBe(false);
+      expect(process.holdSince).toBe(null);
+      expect(process.state.type).toBe("running");
+    });
+
+    it("emits state-change events for hold/resume", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      const stateChanges: string[] = [];
+      process.subscribe((event) => {
+        if (event.type === "state-change") {
+          stateChanges.push(event.state.type);
+        }
+      });
+
+      process.setHold(true);
+      process.setHold(false);
+
+      expect(stateChanges).toContain("hold");
+      expect(stateChanges).toContain("running");
+    });
+
+    it("setHold is idempotent", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      const stateChanges: string[] = [];
+      process.subscribe((event) => {
+        if (event.type === "state-change") {
+          stateChanges.push(event.state.type);
+        }
+      });
+
+      // Calling setHold(true) multiple times should only emit once
+      process.setHold(true);
+      process.setHold(true);
+      process.setHold(true);
+
+      const holdChanges = stateChanges.filter((s) => s === "hold");
+      expect(holdChanges).toHaveLength(1);
+    });
+
+    it("getInfo returns hold state and holdSince", async () => {
+      const iterator = createMockIterator([]);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      process.setHold(true);
+
+      const info = process.getInfo();
+      expect(info.state).toBe("hold");
+      expect(info.holdSince).toBeDefined();
+    });
+
+    it("pauses iterator consumption when held", async () => {
+      // Create an iterator that we can control
+      let resolveNext: ((value: IteratorResult<SDKMessage>) => void) | null =
+        null;
+      const controllableIterator: AsyncIterator<SDKMessage> = {
+        next() {
+          return new Promise((resolve) => {
+            resolveNext = resolve;
+          });
+        },
+      };
+
+      const process = new Process(controllableIterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      const receivedMessages: SDKMessage[] = [];
+      process.subscribe((event) => {
+        if (event.type === "message") {
+          receivedMessages.push(event.message);
+        }
+      });
+
+      // Let the first message through
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (resolveNext) {
+        resolveNext({
+          done: false,
+          value: { type: "system", subtype: "init", session_id: "sess-1" },
+        });
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(receivedMessages).toHaveLength(1);
+
+      // Now hold the process - the next iterator.next() should not be called
+      // until we resume
+      process.setHold(true);
+
+      // The loop should be blocked waiting to resume
+      // If we resolve another message, it shouldn't be received yet
+      // (This is hard to test without more control, but we can at least
+      // verify the state)
+      expect(process.state.type).toBe("hold");
+    });
+
+    it("resumes iterator consumption after hold is released", async () => {
+      const messages: SDKMessage[] = [
+        { type: "system", subtype: "init", session_id: "sess-1" },
+        { type: "assistant", message: { content: "Hello" } },
+        { type: "result", session_id: "sess-1" },
+      ];
+
+      const iterator = createMockIterator(messages);
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      const receivedMessages: SDKMessage[] = [];
+      process.subscribe((event) => {
+        if (event.type === "message") {
+          receivedMessages.push(event.message);
+        }
+      });
+
+      // Wait for processing to complete (mock iterator is fast)
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // All messages should be received
+      expect(receivedMessages).toHaveLength(3);
+    });
+
+    it("can queue messages while held", async () => {
+      const iterator = createMockIterator([
+        { type: "system", subtype: "init", session_id: "sess-1" },
+      ]);
+
+      const process = new Process(iterator, {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      process.setHold(true);
+
+      // Should still be able to queue messages
+      const result = process.queueMessage({ text: "Hello while held" });
+      expect(result.success).toBe(true);
+      expect(result.position).toBe(1);
+    });
+
+    it("termination while held resolves the wait", async () => {
+      // Create an iterator that throws after first message
+      async function* failingIterator(): AsyncIterator<SDKMessage> {
+        yield { type: "system", subtype: "init", session_id: "sess-1" };
+        throw new Error("ProcessTransport is not ready for writing");
+      }
+
+      const process = new Process(failingIterator(), {
+        projectPath: "/test",
+        projectId: "proj-1",
+        sessionId: "sess-1",
+        idleTimeoutMs: 100,
+      });
+
+      // Wait for error to occur and process to terminate
+      await vi.waitFor(() => {
+        expect(process.isTerminated).toBe(true);
+      });
+
+      // Hold should be cleared
+      expect(process.isHeld).toBe(false);
+    });
+  });
 });

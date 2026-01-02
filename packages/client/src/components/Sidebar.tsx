@@ -2,9 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { ProcessStateType } from "../hooks/useFileActivity";
+import { useInbox } from "../hooks/useInbox";
 import { useProcesses } from "../hooks/useProcesses";
 import { type SessionSummary, getSessionDisplayTitle } from "../types";
+import { ActivityIndicator } from "./ActivityIndicator";
 import { SessionMenu } from "./SessionMenu";
+import {
+  SidebarIcons,
+  SidebarNavItem,
+  SidebarNavSection,
+} from "./SidebarNavItem";
 
 const SWIPE_THRESHOLD = 50; // Minimum distance to trigger close
 const SWIPE_ENGAGE_THRESHOLD = 15; // Minimum horizontal distance before swipe engages
@@ -72,6 +79,9 @@ export function Sidebar({
     RECENT_SESSIONS_INITIAL,
   );
   const { activeCount } = useProcesses();
+  // Filter inbox to this project only for badge count
+  const { totalNeedsAttention, totalActive } = useInbox({ projectId });
+  const inboxCount = totalNeedsAttention + totalActive;
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0]?.clientX ?? null;
@@ -253,163 +263,58 @@ export function Sidebar({
         </div>
 
         <div className="sidebar-actions">
-          <Link
+          <SidebarNavItem
             to={`/projects/${projectId}/new-session`}
-            className="sidebar-nav-button"
+            icon={SidebarIcons.newSession}
+            label="New Session"
             onClick={onNavigate}
-            title="New Session"
-          >
-            <svg
-              className="sidebar-new-session-icon"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="12" fill="var(--app-claude-orange)" />
-              <line
-                x1="12"
-                y1="7"
-                x2="12"
-                y2="17"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-              <line
-                x1="7"
-                y1="12"
-                x2="17"
-                y2="12"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className="sidebar-nav-text">New Session</span>
-          </Link>
+          />
 
-          <div className="sidebar-nav-links">
-            <Link
-              to="/inbox"
-              className="sidebar-nav-button"
+          {/* Project-specific navigation */}
+          <SidebarNavSection>
+            <SidebarNavItem
+              to={`/projects/${projectId}/inbox`}
+              icon={SidebarIcons.inbox}
+              label="Inbox"
+              badge={inboxCount}
               onClick={onNavigate}
-              title="Inbox"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
-                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-              </svg>
-              <span className="sidebar-nav-text">Inbox</span>
-            </Link>
-
-            <Link
-              to="/projects"
-              className="sidebar-nav-button"
-              onClick={onNavigate}
-              title="Projects"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              </svg>
-              <span className="sidebar-nav-text">Projects</span>
-            </Link>
-
-            <Link
+            />
+            <SidebarNavItem
               to={`/projects/${projectId}`}
-              className="sidebar-nav-button"
+              icon={SidebarIcons.allSessions}
+              label="All Sessions"
               onClick={onNavigate}
-              title="All Sessions"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <line x1="3" y1="9" x2="21" y2="9" />
-                <line x1="9" y1="21" x2="9" y2="9" />
-              </svg>
-              <span className="sidebar-nav-text">All Sessions</span>
-            </Link>
-
-            <Link
-              to="/agents"
-              className="sidebar-nav-button"
-              onClick={onNavigate}
-              title="Agents"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="3" y="11" width="18" height="10" rx="2" />
-                <circle cx="12" cy="5" r="3" />
-                <path d="M12 8v3" />
-                <circle cx="8" cy="16" r="1" />
-                <circle cx="16" cy="16" r="1" />
-              </svg>
-              <span className="sidebar-nav-text">Agents</span>
-              {activeCount > 0 && (
-                <span className="sidebar-nav-badge">{activeCount}</span>
-              )}
-            </Link>
-
-            <Link
-              to="/settings"
-              className="sidebar-nav-button"
-              onClick={onNavigate}
-              title="Settings"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-              <span className="sidebar-nav-text">Settings</span>
-            </Link>
-          </div>
+            />
+          </SidebarNavSection>
         </div>
 
         <div className="sidebar-sessions">
+          {/* Global navigation (scrolls with content) */}
+          <div className="sidebar-global-nav">
+            <div className="sidebar-nav-divider" />
+            <SidebarNavSection>
+              <SidebarNavItem
+                to="/projects"
+                icon={SidebarIcons.projects}
+                label="Projects"
+                onClick={onNavigate}
+              />
+              <SidebarNavItem
+                to="/agents"
+                icon={SidebarIcons.agents}
+                label="Agents"
+                badge={activeCount}
+                onClick={onNavigate}
+              />
+              <SidebarNavItem
+                to="/settings"
+                icon={SidebarIcons.settings}
+                label="Settings"
+                onClick={onNavigate}
+              />
+            </SidebarNavSection>
+          </div>
+
           {starredSessions.length > 0 && (
             <div className="sidebar-section">
               <h3 className="sidebar-section-title">Starred</h3>
@@ -492,30 +397,6 @@ export function Sidebar({
             olderSessions.length === 0 && (
               <p className="sidebar-empty">No sessions yet</p>
             )}
-
-          <div className="sidebar-all-sessions-link">
-            <Link
-              to={`/projects/${projectId}`}
-              className="sidebar-nav-button"
-              onClick={onNavigate}
-              title="All Sessions"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <line x1="3" y1="9" x2="21" y2="9" />
-                <line x1="9" y1="21" x2="9" y2="9" />
-              </svg>
-              <span className="sidebar-nav-text">All Sessions</span>
-            </Link>
-          </div>
         </div>
       </aside>
     </>
@@ -660,9 +541,7 @@ function SidebarSessionItem({
     const effectiveProcessState = processState ?? session.processState;
     if (effectiveProcessState === "running") {
       return (
-        <span className="sidebar-badge sidebar-badge-running">
-          <span className="sidebar-thinking-dot" />
-        </span>
+        <ActivityIndicator variant="badge" className="sidebar-badge-running" />
       );
     }
 

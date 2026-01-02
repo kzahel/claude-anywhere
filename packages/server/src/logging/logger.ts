@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import pino from "pino";
 
@@ -17,7 +18,7 @@ export const LOG_LEVELS = [
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
 export interface LogConfig {
-  /** Directory for log files. Default: .claude-anywhere/logs relative to cwd */
+  /** Directory for log files. Default: ~/.claude-anywhere/logs */
   logDir: string;
   /** Log filename. Default: server.log */
   logFile: string;
@@ -34,7 +35,7 @@ export interface LogConfig {
 }
 
 const defaultConfig: LogConfig = {
-  logDir: path.join(process.cwd(), ".claude-anywhere", "logs"),
+  logDir: path.join(os.homedir(), ".claude-anywhere", "logs"),
   logFile: "server.log",
   consoleLevel: (process.env.LOG_LEVEL as LogLevel) || "info",
   fileLevel:

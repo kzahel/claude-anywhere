@@ -76,7 +76,6 @@ export function NewSessionPage() {
           <NewSessionForm
             projectId={projectId}
             onOptimisticSession={addOptimisticSession}
-            showCancel
           />
         </main>
       </div>

@@ -1,75 +1,32 @@
-import type { ProcessStateType, UrlProjectId } from "@claude-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SessionStatus, SessionSummary } from "../types";
+import {
+  type FileChangeEvent,
+  type FileType,
+  type ProcessStateEvent,
+  type SessionCreatedEvent,
+  type SessionMetadataChangedEvent,
+  type SessionSeenEvent,
+  type SessionStatusEvent,
+  activityBus,
+} from "../lib/activityBus";
 
-// Re-export ProcessStateType for consumers of this hook
+// Re-export types for consumers
 export type { ProcessStateType } from "@claude-anywhere/shared";
-
-export type FileChangeType = "create" | "modify" | "delete";
-export type FileType =
-  | "session"
-  | "agent-session"
-  | "settings"
-  | "credentials"
-  | "telemetry"
-  | "other";
-
-export interface FileChangeEvent {
-  type: "file-change";
-  path: string;
-  relativePath: string;
-  changeType: FileChangeType;
-  timestamp: string;
-  fileType: FileType;
-}
-
-export interface SessionStatusEvent {
-  type: "session-status-changed";
-  sessionId: string;
-  /** Base64url-encoded project path (UrlProjectId format) */
-  projectId: UrlProjectId;
-  status: SessionStatus;
-  timestamp: string;
-}
-
-export interface SessionCreatedEvent {
-  type: "session-created";
-  session: SessionSummary;
-  timestamp: string;
-}
-
-export interface SessionSeenEvent {
-  type: "session-seen";
-  sessionId: string;
-  timestamp: string;
-  messageId?: string;
-}
-
-export interface ProcessStateEvent {
-  type: "process-state-changed";
-  sessionId: string;
-  /** Base64url-encoded project path (UrlProjectId format) */
-  projectId: UrlProjectId;
-  processState: ProcessStateType;
-  timestamp: string;
-}
-
-export interface SessionMetadataChangedEvent {
-  type: "session-metadata-changed";
-  sessionId: string;
-  /** Updated title (if changed) */
-  title?: string;
-  /** Updated archived status (if changed) */
-  archived?: boolean;
-  /** Updated starred status (if changed) */
-  starred?: boolean;
-  timestamp: string;
-}
+export type {
+  FileChangeEvent,
+  FileChangeType,
+  FileType,
+  ProcessStateEvent,
+  SessionCreatedEvent,
+  SessionMetadataChangedEvent,
+  SessionSeenEvent,
+  SessionStatusEvent,
+} from "../lib/activityBus";
 
 interface UseFileActivityOptions {
   /** Maximum number of events to keep in buffer (default: 500) */
   maxEvents?: number;
-  /** Whether to connect on mount (default: true) */
+  /** Whether to connect on mount (default: true) - ignored, bus is always connected */
   autoConnect?: boolean;
   /** Callback when a file change occurs */
   onFileChange?: (event: FileChangeEvent) => void;
@@ -87,13 +44,15 @@ interface UseFileActivityOptions {
   onReconnect?: () => void;
 }
 
-const API_BASE = "/api";
 const DEFAULT_MAX_EVENTS = 500;
 
+/**
+ * Hook to subscribe to activity events from the global activityBus.
+ * The bus manages a single SSE connection shared by all hook instances.
+ */
 export function useFileActivity(options: UseFileActivityOptions = {}) {
   const {
     maxEvents = DEFAULT_MAX_EVENTS,
-    autoConnect = true,
     onFileChange,
     onSessionStatusChange,
     onSessionCreated,
@@ -103,16 +62,12 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
     onReconnect,
   } = options;
 
+  // Local state for this hook instance
   const [events, setEvents] = useState<FileChangeEvent[]>([]);
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(activityBus.connected);
   const [paused, setPaused] = useState(false);
 
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  // Track if we've connected before (to distinguish reconnect from initial connect)
-  const hasConnectedRef = useRef(false);
+  // Use refs to avoid stale closures in callbacks
   const onFileChangeRef = useRef(onFileChange);
   onFileChangeRef.current = onFileChange;
   const onSessionStatusChangeRef = useRef(onSessionStatusChange);
@@ -127,134 +82,85 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
   onSessionMetadataChangeRef.current = onSessionMetadataChange;
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
+  const maxEventsRef = useRef(maxEvents);
+  maxEventsRef.current = maxEvents;
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
-  const connect = useCallback(() => {
-    if (eventSourceRef.current) return;
+  // Subscribe to all events from the bus
+  useEffect(() => {
+    const unsubscribers: (() => void)[] = [];
 
-    const es = new EventSource(`${API_BASE}/activity/stream`);
-
-    es.onopen = () => {
-      const isReconnect = hasConnectedRef.current;
-      hasConnectedRef.current = true;
-      setConnected(true);
-      if (isReconnect) {
-        onReconnectRef.current?.();
-      }
-    };
-
-    const handleFileChange = (event: MessageEvent) => {
-      if (event.data === undefined || event.data === null) return;
-
-      try {
-        const data = JSON.parse(event.data) as FileChangeEvent;
-
-        // Call the callback
+    // File change - buffer events and call callback
+    unsubscribers.push(
+      activityBus.on("file-change", (data) => {
         onFileChangeRef.current?.(data);
 
         // Add to events buffer (unless paused)
-        setEvents((prev) => {
-          const next = [data, ...prev];
-          return next.slice(0, maxEvents);
-        });
-      } catch {
-        // Ignore malformed JSON
-      }
-    };
-
-    const handleSessionStatusChange = (event: MessageEvent) => {
-      if (event.data === undefined || event.data === null) return;
-
-      try {
-        const data = JSON.parse(event.data) as SessionStatusEvent;
-        onSessionStatusChangeRef.current?.(data);
-      } catch {
-        // Ignore malformed JSON
-      }
-    };
-
-    const handleSessionCreated = (event: MessageEvent) => {
-      if (event.data === undefined || event.data === null) return;
-
-      try {
-        const data = JSON.parse(event.data) as SessionCreatedEvent;
-        onSessionCreatedRef.current?.(data);
-      } catch {
-        // Ignore malformed JSON
-      }
-    };
-
-    const handleSessionSeen = (event: MessageEvent) => {
-      if (event.data === undefined || event.data === null) return;
-
-      try {
-        const data = JSON.parse(event.data) as SessionSeenEvent;
-        onSessionSeenRef.current?.(data);
-      } catch {
-        // Ignore malformed JSON
-      }
-    };
-
-    const handleProcessStateChange = (event: MessageEvent) => {
-      if (event.data === undefined || event.data === null) return;
-
-      try {
-        const data = JSON.parse(event.data) as ProcessStateEvent;
-        onProcessStateChangeRef.current?.(data);
-      } catch {
-        // Ignore malformed JSON
-      }
-    };
-
-    const handleSessionMetadataChange = (event: MessageEvent) => {
-      if (event.data === undefined || event.data === null) return;
-
-      try {
-        const data = JSON.parse(event.data) as SessionMetadataChangedEvent;
-        onSessionMetadataChangeRef.current?.(data);
-      } catch {
-        // Ignore malformed JSON
-      }
-    };
-
-    es.addEventListener("connected", () => {
-      // Connection acknowledged
-    });
-
-    es.addEventListener("file-change", handleFileChange);
-    es.addEventListener("session-status-changed", handleSessionStatusChange);
-    es.addEventListener("session-created", handleSessionCreated);
-    es.addEventListener("session-seen", handleSessionSeen);
-    es.addEventListener("process-state-changed", handleProcessStateChange);
-    es.addEventListener(
-      "session-metadata-changed",
-      handleSessionMetadataChange,
+        if (!pausedRef.current) {
+          setEvents((prev) => {
+            const next = [data, ...prev];
+            return next.slice(0, maxEventsRef.current);
+          });
+        }
+      }),
     );
-    es.addEventListener("heartbeat", () => {
-      // Keep-alive, no action needed
-    });
 
-    es.onerror = () => {
-      setConnected(false);
-      es.close();
-      eventSourceRef.current = null;
+    // Other events - just call callbacks
+    unsubscribers.push(
+      activityBus.on("session-status-changed", (data) => {
+        onSessionStatusChangeRef.current?.(data);
+      }),
+    );
 
-      // Auto-reconnect after 2s
-      reconnectTimeoutRef.current = setTimeout(connect, 2000);
+    unsubscribers.push(
+      activityBus.on("session-created", (data) => {
+        onSessionCreatedRef.current?.(data);
+      }),
+    );
+
+    unsubscribers.push(
+      activityBus.on("session-seen", (data) => {
+        onSessionSeenRef.current?.(data);
+      }),
+    );
+
+    unsubscribers.push(
+      activityBus.on("process-state-changed", (data) => {
+        onProcessStateChangeRef.current?.(data);
+      }),
+    );
+
+    unsubscribers.push(
+      activityBus.on("session-metadata-changed", (data) => {
+        onSessionMetadataChangeRef.current?.(data);
+      }),
+    );
+
+    // Reconnect - update connected state and call callback
+    unsubscribers.push(
+      activityBus.on("reconnect", () => {
+        setConnected(true);
+        onReconnectRef.current?.();
+      }),
+    );
+
+    return () => {
+      for (const unsub of unsubscribers) {
+        unsub();
+      }
+    };
+  }, []);
+
+  // Sync connected state with bus (for initial render and disconnects)
+  useEffect(() => {
+    const checkConnection = () => {
+      setConnected(activityBus.connected);
     };
 
-    eventSourceRef.current = es;
-  }, [maxEvents]);
-
-  const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    setConnected(false);
+    // Check periodically since we don't have a disconnect event
+    const interval = setInterval(checkConnection, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const clearEvents = useCallback(() => {
@@ -281,16 +187,14 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
     [events],
   );
 
-  // Auto-connect on mount
-  useEffect(() => {
-    if (autoConnect) {
-      connect();
-    }
+  // Keep connect/disconnect for backward compatibility (they're no-ops now)
+  const connect = useCallback(() => {
+    // No-op - bus is always connected via main.tsx
+  }, []);
 
-    return () => {
-      disconnect();
-    };
-  }, [autoConnect, connect, disconnect]);
+  const disconnect = useCallback(() => {
+    // No-op - bus manages connection lifecycle
+  }, []);
 
   return {
     events,

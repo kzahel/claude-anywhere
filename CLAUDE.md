@@ -31,12 +31,12 @@ Never mention Claude, AI, or any AI assistant in commit messages. Write commit m
 
 ## Server Logs
 
-Server logs are written to `.claude-anywhere/logs/` in the project root:
+Server logs are written to `~/.claude-anywhere/logs/`:
 
 - `server.log` - Main server log (dev mode with `pnpm dev`)
 - `e2e-server.log` - Server log during E2E tests
 
-To view logs in real-time: `tail -f .claude-anywhere/logs/server.log`
+To view logs in real-time: `tail -f ~/.claude-anywhere/logs/server.log`
 
 All `console.log/error/warn` output is captured. Logs are JSON format in the file but pretty-printed to console.
 

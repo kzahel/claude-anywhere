@@ -27,6 +27,7 @@ export interface InboxItem {
   updatedAt: string;
   pendingInputType?: PendingInputType;
   processState?: ProcessStateType;
+  hasUnread?: boolean;
 }
 
 /**
@@ -227,6 +228,12 @@ export const api = {
       { method: "PUT", body: JSON.stringify({ mode }) },
     ),
 
+  setHold: (sessionId: string, hold: boolean) =>
+    fetchJSON<{ isHeld: boolean; holdSince: string | null; state: string }>(
+      `/sessions/${sessionId}/hold`,
+      { method: "PUT", body: JSON.stringify({ hold }) },
+    ),
+
   markSessionSeen: (
     sessionId: string,
     timestamp?: string,
@@ -301,5 +308,10 @@ export const api = {
   },
 
   // Inbox API
-  getInbox: () => fetchJSON<InboxResponse>("/inbox"),
+  getInbox: (projectId?: string) =>
+    fetchJSON<InboxResponse>(
+      projectId
+        ? `/inbox?projectId=${encodeURIComponent(projectId)}`
+        : "/inbox",
+    ),
 };

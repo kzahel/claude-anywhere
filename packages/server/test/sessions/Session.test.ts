@@ -67,75 +67,6 @@ describe("Session", () => {
     await writeFile(join(sessionDir, `${sessionId}.jsonl`), `${jsonl}\n`);
   }
 
-  describe("constructor", () => {
-    it("creates session with all properties", () => {
-      const session = new Session(
-        "session-123",
-        projectId,
-        deps,
-        "Auto title",
-        "Full auto title",
-        "Custom title",
-        true,
-        true,
-      );
-
-      expect(session.id).toBe("session-123");
-      expect(session.projectId).toBe(projectId);
-      expect(session.autoTitle).toBe("Auto title");
-      expect(session.fullTitle).toBe("Full auto title");
-      expect(session.customTitle).toBe("Custom title");
-      expect(session.isArchived).toBe(true);
-      expect(session.isStarred).toBe(true);
-    });
-
-    it("defaults archived and starred to false", () => {
-      const session = new Session(
-        "session-123",
-        projectId,
-        deps,
-        "Auto",
-        "Full",
-      );
-
-      expect(session.isArchived).toBe(false);
-      expect(session.isStarred).toBe(false);
-    });
-  });
-
-  describe("displayTitle (inherited from SessionView)", () => {
-    it("returns customTitle when set", () => {
-      const session = new Session(
-        "session-123",
-        projectId,
-        deps,
-        "Auto",
-        "Full",
-        "Custom",
-      );
-
-      expect(session.displayTitle).toBe("Custom");
-    });
-
-    it("returns autoTitle when no customTitle", () => {
-      const session = new Session(
-        "session-123",
-        projectId,
-        deps,
-        "Auto title",
-        "Full title",
-      );
-
-      expect(session.displayTitle).toBe("Auto title");
-    });
-
-    it("returns 'Untitled' when no titles", () => {
-      const session = new Session("session-123", projectId, deps, null, null);
-
-      expect(session.displayTitle).toBe("Untitled");
-    });
-  });
-
   describe("load", () => {
     it("loads session from disk with auto-title", async () => {
       await createSessionFile("session-456", "Hello, help me with this task");
@@ -146,6 +77,7 @@ describe("Session", () => {
       expect(session!.id).toBe("session-456");
       expect(session!.autoTitle).toBe("Hello, help me with this task");
       expect(session!.displayTitle).toBe("Hello, help me with this task");
+      expect(session!.projectId).toBe(projectId);
     });
 
     it("loads session with custom title from metadata", async () => {
@@ -185,6 +117,18 @@ describe("Session", () => {
 
       expect(session).toBeNull();
     });
+
+    it("includes all summary fields", async () => {
+      await createSessionFile("session-full", "Test prompt");
+
+      const session = await Session.load("session-full", projectId, deps);
+
+      expect(session).not.toBeNull();
+      expect(session!.createdAt).toBeDefined();
+      expect(session!.updatedAt).toBeDefined();
+      expect(session!.messageCount).toBe(1);
+      expect(session!.status).toEqual({ state: "idle" });
+    });
   });
 
   describe("fromSummary", () => {
@@ -198,9 +142,12 @@ describe("Session", () => {
         createdAt: "2024-01-01T00:00:00Z",
         updatedAt: "2024-01-02T00:00:00Z",
         messageCount: 10,
-        status: { state: "idle" },
+        status: { state: "owned", processId: "proc-1" },
         isArchived: true,
         isStarred: true,
+        pendingInputType: "tool-approval",
+        processState: "waiting-input",
+        hasUnread: true,
       };
 
       const session = Session.fromSummary(summary, deps);
@@ -212,6 +159,10 @@ describe("Session", () => {
       expect(session.displayTitle).toBe("Custom name");
       expect(session.isArchived).toBe(true);
       expect(session.isStarred).toBe(true);
+      expect(session.isActive).toBe(true);
+      expect(session.isWaitingForInput).toBe(true);
+      expect(session.hasUnread).toBe(true);
+      expect(session.needsAttention).toBe(true);
     });
   });
 
@@ -322,10 +273,7 @@ describe("Session", () => {
         uuid: "msg-new",
         timestamp: new Date().toISOString(),
       });
-      await writeFile(
-        join(sessionDir, "session-cache.jsonl"),
-        `${newJsonl}\n`,
-      );
+      await writeFile(join(sessionDir, "session-cache.jsonl"), `${newJsonl}\n`);
 
       const refreshed = await session!.refresh();
 
@@ -341,12 +289,6 @@ describe("Session", () => {
 
       expect(session!.getAutoTitle()).toBe("My auto title");
     });
-
-    it("returns null when no auto title", () => {
-      const session = new Session("session-no-auto", projectId, deps, null, null);
-
-      expect(session.getAutoTitle()).toBeNull();
-    });
   });
 
   describe("toJSON", () => {
@@ -359,21 +301,22 @@ describe("Session", () => {
       const session = await Session.load("session-json", projectId, deps);
       const json = session!.toJSON();
 
-      expect(json).toEqual({
-        id: "session-json",
-        projectId,
-        autoTitle: "Auto title here",
-        fullTitle: "Auto title here",
-        customTitle: "Custom name",
-        displayTitle: "Custom name",
-        isArchived: true,
-        isStarred: true,
-      });
+      expect(json.id).toBe("session-json");
+      expect(json.projectId).toBe(projectId);
+      expect(json.title).toBe("Auto title here");
+      expect(json.fullTitle).toBe("Auto title here");
+      expect(json.customTitle).toBe("Custom name");
+      expect(json.isArchived).toBe(true);
+      expect(json.isStarred).toBe(true);
+      expect(json.createdAt).toBeDefined();
+      expect(json.updatedAt).toBeDefined();
+      expect(json.messageCount).toBe(1);
+      expect(json.status).toEqual({ state: "idle" });
     });
   });
 
-  describe("hasCustomTitle (inherited from SessionView)", () => {
-    it("returns true when customTitle is set", async () => {
+  describe("inherited getters from SessionView", () => {
+    it("hasCustomTitle returns true when customTitle is set", async () => {
       await createSessionFile("session-has-custom", "Prompt");
       await metadataService.setTitle("session-has-custom", "Custom");
       const session = await Session.load("session-has-custom", projectId, deps);
@@ -381,25 +324,51 @@ describe("Session", () => {
       expect(session!.hasCustomTitle).toBe(true);
     });
 
-    it("returns false when no customTitle", async () => {
+    it("hasCustomTitle returns false when no customTitle", async () => {
       await createSessionFile("session-no-custom", "Prompt");
       const session = await Session.load("session-no-custom", projectId, deps);
 
       expect(session!.hasCustomTitle).toBe(false);
     });
-  });
 
-  describe("tooltipTitle (inherited from SessionView)", () => {
-    it("returns fullTitle for tooltips", async () => {
+    it("tooltipTitle returns fullTitle", async () => {
       await createSessionFile(
         "session-tooltip",
-        "This is a longer prompt that might be truncated in the title",
+        "This is a longer prompt for tooltip",
       );
       const session = await Session.load("session-tooltip", projectId, deps);
 
-      expect(session!.tooltipTitle).toBe(
-        "This is a longer prompt that might be truncated in the title",
-      );
+      expect(session!.tooltipTitle).toBe("This is a longer prompt for tooltip");
+    });
+
+    it("isIdle returns true for idle sessions", async () => {
+      await createSessionFile("session-idle", "Prompt");
+      const session = await Session.load("session-idle", projectId, deps);
+
+      expect(session!.isIdle).toBe(true);
+      expect(session!.isActive).toBe(false);
+      expect(session!.isExternal).toBe(false);
+    });
+
+    it("needsAttention reflects unread and pending state", () => {
+      const summary: AppSessionSummary = {
+        id: "session-attention",
+        projectId,
+        title: "Test",
+        fullTitle: "Test",
+        createdAt: "2024-01-01T00:00:00Z",
+        updatedAt: "2024-01-01T00:00:00Z",
+        messageCount: 1,
+        status: { state: "idle" },
+        hasUnread: true,
+        pendingInputType: "tool-approval",
+      };
+
+      const session = Session.fromSummary(summary, deps);
+
+      expect(session.needsAttention).toBe(true);
+      expect(session.hasUnread).toBe(true);
+      expect(session.pendingInputType).toBe("tool-approval");
     });
   });
 });

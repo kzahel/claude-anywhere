@@ -1,6 +1,10 @@
-import type { UrlProjectId } from "@claude-anywhere/shared";
+import {
+  type UrlProjectId,
+  getSessionDisplayTitle,
+} from "@claude-anywhere/shared";
 import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
+import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { SessionReader } from "../sessions/reader.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
@@ -11,10 +15,12 @@ export interface ProcessesDeps {
   scanner: ProjectScanner;
   readerFactory: (sessionDir: string) => SessionReader;
   sessionIndexService?: SessionIndexService;
+  sessionMetadataService?: SessionMetadataService;
 }
 
 /**
  * Enrich process info with session title, using cache when available.
+ * Checks custom title from metadata service first, then falls back to auto title.
  */
 async function enrichWithSessionTitle(
   process: ProcessInfo,
@@ -45,8 +51,20 @@ async function enrichWithSessionTitle(
       title = summary?.title ?? null;
     }
 
-    if (title) {
-      return { ...process, sessionTitle: title };
+    // Get custom title from metadata service if available
+    const metadata = deps.sessionMetadataService?.getMetadata(
+      process.sessionId,
+    );
+
+    // Use getSessionDisplayTitle to compute final title (customTitle > title > "Untitled")
+    const displayTitle = getSessionDisplayTitle({
+      customTitle: metadata?.customTitle,
+      title,
+    });
+
+    // Only set sessionTitle if we have something meaningful (not "Untitled")
+    if (displayTitle !== "Untitled") {
+      return { ...process, sessionTitle: displayTitle };
     }
   } catch {
     // Ignore errors - just return process without title
