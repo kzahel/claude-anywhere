@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  type AgentStatus,
   type UrlProjectId,
   isIdeMetadata,
   stripIdeMetadata,
@@ -23,13 +24,12 @@ export interface SessionReaderOptions {
   sessionDir: string;
 }
 
-/**
- * Status of an agent session, inferred from its messages.
- */
-export type AgentStatus = "pending" | "running" | "completed" | "failed";
+// Re-export AgentStatus for backwards compatibility
+export type { AgentStatus } from "@claude-anywhere/shared";
 
 /**
  * Agent session content returned by getAgentSession.
+ * Uses the server's Message type (loosely-typed JSONL pass-through).
  */
 export interface AgentSession {
   messages: Message[];
@@ -221,7 +221,7 @@ export class SessionReader {
 
     // Filter to only messages after the given ID (for incremental fetching)
     if (afterMessageId) {
-      const afterIndex = messages.findIndex((m) => m.id === afterMessageId);
+      const afterIndex = messages.findIndex((m) => m.uuid === afterMessageId);
       if (afterIndex !== -1) {
         return {
           ...summary,
@@ -477,13 +477,12 @@ export class SessionReader {
    * We pass through all fields from JSONL without stripping.
    * This preserves debugging info, DAG structure, and metadata.
    * The only transformation is:
-   * - Ensure id exists (fallback to index-based)
    * - Normalize content blocks (pass through all fields)
    * - Add computed orphanedToolUseIds
    */
   private convertMessage(
     raw: RawSessionMessage,
-    index: number,
+    _index: number,
     orphanedToolUses: Set<string> = new Set(),
   ): Message {
     // Normalize content blocks - pass through all fields
@@ -498,8 +497,6 @@ export class SessionReader {
     // Build message by spreading all raw fields, then override with normalized values
     const message: Message = {
       ...raw,
-      // Ensure id exists
-      id: raw.uuid ?? `msg-${index}`,
       // Include normalized content if message had content
       ...(raw.message && {
         message: {
@@ -507,14 +504,8 @@ export class SessionReader {
           ...(content !== undefined && { content }),
         },
       }),
-      // Also expose content at top level for convenience (matches SDK format)
-      ...(content !== undefined && { content }),
       // Ensure type is set
       type: raw.type,
-      // Map type to role for user/assistant messages
-      ...(raw.type === "user" || raw.type === "assistant"
-        ? { role: raw.type as "user" | "assistant" }
-        : {}),
     };
 
     // Identify orphaned tool_use IDs in this message's content

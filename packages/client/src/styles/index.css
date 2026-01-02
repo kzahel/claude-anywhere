@@ -537,6 +537,75 @@ h2 {
   align-self: flex-end;
 }
 
+/* Compact new session form (used on Sessions page) */
+.new-session-form-compact {
+  margin-bottom: 1.5rem;
+}
+
+.new-session-form-compact-input {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.new-session-form-compact-input textarea {
+  flex: 1;
+  padding: 0.75rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  resize: none;
+  box-sizing: border-box;
+}
+
+.new-session-form-compact-input textarea:focus {
+  outline: none;
+  border-color: var(--app-claude-orange);
+  box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.15);
+}
+
+.new-session-form-compact-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.attach-button-compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.attach-button-compact:hover:not(:disabled) {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.attach-button-compact:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pending-files-list-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
 /* Session page layout */
 .session-page {
   display: flex;
@@ -882,6 +951,13 @@ a.sidebar-nav-button {
 .sidebar-session-list li:hover .sidebar-session-menu,
 .sidebar-session-list li .sidebar-session-menu.is-open {
   visibility: visible;
+}
+
+/* On touch devices (no hover), always show the menu button */
+@media (hover: none) {
+  .sidebar-session-list li .sidebar-session-menu {
+    visibility: visible;
+  }
 }
 
 .sidebar-session-list li .sidebar-session-menu .session-menu-trigger {
@@ -2938,15 +3014,26 @@ a.sidebar-nav-button {
   color: var(--text-muted);
 }
 
+/* Read sessions - muted for contrast with unread */
+.session-list li > a strong {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.sidebar-session-list li > a {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 /* Unread session - Gmail-style bold/bright instead of badge */
 .session-list li.unread > a strong {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .sidebar-session-list li.unread > a {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .no-results {
@@ -3190,6 +3277,7 @@ a.sidebar-nav-button {
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
   text-align: left;
+  width: 100%;
 }
 
 .mode-option:hover:not(:disabled) {
@@ -3365,6 +3453,24 @@ a.sidebar-nav-button {
     width: 10px;
     height: 10px;
   }
+}
+
+/* Cancel link below the new session form */
+.new-session-cancel-link {
+  max-width: 600px;
+  margin: var(--space-4) auto 0;
+  text-align: center;
+}
+
+.new-session-cancel-link a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  transition: color 0.15s;
+}
+
+.new-session-cancel-link a:hover {
+  color: var(--text-primary);
 }
 
 /* ==========================================================================

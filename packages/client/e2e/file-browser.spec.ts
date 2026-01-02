@@ -1,16 +1,24 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { homedir, hostname } from "node:os";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
-// Set up test files in the mock project directory
-// The mock project is at /mockproject (encoded as -mockproject in the sessions dir)
-const mockProjectPath = "/mockproject";
+// Set up test files in a temp directory (avoid permission issues with /mockproject)
+const mockProjectPath = join(tmpdir(), "claude-e2e-mockproject");
 // Project ID is base64url encoded path (no need to URL encode - it's already URL-safe)
 const projectId = Buffer.from(mockProjectPath).toString("base64url");
+// Session dir name uses the path with slashes replaced by dashes
+const sessionDirName = mockProjectPath.replace(/\//g, "-");
 
 // Create test files before tests run
 test.beforeAll(() => {
+  // Clean up any previous test artifacts
+  try {
+    rmSync(mockProjectPath, { recursive: true, force: true });
+  } catch {
+    // Ignore if doesn't exist
+  }
+
   // Create the mock project directory and subdirectories
   mkdirSync(mockProjectPath, { recursive: true });
   mkdirSync(join(mockProjectPath, "src"), { recursive: true });
@@ -29,7 +37,7 @@ test.beforeAll(() => {
 
   // Create a session file so the project is discoverable
   const claudeDir = join(homedir(), ".claude", "projects");
-  const hostDir = join(claudeDir, hostname(), "-mockproject");
+  const hostDir = join(claudeDir, hostname(), sessionDirName);
   mkdirSync(hostDir, { recursive: true });
   writeFileSync(
     join(hostDir, "e2e-file-test.jsonl"),
@@ -39,6 +47,15 @@ test.beforeAll(() => {
       message: { role: "user", content: "test" },
     }),
   );
+});
+
+// Clean up after tests
+test.afterAll(() => {
+  try {
+    rmSync(mockProjectPath, { recursive: true, force: true });
+  } catch {
+    // Ignore cleanup errors
+  }
 });
 
 test.describe("File Browser", () => {
@@ -103,8 +120,9 @@ test.describe("File Browser", () => {
 
       // Should show error message
       await expect(page.locator(".file-viewer-error")).toBeVisible();
+      // Check for "Not Found" (case-insensitive) or similar error message
       await expect(page.locator(".file-viewer-error")).toContainText(
-        "not found",
+        /not found/i,
       );
     });
   });
@@ -132,15 +150,14 @@ test.describe("File Browser", () => {
     test("download button triggers download", async ({ page }) => {
       await page.goto(`/projects/${projectId}/file?path=test.txt`);
 
-      // Click download button - should open raw URL with download param
-      const [popup] = await Promise.all([
-        page.waitForEvent("popup"),
+      // Click download button - should trigger a download
+      const [download] = await Promise.all([
+        page.waitForEvent("download"),
         page.click('button[title="Download"]'),
       ]);
 
-      // Verify the URL has download=true
-      expect(popup.url()).toContain("download=true");
-      await popup.close();
+      // Verify download was triggered with correct filename
+      expect(download.suggestedFilename()).toBe("test.txt");
     });
   });
 

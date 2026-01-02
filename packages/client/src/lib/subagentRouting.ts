@@ -1,5 +1,6 @@
 import type { AgentContent, AgentContentMap } from "../hooks/useSession";
 import type { Message } from "../types";
+import { getMessageId } from "./mergeMessages";
 
 /**
  * Check if a message is from a subagent (Task tool).
@@ -23,7 +24,7 @@ export function extractAgentId(msg: { session_id?: string }): string | null {
 /**
  * Add a message to the agent content map.
  * Returns a new map with the message added (immutable update).
- * Deduplicates by message ID.
+ * Deduplicates by message ID using getMessageId (prefers uuid over id).
  */
 export function addMessageToAgentContent(
   agentContent: AgentContentMap,
@@ -35,8 +36,9 @@ export function addMessageToAgentContent(
     status: "running" as const,
   };
 
-  // Dedupe by message ID
-  if (existing.messages.some((m) => m.id === message.id)) {
+  // Dedupe by message ID using getMessageId
+  const messageId = getMessageId(message);
+  if (existing.messages.some((m) => getMessageId(m) === messageId)) {
     return agentContent;
   }
 

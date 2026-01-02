@@ -55,9 +55,38 @@ export const MessageList = memo(function MessageList({
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const isInitialLoadRef = useRef(true);
-  const isUserDraggingRef = useRef(false);
+  const isProgrammaticScrollRef = useRef(false);
   const lastHeightRef = useRef(0);
+  const followUpScrollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [thinkingExpanded, setThinkingExpanded] = useState(false);
+
+  // Scroll to bottom, marking it as programmatic so scroll handler ignores it
+  const scrollToBottom = useCallback((container: HTMLElement) => {
+    isProgrammaticScrollRef.current = true;
+    container.scrollTop = container.scrollHeight - container.clientHeight;
+    lastHeightRef.current = container.scrollHeight;
+
+    // Clear programmatic flag after scroll events have fired
+    requestAnimationFrame(() => {
+      isProgrammaticScrollRef.current = false;
+    });
+
+    // Schedule a follow-up scroll to catch any async rendering (markdown, syntax highlighting)
+    if (followUpScrollRef.current !== null) {
+      clearTimeout(followUpScrollRef.current);
+    }
+    followUpScrollRef.current = setTimeout(() => {
+      followUpScrollRef.current = null;
+      if (shouldAutoScrollRef.current) {
+        isProgrammaticScrollRef.current = true;
+        container.scrollTop = container.scrollHeight - container.clientHeight;
+        lastHeightRef.current = container.scrollHeight;
+        requestAnimationFrame(() => {
+          isProgrammaticScrollRef.current = false;
+        });
+      }
+    }, 50);
+  }, []);
 
   // Preprocess messages into render items and group into turns
   const renderItems = useMemo(() => preprocessMessages(messages), [messages]);
@@ -70,8 +99,11 @@ export const MessageList = memo(function MessageList({
     setThinkingExpanded((prev) => !prev);
   }, []);
 
-  // Track scroll position to determine if user is near bottom
+  // Track scroll position to determine if user is near bottom.
+  // Ignore programmatic scrolls - only user-initiated scrolls should affect auto-scroll state.
   const handleScroll = useCallback(() => {
+    if (isProgrammaticScrollRef.current) return;
+
     const container = containerRef.current?.parentElement;
     if (!container) return;
 
@@ -81,43 +113,17 @@ export const MessageList = memo(function MessageList({
     shouldAutoScrollRef.current = distanceFromBottom < threshold;
   }, []);
 
-  // Track when user is actively dragging (mouse/touch held down)
-  const handlePointerDown = useCallback(() => {
-    isUserDraggingRef.current = true;
-  }, []);
-
-  const handlePointerUp = useCallback(() => {
-    isUserDraggingRef.current = false;
-    // Re-check scroll position and immediately scroll to bottom if user ended near bottom
-    // This ensures auto-scroll resumes after user intentionally scrolls down
-    const container = containerRef.current?.parentElement;
-    if (container) {
-      const threshold = 100;
-      const distanceFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-      if (distanceFromBottom < threshold) {
-        shouldAutoScrollRef.current = true;
-        container.scrollTop = container.scrollHeight - container.clientHeight;
-      }
-    }
-  }, []);
-
-  // Attach scroll and pointer listeners to parent container
+  // Attach scroll listener to parent container
   useEffect(() => {
     const container = containerRef.current?.parentElement;
     if (!container) return;
 
     container.addEventListener("scroll", handleScroll);
-    container.addEventListener("pointerdown", handlePointerDown);
-    // Use window for pointerup to catch releases outside the container
-    window.addEventListener("pointerup", handlePointerUp);
 
     return () => {
       container.removeEventListener("scroll", handleScroll);
-      container.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [handleScroll, handlePointerDown, handlePointerUp]);
+  }, [handleScroll]);
 
   // Use ResizeObserver to detect content height changes (handles async markdown rendering)
   useEffect(() => {
@@ -130,17 +136,13 @@ export const MessageList = memo(function MessageList({
     const resizeObserver = new ResizeObserver(() => {
       const newHeight = scrollContainer.scrollHeight;
       const heightIncreased = newHeight > lastHeightRef.current;
-      lastHeightRef.current = newHeight;
 
-      // Auto-scroll when content height increases (if near bottom and not dragging)
-      if (
-        heightIncreased &&
-        shouldAutoScrollRef.current &&
-        !isUserDraggingRef.current
-      ) {
-        // Use scrollTop for immediate, reliable scrolling (avoids smooth scroll race conditions)
-        scrollContainer.scrollTop =
-          scrollContainer.scrollHeight - scrollContainer.clientHeight;
+      // Auto-scroll when content height increases and auto-scroll is enabled
+      if (heightIncreased && shouldAutoScrollRef.current) {
+        scrollToBottom(scrollContainer);
+      } else {
+        // Update height tracking even when not scrolling
+        lastHeightRef.current = newHeight;
       }
     });
 
@@ -151,8 +153,12 @@ export const MessageList = memo(function MessageList({
 
     return () => {
       resizeObserver.disconnect();
+      // Clean up any pending scroll on unmount
+      if (followUpScrollRef.current !== null) {
+        clearTimeout(followUpScrollRef.current);
+      }
     };
-  }, []);
+  }, [scrollToBottom]);
 
   // Force scroll to bottom when scrollTrigger changes (user sent a message)
   useEffect(() => {
@@ -160,21 +166,21 @@ export const MessageList = memo(function MessageList({
       shouldAutoScrollRef.current = true;
       const container = containerRef.current?.parentElement;
       if (container) {
-        container.scrollTop = container.scrollHeight - container.clientHeight;
+        scrollToBottom(container);
       }
     }
-  }, [scrollTrigger]);
+  }, [scrollTrigger, scrollToBottom]);
 
   // Initial scroll to bottom on first render
   useEffect(() => {
     if (isInitialLoadRef.current && renderItems.length > 0) {
       const container = containerRef.current?.parentElement;
       if (container) {
-        container.scrollTop = container.scrollHeight - container.clientHeight;
+        scrollToBottom(container);
       }
       isInitialLoadRef.current = false;
     }
-  }, [renderItems.length]);
+  }, [renderItems.length, scrollToBottom]);
 
   return (
     <div className="message-list" ref={containerRef}>

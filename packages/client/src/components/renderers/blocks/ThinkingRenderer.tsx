@@ -37,16 +37,22 @@ function ThinkingRendererComponent({
     );
   }
 
-  // Collapsed: small inline button
+  // Collapsed: small inline button with pulsing when streaming
+  const collapsedClass = context.isStreaming
+    ? "thinking-block thinking-streaming-collapsed"
+    : "thinking-block";
+
   return (
-    <div className="thinking-block">
+    <div className={collapsedClass}>
       <button
         type="button"
         className="thinking-toggle-collapsed"
         onClick={context.toggleThinkingExpanded}
         aria-expanded={false}
       >
-        <span className="thinking-label">Thinking</span>
+        <span className="thinking-label">
+          {context.isStreaming ? "Thinking..." : "Thinking"}
+        </span>
         <span className="thinking-icon">▼</span>
       </button>
     </div>

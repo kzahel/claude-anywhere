@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import { mergeJSONLMessages, mergeSSEMessage } from "../lib/mergeMessages";
+import {
+  getMessageId,
+  mergeJSONLMessages,
+  mergeSSEMessage,
+} from "../lib/mergeMessages";
 import { findPendingTasks } from "../lib/pendingTasks";
 import type {
   ContentBlock,
@@ -163,11 +167,15 @@ export function useSession(
     const tempId = `temp-${Date.now()}`;
     setMessages((prev) => {
       const lastMsg = prev[prev.length - 1];
+      // Use getMessageId for parent reference (prefers uuid over id)
+      const parentId = lastMsg ? getMessageId(lastMsg) : null;
       const msg: Message = {
+        // Phase 4c: Set both uuid and id for consistency during transition
+        uuid: tempId,
         id: tempId,
         type: "user",
         message: { role: "user", content: text },
-        parentUuid: lastMsg?.id ?? null,
+        parentUuid: parentId,
         timestamp: new Date().toISOString(),
       };
       return [...prev, msg];
@@ -178,13 +186,13 @@ export function useSession(
   const removeOptimisticMessage = useCallback((text: string) => {
     setMessages((prev) => {
       // Find the last temp message with matching content (iterate backwards)
+      // Check raw id for temp- prefix (temp messages have id but may also have uuid)
       for (let i = prev.length - 1; i >= 0; i--) {
         const m = prev[i];
         if (!m) continue;
-        if (
-          m.id.startsWith("temp-") &&
-          (m.message?.content === text || m.content === text)
-        ) {
+        // Phase 4c: prefer message.content over top-level content
+        const msgContent = m.message?.content ?? m.content;
+        if (m.id?.startsWith("temp-") && msgContent === text) {
           return [...prev.slice(0, i), ...prev.slice(i + 1)];
         }
       }
@@ -193,10 +201,11 @@ export function useSession(
   }, []);
 
   // Update lastMessageIdRef when messages change
+  // Use getMessageId to prefer uuid over id
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
     if (lastMessage) {
-      lastMessageIdRef.current = lastMessage.id;
+      lastMessageIdRef.current = getMessageId(lastMessage);
     }
   }, [messages]);
 
@@ -283,13 +292,16 @@ export function useSession(
             );
 
             // Merge into agentContent state, deduping by message ID
+            // Use getMessageId to prefer uuid over id
             setAgentContent((prev) => {
               const existing = prev[agentId];
               if (existing && existing.messages.length > 0) {
                 // Already have content (maybe from SSE), merge without duplicates
-                const existingIds = new Set(existing.messages.map((m) => m.id));
+                const existingIds = new Set(
+                  existing.messages.map((m) => getMessageId(m)),
+                );
                 const newMessages = agentData.messages.filter(
-                  (m) => !existingIds.has(m.id),
+                  (m) => !existingIds.has(getMessageId(m)),
                 );
                 return {
                   ...prev,
@@ -471,7 +483,7 @@ export function useSession(
           status: "running" as const,
         };
         const existingIdx = existing.messages.findIndex(
-          (m) => m.id === messageId,
+          (m) => getMessageId(m) === messageId,
         );
 
         if (existingIdx >= 0) {
@@ -498,7 +510,7 @@ export function useSession(
     // Route to main messages
     setMessages((prev) => {
       // Find existing streaming message or create new one
-      const existingIdx = prev.findIndex((m) => m.id === messageId);
+      const existingIdx = prev.findIndex((m) => getMessageId(m) === messageId);
 
       if (existingIdx >= 0) {
         // Update existing
@@ -743,8 +755,9 @@ export function useSession(
               messages: [],
               status: "running" as const,
             };
-            // Dedupe by message ID
-            if (existing.messages.some((m) => m.id === incoming.id)) {
+            // Dedupe by message ID using getMessageId
+            const incomingId = getMessageId(incoming);
+            if (existing.messages.some((m) => getMessageId(m) === incomingId)) {
               return prev;
             }
             return {
@@ -766,8 +779,12 @@ export function useSession(
             tempIdMappingsRef.current,
           );
           // Update mappings if a temp was replaced
+          // Use getMessageId to get the canonical incoming message ID
           if (result.replacedTempId) {
-            tempIdMappingsRef.current.set(result.replacedTempId, incoming.id);
+            tempIdMappingsRef.current.set(
+              result.replacedTempId,
+              getMessageId(incoming),
+            );
           }
           return result.messages;
         });

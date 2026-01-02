@@ -46,3 +46,26 @@ Environment variables:
 - `LOG_LEVEL` - Minimum level: fatal, error, warn, info, debug, trace (default: info)
 - `LOG_TO_FILE` - Set to "false" to disable file logging
 - `LOG_TO_CONSOLE` - Set to "false" to disable console logging
+
+## Validating Session Data
+
+Validate JSONL session files against Zod schemas:
+
+```bash
+# Validate all sessions in ~/.claude/projects
+npx tsx scripts/validate-jsonl.ts
+
+# Validate a specific file or directory
+npx tsx scripts/validate-jsonl.ts /path/to/session.jsonl
+```
+
+Run this after schema changes to verify compatibility with existing session data.
+
+## Type System
+
+Types are defined in `packages/shared/src/claude-sdk-schema/` (Zod schemas as source of truth).
+
+Key patterns:
+- **Message identification**: Use `getMessageId(m)` helper which returns `uuid ?? id`
+- **Content access**: Prefer `message.content` over top-level `content`
+- **Type discrimination**: Use `type` field (user/assistant/system/summary)

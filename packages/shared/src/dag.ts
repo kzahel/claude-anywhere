@@ -8,10 +8,19 @@
 
 /**
  * Interface for items that can be ordered by parent chain.
+ * Items must have at least one of `uuid` or `id` for identification.
  */
 export interface DagOrderable {
-  id: string;
+  uuid?: string;
+  id?: string;
   parentUuid?: string | null;
+}
+
+/**
+ * Get the canonical ID for a DagOrderable item, preferring uuid over id.
+ */
+function getDagId(item: DagOrderable): string {
+  return item.uuid ?? item.id ?? "";
 }
 
 /**
@@ -26,7 +35,7 @@ export function needsReorder<T extends DagOrderable>(items: T[]): boolean {
     if (item.parentUuid && !seen.has(item.parentUuid)) {
       return true;
     }
-    seen.add(item.id);
+    seen.add(getDagId(item));
   }
   return false;
 }
@@ -60,10 +69,11 @@ export function orderByParentChain<T extends DagOrderable>(items: T[]): T[] {
 
   function visit(parentId: string | null) {
     for (const item of children.get(parentId) ?? []) {
-      if (visited.has(item.id)) continue;
-      visited.add(item.id);
+      const itemId = getDagId(item);
+      if (visited.has(itemId)) continue;
+      visited.add(itemId);
       result.push(item);
-      visit(item.id);
+      visit(itemId);
     }
   }
 
@@ -71,7 +81,7 @@ export function orderByParentChain<T extends DagOrderable>(items: T[]): T[] {
 
   // Append unvisited items (those not in the parentUuid chain)
   for (const item of items) {
-    if (!visited.has(item.id)) {
+    if (!visited.has(getDagId(item))) {
       result.push(item);
     }
   }

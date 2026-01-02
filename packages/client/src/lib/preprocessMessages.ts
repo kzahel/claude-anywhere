@@ -4,6 +4,7 @@ import type {
   ToolCallItem,
   ToolResultData,
 } from "../types/renderItems";
+import { getMessageId } from "./mergeMessages";
 
 /**
  * Preprocess messages into render items, pairing tool_use with tool_result.
@@ -38,22 +39,27 @@ function processMessage(
   pendingToolCalls: Map<string, number>,
   orphanedToolIds: Set<string>,
 ): void {
-  // Get content from nested message object (SDK structure) or top-level
+  const msgId = getMessageId(msg);
+
+  // Get content from nested message object (SDK structure) first, fall back to top-level
+  // Phase 4c: prefer message.content over top-level content
   const content =
-    msg.content ??
-    (msg.message as { content?: string | ContentBlock[] } | undefined)?.content;
+    (msg.message as { content?: string | ContentBlock[] } | undefined)
+      ?.content ?? msg.content;
 
-  // Get role from nested message or top-level
+  // Use type for discrimination (SDK field), fall back to role for legacy data
+  // Phase 4c: prefer type over role, but maintain backward compatibility
   const role =
-    msg.role ??
-    (msg.message as { role?: "user" | "assistant" } | undefined)?.role;
+    (msg.message as { role?: "user" | "assistant" } | undefined)?.role ??
+    msg.role;
+  const isUserMessage = msg.type === "user" || role === "user";
 
-  // String content = user prompt (only if role is user or type is user)
+  // String content = user prompt (only if type is user)
   if (typeof content === "string") {
-    if (role === "user" || msg.type === "user") {
+    if (isUserMessage) {
       items.push({
         type: "user_prompt",
-        id: msg.id,
+        id: msgId,
         content,
         sourceMessages: [msg],
         isSubagent: msg.isSubagent,
@@ -64,7 +70,7 @@ function processMessage(
     if (content.trim()) {
       items.push({
         type: "text",
-        id: msg.id,
+        id: msgId,
         text: content,
         sourceMessages: [msg],
         isSubagent: msg.isSubagent,
@@ -80,7 +86,7 @@ function processMessage(
 
   // Check if this is a user message with only tool_result blocks
   const isToolResultMessage =
-    role === "user" && content.every((b) => b.type === "tool_result");
+    isUserMessage && content.every((b) => b.type === "tool_result");
 
   if (isToolResultMessage) {
     // Attach results to pending tool calls
@@ -93,10 +99,10 @@ function processMessage(
   }
 
   // Check if this is a real user prompt (not tool results)
-  if (role === "user") {
+  if (isUserMessage) {
     items.push({
       type: "user_prompt",
-      id: msg.id,
+      id: msgId,
       content,
       sourceMessages: [msg],
       isSubagent: msg.isSubagent,
@@ -121,7 +127,7 @@ function processMessage(
     const block = content[i];
     if (!block) continue;
 
-    const blockId = `${msg.id}-${i}`;
+    const blockId = `${msgId}-${i}`;
 
     if (block.type === "text") {
       if (block.text?.trim()) {

@@ -40,6 +40,16 @@ export interface DagNode {
   raw: RawSessionMessage;
 }
 
+/** Info about an alternate branch (not selected as active) */
+export interface AlternateBranch {
+  /** The tip node of this branch */
+  tipUuid: string;
+  /** Number of messages from root to tip */
+  length: number;
+  /** Type of the tip message (user/assistant) */
+  tipType: string;
+}
+
 /** Result of building and traversing the DAG */
 export interface DagResult {
   /** Messages on the active branch, in conversation order (root to tip) */
@@ -48,6 +58,46 @@ export interface DagResult {
   activeBranchUuids: Set<string>;
   /** The tip node (most recent message with no children), or null if empty */
   tip: DagNode | null;
+  /** Whether the session has multiple branches (forks detected) */
+  hasBranches: boolean;
+  /** Info about alternate branches not selected as active */
+  alternateBranches: AlternateBranch[];
+}
+
+/**
+ * Walk from a tip to root, returning the branch length.
+ * Also handles compact_boundary nodes by following logicalParentUuid.
+ */
+function walkBranchLength(
+  tipUuid: string,
+  nodeMap: Map<string, DagNode>,
+): number {
+  let length = 0;
+  let currentUuid: string | null = tipUuid;
+  const visited = new Set<string>();
+
+  while (currentUuid && !visited.has(currentUuid)) {
+    visited.add(currentUuid);
+    const node = nodeMap.get(currentUuid);
+    if (!node) break;
+
+    length++;
+
+    // Determine next node: use parentUuid, or logicalParentUuid for compact_boundary
+    let nextUuid = node.parentUuid;
+    if (
+      !nextUuid &&
+      node.raw.type === "system" &&
+      node.raw.subtype === "compact_boundary" &&
+      node.raw.logicalParentUuid
+    ) {
+      nextUuid = node.raw.logicalParentUuid;
+    }
+
+    currentUuid = nextUuid;
+  }
+
+  return length;
 }
 
 /**
@@ -56,7 +106,7 @@ export interface DagResult {
  * Algorithm:
  * 1. Build maps: uuid → node, parentUuid → children
  * 2. Find tips: messages with no children
- * 3. Select active tip: latest by lineIndex if multiple tips
+ * 3. Select active tip: longest branch wins (tiebreaker: latest lineIndex)
  * 4. Walk from tip to root via parentUuid chain
  * 5. Return active branch in conversation order (root to tip)
  *
@@ -92,22 +142,46 @@ export function buildDag(messages: RawSessionMessage[]): DagResult {
     }
   }
 
-  // Find tips (nodes with no children)
-  const tips: DagNode[] = [];
+  // Find tips (nodes with no children) and calculate branch lengths
+  const tipsWithLength: Array<{ node: DagNode; length: number }> = [];
   for (const node of nodeMap.values()) {
     const children = childrenMap.get(node.uuid);
     if (!children || children.length === 0) {
-      tips.push(node);
+      const length = walkBranchLength(node.uuid, nodeMap);
+      tipsWithLength.push({ node, length });
     }
   }
 
-  // Select the "active" tip (latest by lineIndex)
-  const tip =
-    tips.length > 0
-      ? tips.reduce((latest, node) =>
-          node.lineIndex > latest.lineIndex ? node : latest,
-        )
+  // Select the "active" tip: longest branch wins, tiebreaker is latest lineIndex
+  // This ensures we show the most complete conversation, not just the most recent append
+  const selectedTip =
+    tipsWithLength.length > 0
+      ? tipsWithLength.reduce((best, current) => {
+          if (current.length > best.length) return current;
+          if (
+            current.length === best.length &&
+            current.node.lineIndex > best.node.lineIndex
+          ) {
+            return current;
+          }
+          return best;
+        })
       : null;
+
+  const tip = selectedTip?.node ?? null;
+  const hasBranches = tipsWithLength.length > 1;
+
+  // Build alternate branches info (all tips except the selected one)
+  const alternateBranches: AlternateBranch[] = hasBranches
+    ? tipsWithLength
+        .filter((t) => t.node.uuid !== tip?.uuid)
+        .map((t) => ({
+          tipUuid: t.node.uuid,
+          length: t.length,
+          tipType: t.node.raw.type,
+        }))
+        .sort((a, b) => b.length - a.length) // Sort by length descending
+    : [];
 
   // Walk from tip to root, collecting the active branch
   const activeBranch: DagNode[] = [];
@@ -135,7 +209,13 @@ export function buildDag(messages: RawSessionMessage[]): DagResult {
     current = nextUuid ? (nodeMap.get(nextUuid) ?? null) : null;
   }
 
-  return { activeBranch, activeBranchUuids, tip };
+  return {
+    activeBranch,
+    activeBranchUuids,
+    tip,
+    hasBranches,
+    alternateBranches,
+  };
 }
 
 /**

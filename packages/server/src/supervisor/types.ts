@@ -1,4 +1,10 @@
-import type { UrlProjectId } from "@claude-anywhere/shared";
+import type {
+  ContextUsage,
+  InputRequest,
+  PendingInputType,
+  ProcessStateType,
+  UrlProjectId,
+} from "@claude-anywhere/shared";
 import type { PermissionMode, SDKMessage } from "../sdk/types.js";
 
 // Constants
@@ -9,6 +15,14 @@ export const SESSION_TITLE_MAX_LENGTH = 120;
 // Re-export path utilities for backward compatibility
 // See packages/server/src/projects/paths.ts for full documentation on encoding schemes
 export { decodeProjectId, encodeProjectId } from "../projects/paths.js";
+
+// Re-export shared types used by server
+export type {
+  ContextUsage,
+  InputRequest,
+  PendingInputType,
+  ProcessStateType,
+} from "@claude-anywhere/shared";
 
 // Project discovery
 export interface Project {
@@ -32,17 +46,6 @@ export type SessionStatus =
       modeVersion?: number;
     } // we control it
   | { state: "external" }; // another process owns it
-
-/** Type of pending input request for notification badges */
-export type PendingInputType = "tool-approval" | "user-question";
-
-/** Context usage information extracted from the last assistant message */
-export interface ContextUsage {
-  /** Total input tokens for the last request (fresh + cached) */
-  inputTokens: number;
-  /** Percentage of context window used (based on 200K limit) */
-  percentage: number;
-}
 
 // Session metadata (light, for lists)
 export interface SessionSummary {
@@ -74,6 +77,7 @@ export interface SessionSummary {
 
 /**
  * Content block in messages - loosely typed to preserve all fields.
+ * This is the server's internal representation for JSONL parsing.
  */
 export interface ContentBlock {
   type: string;
@@ -99,15 +103,22 @@ export interface ContentBlock {
  *
  * We pass through all fields from JSONL without stripping.
  * This preserves debugging info, DAG structure, and metadata.
+ *
+ * Note: Use `uuid` for message identification. The `message.content` nested
+ * field contains the actual content. Use `type` for discrimination (user/assistant).
  */
 export interface Message {
-  id: string;
   type: string;
-  role?: "user" | "assistant" | "system";
-  content?: string | ContentBlock[];
+  uuid?: string;
   timestamp?: string;
   // DAG structure
   parentUuid?: string | null;
+  // Nested message structure from SDK
+  message?: {
+    content?: string | ContentBlock[];
+    role?: string;
+    [key: string]: unknown;
+  };
   // Tool use related
   toolUse?: {
     id: string;
@@ -124,25 +135,6 @@ export interface Message {
 // Full session with messages
 export interface Session extends SessionSummary {
   messages: Message[];
-}
-
-// Process state types
-export type ProcessStateType =
-  | "running"
-  | "idle"
-  | "waiting-input"
-  | "terminated";
-
-// Input request (tool approval, question, etc.)
-export interface InputRequest {
-  id: string;
-  sessionId: string;
-  type: "tool-approval" | "question" | "choice";
-  prompt: string;
-  options?: string[]; // for choice type
-  toolName?: string; // for tool-approval
-  toolInput?: unknown; // for tool-approval
-  timestamp: string;
 }
 
 // Process state machine

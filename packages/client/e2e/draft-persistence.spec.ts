@@ -59,7 +59,7 @@ test.describe("Draft Persistence", () => {
       const textarea = page.locator(".new-session-form textarea");
       await textarea.fill("Starting a session");
       await page.waitForTimeout(700); // Wait for debounce
-      await page.click(".new-session-form button");
+      await page.click(".new-session-form .submit-button");
 
       // Wait for navigation to session page
       await expect(page).toHaveURL(/\/sessions\//);
@@ -79,7 +79,7 @@ test.describe("Draft Persistence", () => {
       await page.waitForSelector(".project-list a");
       await page.locator(".project-list a").first().click();
       await page.fill(".new-session-form textarea", "Initial message");
-      await page.click(".new-session-form button");
+      await page.click(".new-session-form .submit-button");
 
       // Wait for session page
       await expect(page).toHaveURL(/\/sessions\//);
@@ -115,7 +115,7 @@ test.describe("Draft Persistence", () => {
       await page.waitForSelector(".project-list a");
       await page.locator(".project-list a").first().click();
       await page.fill(".new-session-form textarea", "Initial message");
-      await page.click(".new-session-form button");
+      await page.click(".new-session-form .submit-button");
 
       // Wait for session page and response to complete
       await expect(page).toHaveURL(/\/sessions\//);
@@ -144,7 +144,7 @@ test.describe("Draft Persistence", () => {
       await page.waitForSelector(".project-list a");
       await page.locator(".project-list a").first().click();
       await page.fill(".new-session-form textarea", "Initial message");
-      await page.click(".new-session-form button");
+      await page.click(".new-session-form .submit-button");
 
       // Wait for session page and first response
       await expect(page).toHaveURL(/\/sessions\//);

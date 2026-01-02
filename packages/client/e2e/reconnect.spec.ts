@@ -9,7 +9,7 @@ test.describe("SSE Streaming", () => {
     await page.locator(".project-list a").first().click();
 
     await page.fill(".new-session-form textarea", "Test");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     // Wait for assistant message to appear (session streaming works)
     await expect(page.locator(".assistant-turn")).toBeVisible({

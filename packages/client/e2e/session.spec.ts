@@ -8,7 +8,7 @@ test.describe("Session Flow", () => {
 
     // Type a message
     await page.fill(".new-session-form textarea", "Hello Claude");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     // Should navigate to chat page
     await expect(page).toHaveURL(/\/sessions\//);
@@ -23,7 +23,7 @@ test.describe("Session Flow", () => {
     await page.locator(".project-list a").first().click();
 
     await page.fill(".new-session-form textarea", "Test message");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     // Wait for assistant message to appear
     await expect(page.locator(".assistant-turn")).toBeVisible({
@@ -40,7 +40,7 @@ test.describe("Session Flow", () => {
     await page.locator(".project-list a").first().click();
 
     await page.fill(".new-session-form textarea", "Test");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     // Should show processing indicator while agent is working
     await expect(page.locator(".processing-indicator")).toBeVisible({
@@ -63,7 +63,7 @@ test.describe("Session Flow", () => {
 
     // Start session
     await page.fill(".new-session-form textarea", "First message");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     // Wait for response and idle status (status indicator hidden when idle)
     await expect(page.locator(".assistant-turn")).toBeVisible({

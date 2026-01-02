@@ -8,7 +8,7 @@ test.describe("Permission Mode", () => {
 
     // Start a session first
     await page.fill(".new-session-form textarea", "Test message");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     // Wait for session page to load
     await expect(page.locator(".session-messages")).toBeVisible();
@@ -26,7 +26,7 @@ test.describe("Permission Mode", () => {
 
     // Start a session
     await page.fill(".new-session-form textarea", "Test message");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     await expect(page.locator(".session-messages")).toBeVisible();
 
@@ -58,7 +58,7 @@ test.describe("Permission Mode", () => {
     await page.locator(".project-list a").first().click();
 
     await page.fill(".new-session-form textarea", "Test message");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     await expect(page.locator(".session-messages")).toBeVisible();
 
@@ -90,7 +90,7 @@ test.describe("Permission Mode", () => {
 
     // Start a session
     await page.fill(".new-session-form textarea", "Test message");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     await expect(page.locator(".session-messages")).toBeVisible();
 
@@ -130,7 +130,7 @@ test.describe("Permission Mode", () => {
 
     // Start a session
     await page.fill(".new-session-form textarea", "Test message");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     await expect(page.locator(".session-messages")).toBeVisible();
 
@@ -164,7 +164,7 @@ test.describe("Permission Mode", () => {
 
     // Start a session with a message
     await page.fill(".new-session-form textarea", "Test message for sync");
-    await page.click(".new-session-form button");
+    await page.click(".new-session-form .submit-button");
 
     await expect(page.locator(".session-messages")).toBeVisible();
 

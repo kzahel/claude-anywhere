@@ -109,6 +109,20 @@ describe("Real SDK E2E", () => {
       } catch {
         // Ignore cleanup errors
       }
+
+      // Also clean up the SDK project directory in ~/.claude/projects/
+      // The SDK creates project dirs named with path separators replaced by dashes
+      const projectDir = join(
+        process.env.HOME || "",
+        ".claude",
+        "projects",
+        testDir.replaceAll("/", "-"),
+      );
+      try {
+        rmSync(projectDir, { recursive: true });
+      } catch {
+        // Ignore cleanup errors
+      }
     }
   });
 

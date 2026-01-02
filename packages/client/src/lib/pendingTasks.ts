@@ -32,11 +32,11 @@ export function findPendingTasks(messages: Message[]): PendingTask[] {
   const completedIds = new Set<string>();
 
   for (const msg of messages) {
-    // Get content from nested message object (SDK structure) or top-level
+    // Get content from nested message object (SDK structure) first, fall back to top-level
+    // Phase 4c: prefer message.content over top-level content
     const content =
-      msg.content ??
       (msg.message as { content?: string | ContentBlock[] } | undefined)
-        ?.content;
+        ?.content ?? msg.content;
 
     if (!Array.isArray(content)) continue;
 

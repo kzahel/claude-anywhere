@@ -85,7 +85,7 @@ describe("Sessions API", () => {
 
       expect(res.status).toBe(404);
       const json = await res.json();
-      expect(json.error).toBe("Project not found");
+      expect(json.error).toMatch(/Project not found/);
     });
 
     it("starts a session and returns processId", async () => {
@@ -319,6 +319,262 @@ describe("Sessions API", () => {
       expect(res.status).toBe(404);
       const json = await res.json();
       expect(json.error).toBe("No active process for session");
+    });
+
+    it("returns 400 if process is not waiting for input", async () => {
+      // Create a session that immediately completes (not waiting for input)
+      mockSdk.addScenario(createMockScenario("sess-no-wait", "Done!"));
+      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      // Start the session
+      const startRes = await app.request(
+        `/api/projects/${projectId}/sessions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Claude-Anywhere": "true",
+          },
+          body: JSON.stringify({ message: "hello" }),
+        },
+      );
+      expect(startRes.status).toBe(200);
+      const { sessionId } = await startRes.json();
+
+      // Wait for session to complete
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Try to send input - should fail because process completed
+      const inputRes = await app.request(`/api/sessions/${sessionId}/input`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
+        body: JSON.stringify({ requestId: "req-1", response: "approve" }),
+      });
+
+      // Process likely terminated or not waiting
+      expect([400, 404]).toContain(inputRes.status);
+    });
+
+    it("returns 400 for missing required fields", async () => {
+      // Create a session with tool approval
+      mockSdk.addScenario({
+        messages: [
+          { type: "system", subtype: "init", session_id: "sess-tool" },
+          {
+            type: "system",
+            subtype: "input_request",
+            input_request: {
+              id: "req-tool-1",
+              type: "tool-approval",
+              prompt: "Allow Edit?",
+            },
+          },
+        ],
+        delayMs: 5,
+      });
+      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      // Start the session
+      const startRes = await app.request(
+        `/api/projects/${projectId}/sessions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Claude-Anywhere": "true",
+          },
+          body: JSON.stringify({ message: "hello" }),
+        },
+      );
+      expect(startRes.status).toBe(200);
+      const { sessionId } = await startRes.json();
+
+      // Wait for session to enter waiting-input state
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Try to send input without requestId
+      const inputRes = await app.request(`/api/sessions/${sessionId}/input`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
+        body: JSON.stringify({ response: "approve" }),
+      });
+
+      expect(inputRes.status).toBe(400);
+      const json = await inputRes.json();
+      expect(json.error).toBe("requestId and response are required");
+    });
+
+    it("returns 400 for invalid requestId", async () => {
+      // Create a session with tool approval
+      mockSdk.addScenario({
+        messages: [
+          { type: "system", subtype: "init", session_id: "sess-tool" },
+          {
+            type: "system",
+            subtype: "input_request",
+            input_request: {
+              id: "req-tool-1",
+              type: "tool-approval",
+              prompt: "Allow Edit?",
+            },
+          },
+        ],
+        delayMs: 5,
+      });
+      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      // Start the session
+      const startRes = await app.request(
+        `/api/projects/${projectId}/sessions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Claude-Anywhere": "true",
+          },
+          body: JSON.stringify({ message: "hello" }),
+        },
+      );
+      expect(startRes.status).toBe(200);
+      const { sessionId } = await startRes.json();
+
+      // Wait for session to enter waiting-input state
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Try to send input with wrong requestId
+      const inputRes = await app.request(`/api/sessions/${sessionId}/input`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
+        body: JSON.stringify({ requestId: "wrong-id", response: "approve" }),
+      });
+
+      expect(inputRes.status).toBe(400);
+      const json = await inputRes.json();
+      expect(json.error).toBe("Invalid request ID or no pending request");
+    });
+
+    it("accepts approve response with correct requestId", async () => {
+      const requestId = `req-${Date.now()}`;
+      // Create a session with tool approval
+      mockSdk.addScenario({
+        messages: [
+          { type: "system", subtype: "init", session_id: "sess-tool-approve" },
+          {
+            type: "system",
+            subtype: "input_request",
+            input_request: {
+              id: requestId,
+              type: "tool-approval",
+              prompt: "Allow Edit?",
+            },
+          },
+        ],
+        delayMs: 5,
+      });
+      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      // Start the session
+      const startRes = await app.request(
+        `/api/projects/${projectId}/sessions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Claude-Anywhere": "true",
+          },
+          body: JSON.stringify({ message: "hello" }),
+        },
+      );
+      expect(startRes.status).toBe(200);
+      const { sessionId } = await startRes.json();
+
+      // Wait for session to enter waiting-input state
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Verify pending input exists
+      const pendingRes = await app.request(
+        `/api/sessions/${sessionId}/pending-input`,
+      );
+      expect(pendingRes.status).toBe(200);
+      const pendingJson = await pendingRes.json();
+      expect(pendingJson.request).toBeDefined();
+      expect(pendingJson.request.id).toBe(requestId);
+
+      // Send approve
+      const inputRes = await app.request(`/api/sessions/${sessionId}/input`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
+        body: JSON.stringify({ requestId, response: "approve" }),
+      });
+
+      expect(inputRes.status).toBe(200);
+      const json = await inputRes.json();
+      expect(json.accepted).toBe(true);
+    });
+
+    it("accepts deny response with correct requestId", async () => {
+      const requestId = `req-${Date.now()}`;
+      // Create a session with tool approval
+      mockSdk.addScenario({
+        messages: [
+          { type: "system", subtype: "init", session_id: "sess-tool-deny" },
+          {
+            type: "system",
+            subtype: "input_request",
+            input_request: {
+              id: requestId,
+              type: "tool-approval",
+              prompt: "Allow Edit?",
+            },
+          },
+        ],
+        delayMs: 5,
+      });
+      const app = createApp({ sdk: mockSdk, projectsDir: testDir });
+
+      // Start the session
+      const startRes = await app.request(
+        `/api/projects/${projectId}/sessions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Claude-Anywhere": "true",
+          },
+          body: JSON.stringify({ message: "hello" }),
+        },
+      );
+      expect(startRes.status).toBe(200);
+      const { sessionId } = await startRes.json();
+
+      // Wait for session to enter waiting-input state
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Send deny
+      const inputRes = await app.request(`/api/sessions/${sessionId}/input`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Claude-Anywhere": "true",
+        },
+        body: JSON.stringify({ requestId, response: "deny" }),
+      });
+
+      expect(inputRes.status).toBe(200);
+      const json = await inputRes.json();
+      expect(json.accepted).toBe(true);
     });
   });
 

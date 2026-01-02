@@ -1,6 +1,9 @@
-import type { UrlProjectId } from "@claude-anywhere/shared";
+import type { ProcessStateType, UrlProjectId } from "@claude-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionStatus, SessionSummary } from "../types";
+
+// Re-export ProcessStateType for consumers of this hook
+export type { ProcessStateType } from "@claude-anywhere/shared";
 
 export type FileChangeType = "create" | "modify" | "delete";
 export type FileType =
@@ -41,9 +44,6 @@ export interface SessionSeenEvent {
   timestamp: string;
   messageId?: string;
 }
-
-/** Process state type - what the agent is doing */
-export type ProcessStateType = "running" | "waiting-input";
 
 export interface ProcessStateEvent {
   type: "process-state-changed";

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test.describe("Navigation", () => {
   test("loads projects page", async ({ page }) => {
     await page.goto("/projects");
-    await expect(page.locator("h1")).toHaveText("Projects");
+    await expect(page.locator(".session-title")).toHaveText("Projects");
   });
 
   test("can navigate to project", async ({ page }) => {

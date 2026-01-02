@@ -13,9 +13,19 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   isExpanded,
   onToggle,
 }: Props) {
+  const isStreaming = status === "streaming";
+  const className = [
+    "thinking-block",
+    "collapsible",
+    "timeline-item",
+    isStreaming && !isExpanded ? "thinking-streaming-collapsed" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <details
-      className="thinking-block collapsible timeline-item"
+      className={className}
       open={isExpanded}
       onToggle={(e) => {
         if (e.currentTarget.open !== isExpanded) {
@@ -24,7 +34,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
       }}
     >
       <summary className="collapsible__summary">
-        <span>{status === "streaming" ? "Thinking..." : "Thinking"}</span>
+        <span>{isStreaming ? "Thinking..." : "Thinking"}</span>
         <span className="collapsible__icon">▸</span>
       </summary>
       <div className="collapsible__content">

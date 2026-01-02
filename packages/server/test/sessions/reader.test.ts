@@ -242,7 +242,7 @@ describe("SessionReader", () => {
       const session = await reader.getSession(sessionId, "test-project");
 
       expect(session?.messages).toHaveLength(3); // a, d, e (not b, c)
-      expect(session?.messages.map((m) => m.id)).toEqual(["a", "d", "e"]);
+      expect(session?.messages.map((m) => m.uuid)).toEqual(["a", "d", "e"]);
     });
 
     it("marks orphaned tool calls with orphanedToolUseIds", async () => {
@@ -452,7 +452,7 @@ describe("SessionReader", () => {
 
       // Should only have a, c, d (not b - dead branch)
       expect(result.messages).toHaveLength(3);
-      expect(result.messages.map((m) => m.id)).toEqual(["a", "c", "d"]);
+      expect(result.messages.map((m) => m.uuid)).toEqual(["a", "c", "d"]);
       expect(result.status).toBe("completed");
     });
   });

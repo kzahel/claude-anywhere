@@ -1,12 +1,9 @@
-import { type KeyboardEvent, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { api } from "../api/client";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { ContextUsageIndicator } from "../components/ContextUsageIndicator";
+import { NewSessionForm } from "../components/NewSessionForm";
 import { PageHeader } from "../components/PageHeader";
 import { SessionStatusBadge } from "../components/StatusBadge";
-import { ENTER_SENDS_MESSAGE } from "../constants";
-import { useDraftPersistence } from "../hooks/useDraftPersistence";
-import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
 import { useProjectLayout } from "../layouts";
 import { getSessionDisplayTitle } from "../types";
 
@@ -37,12 +34,8 @@ export function SessionsPage() {
     isWideScreen,
     toggleSidebar,
     isSidebarCollapsed,
+    addOptimisticSession,
   } = useProjectLayout();
-  const navigate = useNavigate();
-  const [newMessage, setNewMessage, draftControls] = useDraftPersistence(
-    `draft-new-session-${projectId}`,
-  );
-  const [starting, setStarting] = useState(false);
 
   // Filter state: "all" shows non-archived, "starred" shows only starred, "archived" shows only archived
   type FilterMode = "all" | "starred" | "archived";
@@ -92,45 +85,6 @@ export function SessionsPage() {
     [sessions],
   );
 
-  const handleStartSession = async () => {
-    if (!projectId || !newMessage.trim()) return;
-
-    const message = newMessage.trim();
-    setStarting(true);
-    draftControls.clearInput(); // Clear input but keep localStorage
-    try {
-      const model = getModelSetting();
-      const thinking = getThinkingSetting();
-      const { sessionId } = await api.startSession(projectId, message, {
-        model,
-        thinking,
-      });
-      draftControls.clearDraft(); // Success - clear localStorage
-      navigate(`/projects/${projectId}/sessions/${sessionId}`);
-    } catch (err) {
-      console.error("Failed to start session:", err);
-      draftControls.restoreFromStorage(); // Restore on failure
-      setStarting(false);
-    }
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Enter") {
-      if (ENTER_SENDS_MESSAGE) {
-        if (e.ctrlKey || e.shiftKey) {
-          return;
-        }
-        e.preventDefault();
-        handleStartSession();
-      } else {
-        if (e.ctrlKey || e.shiftKey) {
-          e.preventDefault();
-          handleStartSession();
-        }
-      }
-    }
-  };
-
   if (loading) return <div className="loading">Loading sessions...</div>;
   if (error) return <div className="error">Error: {error.message}</div>;
 
@@ -154,25 +108,14 @@ export function SessionsPage() {
         />
 
         <main className="sessions-page-content">
-          <div className="new-session-form">
-            <textarea
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Start a new session..."
-              disabled={starting}
-              rows={3}
-            />
-            <button
-              type="button"
-              onClick={handleStartSession}
-              disabled={starting || !newMessage.trim()}
-              className="send-button"
-              aria-label="Start session"
-            >
-              <span className="send-icon">{starting ? "..." : "↑"}</span>
-            </button>
-          </div>
+          <NewSessionForm
+            projectId={projectId}
+            onOptimisticSession={addOptimisticSession}
+            compact
+            rows={3}
+            placeholder="Start a new session..."
+            autoFocus={false}
+          />
 
           <h2>Sessions</h2>
 

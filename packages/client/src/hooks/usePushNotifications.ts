@@ -217,12 +217,55 @@ export function usePushNotifications() {
     }
   }, [getDeviceId]);
 
+  // Get service worker logs (for debugging)
+  const getSwLogs = useCallback(async (): Promise<SwLogEntry[]> => {
+    const sw = navigator.serviceWorker?.controller;
+    if (!sw) {
+      console.warn("[usePushNotifications] No active service worker");
+      return [];
+    }
+
+    return new Promise((resolve) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (event) => {
+        resolve(event.data?.logs || []);
+      };
+      sw.postMessage({ type: "get-sw-logs" }, [channel.port2]);
+
+      // Timeout after 2 seconds
+      setTimeout(() => resolve([]), 2000);
+    });
+  }, []);
+
+  // Clear service worker logs
+  const clearSwLogs = useCallback(async (): Promise<void> => {
+    const sw = navigator.serviceWorker?.controller;
+    if (!sw) return;
+
+    return new Promise((resolve) => {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = () => resolve();
+      sw.postMessage({ type: "clear-sw-logs" }, [channel.port2]);
+      setTimeout(resolve, 1000);
+    });
+  }, []);
+
   return {
     ...state,
     subscribe,
     unsubscribe,
     sendTest,
+    getSwLogs,
+    clearSwLogs,
   };
+}
+
+export interface SwLogEntry {
+  id?: number;
+  timestamp: string;
+  level: "info" | "warn" | "error";
+  message: string;
+  data: Record<string, unknown>;
 }
 
 /**

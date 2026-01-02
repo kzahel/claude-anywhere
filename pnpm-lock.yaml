@@ -123,6 +123,10 @@ importers:
         version: 2.1.9(@types/node@22.19.3)(jsdom@25.0.1)
 
   packages/shared:
+    dependencies:
+      zod:
+        specifier: ^4.3.4
+        version: 4.3.4
     devDependencies:
       typescript:
         specifier: ^5.7.2

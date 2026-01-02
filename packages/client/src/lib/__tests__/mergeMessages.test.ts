@@ -2,10 +2,33 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "../../types";
 import {
   getMessageContent,
+  getMessageId,
   mergeJSONLMessages,
   mergeMessage,
   mergeSSEMessage,
 } from "../mergeMessages";
+
+describe("getMessageId", () => {
+  it("returns uuid when present", () => {
+    const msg: Message = { id: "legacy-id", uuid: "uuid-123" };
+    expect(getMessageId(msg)).toBe("uuid-123");
+  });
+
+  it("returns id when uuid is undefined", () => {
+    const msg: Message = { id: "legacy-id" };
+    expect(getMessageId(msg)).toBe("legacy-id");
+  });
+
+  it("prefers uuid over id", () => {
+    const msg: Message = { id: "legacy-id", uuid: "uuid-456" };
+    expect(getMessageId(msg)).toBe("uuid-456");
+  });
+
+  it("handles temp messages (no uuid)", () => {
+    const msg: Message = { id: "temp-1234567890" };
+    expect(getMessageId(msg)).toBe("temp-1234567890");
+  });
+});
 
 describe("getMessageContent", () => {
   it("returns top-level content when present", () => {

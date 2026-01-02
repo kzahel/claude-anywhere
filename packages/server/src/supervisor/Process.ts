@@ -501,6 +501,7 @@ export class Process {
    * Called from the API when user approves/denies a tool.
    * For AskUserQuestion, answers can be passed to update the tool input.
    * For deny with feedback, the feedback message is passed to the SDK.
+   * Works for both real SDK (canUseTool callback) and mock SDK (input_request message).
    */
   respondToInput(
     requestId: string,
@@ -509,7 +510,17 @@ export class Process {
     feedback?: string,
   ): boolean {
     const pending = this.pendingToolApprovals.get(requestId);
+
+    // For mock SDK: check if requestId matches the state's request
     if (!pending) {
+      if (
+        this._state.type === "waiting-input" &&
+        this._state.request.id === requestId
+      ) {
+        // Mock SDK case - just transition back to idle/running
+        this.setState({ type: "running" });
+        return true;
+      }
       return false;
     }
 
@@ -564,13 +575,19 @@ export class Process {
 
   /**
    * Get the current pending input request (first in queue), if any.
+   * Works for both real SDK (canUseTool callback) and mock SDK (input_request message).
    */
   getPendingInputRequest(): InputRequest | null {
+    // Check real SDK pending approvals queue first
     const firstId = this.pendingToolApprovalQueue[0];
-    if (firstId === undefined) {
-      return null;
+    if (firstId !== undefined) {
+      return this.pendingToolApprovals.get(firstId)?.request ?? null;
     }
-    return this.pendingToolApprovals.get(firstId)?.request ?? null;
+    // For mock SDK, check state directly
+    if (this._state.type === "waiting-input") {
+      return this._state.request;
+    }
+    return null;
   }
 
   subscribe(listener: Listener): () => void {

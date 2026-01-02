@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { Project, SessionSummary } from "../types";
+import { type Project, type SessionSummary, toUrlProjectId } from "../types";
 import {
   type FileChangeEvent,
   type ProcessStateEvent,
@@ -264,7 +264,7 @@ export function useSessions(projectId: string | undefined) {
       const now = new Date().toISOString();
       const optimisticSession: SessionSummary = {
         id: sessionId,
-        projectId,
+        projectId: toUrlProjectId(projectId),
         title,
         fullTitle: title,
         createdAt: now,

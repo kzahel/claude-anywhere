@@ -18,25 +18,175 @@ const settings = {
   notifyInApp: false, // When true, notify even when app is focused (if session not viewed)
 };
 
-// Skip waiting and claim clients immediately on install/activate
+// ============ Debug Logging ============
+// Logs are stored in IndexedDB for retrieval via main thread
+
+const LOG_DB_NAME = "sw-logs";
+const LOG_STORE_NAME = "logs";
+const MAX_LOGS = 100;
+
+async function openLogDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(LOG_DB_NAME, 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(LOG_STORE_NAME)) {
+        db.createObjectStore(LOG_STORE_NAME, {
+          keyPath: "id",
+          autoIncrement: true,
+        });
+      }
+    };
+  });
+}
+
+async function swLog(level, message, data = {}) {
+  const timestamp = new Date().toISOString();
+  const logEntry = { timestamp, level, message, data };
+
+  // Always log to console
+  const consoleMethod =
+    level === "error"
+      ? console.error
+      : level === "warn"
+        ? console.warn
+        : console.log;
+  consoleMethod(`[SW ${level.toUpperCase()}]`, message, data);
+
+  try {
+    const db = await openLogDb();
+    const tx = db.transaction(LOG_STORE_NAME, "readwrite");
+    const store = tx.objectStore(LOG_STORE_NAME);
+
+    // Add new log
+    store.add(logEntry);
+
+    // Prune old logs
+    const countRequest = store.count();
+    countRequest.onsuccess = () => {
+      if (countRequest.result > MAX_LOGS) {
+        const cursor = store.openCursor();
+        let deleted = 0;
+        const toDelete = countRequest.result - MAX_LOGS;
+        cursor.onsuccess = (e) => {
+          const c = e.target.result;
+          if (c && deleted < toDelete) {
+            c.delete();
+            deleted++;
+            c.continue();
+          }
+        };
+      }
+    };
+
+    await tx.complete;
+    db.close();
+  } catch (e) {
+    // Silently fail if IndexedDB not available
+  }
+}
+
+// Expose logs retrieval via message
+async function getSwLogs() {
+  try {
+    const db = await openLogDb();
+    const tx = db.transaction(LOG_STORE_NAME, "readonly");
+    const store = tx.objectStore(LOG_STORE_NAME);
+
+    return new Promise((resolve) => {
+      const request = store.getAll();
+      request.onsuccess = () => {
+        db.close();
+        resolve(request.result || []);
+      };
+      request.onerror = () => {
+        db.close();
+        resolve([]);
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function clearSwLogs() {
+  try {
+    const db = await openLogDb();
+    const tx = db.transaction(LOG_STORE_NAME, "readwrite");
+    tx.objectStore(LOG_STORE_NAME).clear();
+    await tx.complete;
+    db.close();
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * Service Worker Lifecycle: Install & Activate
+ *
+ * We use skipWaiting() to activate immediately, but are careful with clients.claim().
+ *
+ * Problem: Calling clients.claim() while pages are loading can disrupt in-flight
+ * network requests (SSE connections, fetches), causing the page to appear to "reload".
+ * This is especially noticeable in dev mode where the SW updates frequently, or on
+ * mobile browsers with aggressive SW update checking.
+ *
+ * Solution: Only claim clients if there are no windows currently open. This means:
+ * - First visit: SW installs but doesn't claim until next navigation
+ * - SW update with tabs open: New SW waits, old SW continues serving
+ * - SW update with no tabs: New SW claims immediately
+ *
+ * Potential drawbacks:
+ * - Push notifications may be handled by old SW until user navigates/refreshes
+ * - Settings synced via postMessage won't reach new SW until it claims
+ * - In production this is rarely an issue; mainly affects dev mode with frequent updates
+ *
+ * Alternative: Remove skipWaiting() entirely for fully lazy updates, but this delays
+ * all SW updates until all tabs close (could be days).
+ */
 self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    self.clients.matchAll({ type: "window" }).then((windowClients) => {
+      // Only claim if no windows are open - avoids disrupting active pages
+      if (windowClients.length === 0) {
+        return self.clients.claim();
+      }
+      // Otherwise, let pages naturally pick up new SW on next navigation
+      console.log(
+        `[SW] Skipping claim - ${windowClients.length} window(s) open`,
+      );
+    }),
+  );
 });
 
 /**
- * Handle settings updates from main thread
+ * Handle messages from main thread
  */
-self.addEventListener("message", (event) => {
+self.addEventListener("message", async (event) => {
   if (event.data?.type === "setting-update") {
     const { key, value } = event.data;
     if (key in settings) {
       settings[key] = value;
-      console.log(`[SW] Setting updated: ${key} = ${value}`);
+      await swLog("info", `Setting updated: ${key} = ${value}`);
     }
+  }
+
+  // Log retrieval for debugging
+  if (event.data?.type === "get-sw-logs") {
+    const logs = await getSwLogs();
+    event.ports[0]?.postMessage({ logs });
+  }
+
+  // Clear logs
+  if (event.data?.type === "clear-sw-logs") {
+    await clearSwLogs();
+    event.ports[0]?.postMessage({ cleared: true });
   }
 });
 
@@ -45,7 +195,7 @@ self.addEventListener("message", (event) => {
  */
 self.addEventListener("push", (event) => {
   if (!event.data) {
-    console.warn("[SW] Push event with no data");
+    event.waitUntil(swLog("warn", "Push event with no data"));
     return;
   }
 
@@ -53,11 +203,18 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data.json();
   } catch (e) {
-    console.error("[SW] Failed to parse push data:", e);
+    event.waitUntil(
+      swLog("error", "Failed to parse push data", { error: e.message }),
+    );
     return;
   }
 
-  event.waitUntil(handlePush(data));
+  event.waitUntil(
+    swLog("info", "Push received", {
+      type: data.type,
+      sessionId: data.sessionId,
+    }).then(() => handlePush(data)),
+  );
 });
 
 async function handlePush(data) {
@@ -129,7 +286,7 @@ async function handlePush(data) {
   console.warn("[SW] Unknown push type:", data.type);
 }
 
-function showPendingInputNotification(data) {
+async function showPendingInputNotification(data) {
   const title = data.projectName || "Claude Anywhere";
   const options = {
     body: data.summary || "Waiting for input",
@@ -152,6 +309,13 @@ function showPendingInputNotification(data) {
       { action: "deny", title: "Deny" },
     ];
   }
+
+  await swLog("info", "Showing pending-input notification", {
+    sessionId: data.sessionId,
+    requestId: data.requestId,
+    inputType: data.inputType,
+    hasActions: !!options.actions,
+  });
 
   return self.registration.showNotification(title, options);
 }
@@ -193,44 +357,90 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 async function handleNotificationClick(action, data) {
-  const { sessionId, projectId, requestId } = data;
+  const { sessionId, projectId, requestId, inputType } = data;
+
+  await swLog("info", "Notification clicked", {
+    action,
+    sessionId,
+    projectId,
+    requestId,
+    inputType,
+  });
 
   // Handle approve/deny actions via API (don't open the app)
   if ((action === "approve" || action === "deny") && requestId) {
+    await swLog("info", `Processing ${action} action for request ${requestId}`);
+
     try {
-      const response = await fetch(`/api/sessions/${sessionId}/input`, {
+      const url = `/api/sessions/${sessionId}/input`;
+      const body = JSON.stringify({ requestId, response: action });
+
+      await swLog("info", `Fetching ${url}`, { body });
+
+      const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include", // Include cookies for auth
-        body: JSON.stringify({
-          requestId,
-          response: action,
-        }),
+        body,
       });
 
       if (response.ok) {
-        // Success - notification will be dismissed via dismiss push
-        console.log(
-          `[SW] Successfully sent '${action}' for session ${sessionId}`,
+        const result = await response.json().catch(() => ({}));
+        await swLog(
+          "info",
+          `Successfully sent '${action}' for session ${sessionId}`,
+          { result },
         );
         return; // Don't open the app
       }
 
-      // API call failed - log the error but don't open the app
+      // API call failed
       const errorText = await response.text().catch(() => "unknown");
-      console.error(
-        `[SW] API call failed for '${action}': ${response.status} ${errorText}`,
-      );
-      // Don't fall through - the user explicitly chose an action, not to open the app
+      await swLog("error", `API call failed for '${action}'`, {
+        status: response.status,
+        statusText: response.statusText,
+        errorText,
+        sessionId,
+        requestId,
+      });
+
+      // Show error notification so user knows it failed
+      await self.registration.showNotification("Action Failed", {
+        body: `Could not ${action}: ${response.status} ${errorText.slice(0, 50)}`,
+        tag: "action-error",
+        icon: "/icon-192.png",
+        badge: "/badge-96.png",
+        data: { sessionId, projectId },
+      });
+
       return;
     } catch (e) {
-      console.error("[SW] Failed to send action:", e);
-      // Don't fall through - the user explicitly chose an action, not to open the app
+      await swLog("error", "Failed to send action (network error)", {
+        error: e.message,
+        stack: e.stack,
+        sessionId,
+        requestId,
+        action,
+      });
+
+      // Show error notification so user knows it failed
+      await self.registration.showNotification("Action Failed", {
+        body: `Network error: ${e.message}`,
+        tag: "action-error",
+        icon: "/icon-192.png",
+        badge: "/badge-96.png",
+        data: { sessionId, projectId },
+      });
+
       return;
     }
   }
 
-  // Open the session (only when clicking notification body, not action buttons)
+  // No action or no requestId - open the session
+  await swLog("info", "Opening session (no action or missing requestId)", {
+    action,
+    requestId,
+  });
   return openSession(sessionId, projectId);
 }
 

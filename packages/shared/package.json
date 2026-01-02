@@ -19,5 +19,8 @@
   "devDependencies": {
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "zod": "^4.3.4"
   }
 }

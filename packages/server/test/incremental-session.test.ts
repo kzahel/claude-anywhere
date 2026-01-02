@@ -112,8 +112,8 @@ describe("Incremental Session Loading", () => {
 
       expect(res.status).toBe(200);
       expect(json.messages).toHaveLength(2);
-      expect(json.messages[0].id).toBe(msg2Id);
-      expect(json.messages[1].id).toBe(msg3Id);
+      expect(json.messages[0].uuid).toBe(msg2Id);
+      expect(json.messages[1].uuid).toBe(msg3Id);
     });
 
     it("returns empty array when afterMessageId is the last message", async () => {
@@ -209,8 +209,8 @@ describe("Incremental Session Loading", () => {
       // Internal types (queue-operation, file-history-snapshot) are filtered out
       // Only returns the assistant message after msg1Id
       expect(json.messages).toHaveLength(1);
-      expect(json.messages[0].id).toBe(msg2Id);
-      expect(json.messages[0].role).toBe("assistant");
+      expect(json.messages[0].uuid).toBe(msg2Id);
+      expect(json.messages[0].type).toBe("assistant");
     });
   });
 });

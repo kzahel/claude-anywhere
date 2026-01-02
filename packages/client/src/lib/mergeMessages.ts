@@ -2,6 +2,14 @@ import { orderByParentChain } from "@claude-anywhere/shared";
 import type { Message } from "../types";
 
 /**
+ * Get the message ID, preferring uuid over id.
+ * Messages should always have at least one identifier; returns empty string as fallback.
+ */
+export function getMessageId(m: Message): string {
+  return m.uuid ?? m.id ?? "";
+}
+
+/**
  * Strip the "User uploaded files:" section from message text for comparison.
  * This allows matching temp messages (without attachment info) to server messages
  * (with attachment info appended).
@@ -144,7 +152,8 @@ export function mergeJSONLMessages(
   tempIdMappings: Map<string, string> = new Map(),
 ): MergeJSONLResult {
   // Create a map of existing messages for efficient lookup
-  const messageMap = new Map(existing.map((m) => [m.id, m]));
+  // Use getMessageId for canonical identifier (uuid preferred over id)
+  const messageMap = new Map(existing.map((m) => [getMessageId(m), m]));
   // Track which IDs have been replaced
   const replacedIds = new Set<string>();
   // Track ID replacements: old ID -> new ID (for position preservation)
@@ -156,40 +165,42 @@ export function mergeJSONLMessages(
 
   // Merge each incoming JSONL message
   for (const incomingMsg of incoming) {
+    const incomingId = getMessageId(incomingMsg);
     // Check if this is a user message that should replace a temp or SDK message
     // This handles the case where SSE and JSONL have different UUIDs for the same message
     if (incomingMsg.type === "user") {
       const incomingContentNorm = normalizeContentForComparison(
         getMessageContent(incomingMsg),
       );
-      const duplicateMsg = existing.find(
-        (m) =>
-          m.id !== incomingMsg.id && // Different ID
-          !replacedIds.has(m.id) && // Not already matched by a previous JSONL message
-          (m.id.startsWith("temp-") || m._source === "sdk") && // Temp or SDK-sourced
+      const duplicateMsg = existing.find((m) => {
+        const msgId = getMessageId(m);
+        return (
+          msgId !== incomingId && // Different ID
+          !replacedIds.has(msgId) && // Not already matched by a previous JSONL message
+          (m.id?.startsWith("temp-") || m._source === "sdk") && // Temp or SDK-sourced (check raw id for temp)
           m.type === "user" &&
           normalizeContentForComparison(getMessageContent(m)) ===
             incomingContentNorm &&
-          parentsMatch(m, incomingMsg, allMappings), // Parents must match too
-      );
+          parentsMatch(m, incomingMsg, allMappings)
+        ); // Parents must match too
+      });
       if (duplicateMsg) {
+        const dupId = getMessageId(duplicateMsg);
         // Mark duplicate ID as replaced and track the replacement
-        replacedIds.add(duplicateMsg.id);
-        idReplacements.set(duplicateMsg.id, incomingMsg.id);
-        messageMap.delete(duplicateMsg.id);
+        replacedIds.add(dupId);
+        idReplacements.set(dupId, incomingId);
+        messageMap.delete(dupId);
         // Record the mapping for future parent resolution
-        if (duplicateMsg.id.startsWith("temp-")) {
-          newMappings.set(duplicateMsg.id, incomingMsg.id);
-          allMappings.set(duplicateMsg.id, incomingMsg.id);
+        // Check raw id for temp- prefix (temp messages have id but no uuid)
+        if (duplicateMsg.id?.startsWith("temp-")) {
+          newMappings.set(duplicateMsg.id, incomingId);
+          allMappings.set(duplicateMsg.id, incomingId);
         }
       }
     }
 
-    const existingMsg = messageMap.get(incomingMsg.id);
-    messageMap.set(
-      incomingMsg.id,
-      mergeMessage(existingMsg, incomingMsg, "jsonl"),
-    );
+    const existingMsg = messageMap.get(incomingId);
+    messageMap.set(incomingId, mergeMessage(existingMsg, incomingMsg, "jsonl"));
   }
 
   // Build result array, preserving order
@@ -199,9 +210,10 @@ export function mergeJSONLMessages(
 
   // First add existing messages (in order), replacing as needed
   for (const msg of existing) {
-    if (replacedIds.has(msg.id)) {
+    const msgId = getMessageId(msg);
+    if (replacedIds.has(msgId)) {
       // This message was replaced - insert the replacement here
-      const replacementId = idReplacements.get(msg.id);
+      const replacementId = idReplacements.get(msgId);
       if (replacementId && !seen.has(replacementId)) {
         const replacement = messageMap.get(replacementId);
         if (replacement) {
@@ -209,17 +221,18 @@ export function mergeJSONLMessages(
           seen.add(replacementId);
         }
       }
-    } else if (!seen.has(msg.id)) {
-      result.push(messageMap.get(msg.id) ?? msg);
-      seen.add(msg.id);
+    } else if (!seen.has(msgId)) {
+      result.push(messageMap.get(msgId) ?? msg);
+      seen.add(msgId);
     }
   }
 
   // Then add any truly new messages (not replacements)
   for (const incomingMsg of incoming) {
-    if (!seen.has(incomingMsg.id)) {
-      result.push(messageMap.get(incomingMsg.id) ?? incomingMsg);
-      seen.add(incomingMsg.id);
+    const incomingId = getMessageId(incomingMsg);
+    if (!seen.has(incomingId)) {
+      result.push(messageMap.get(incomingId) ?? incomingMsg);
+      seen.add(incomingId);
     }
   }
 
@@ -253,11 +266,12 @@ function findMatchingTempMessage(
   );
 
   // Find all temp user messages with matching content
+  // Check raw id for temp- prefix (temp messages have id but no uuid)
   const tempCandidates: { index: number; msg: Message }[] = [];
   for (let i = 0; i < existing.length; i++) {
     const m = existing[i];
     if (
-      m?.id.startsWith("temp-") &&
+      m?.id?.startsWith("temp-") &&
       m.type === "user" &&
       normalizeContentForComparison(getMessageContent(m)) ===
         incomingContentNorm
@@ -304,8 +318,9 @@ export function mergeSSEMessage(
   incoming: Message,
   tempIdMappings: Map<string, string> = new Map(),
 ): MergeSSEResult {
+  const incomingId = getMessageId(incoming);
   // Check for existing message with same ID
-  const existingIdx = existing.findIndex((m) => m.id === incoming.id);
+  const existingIdx = existing.findIndex((m) => getMessageId(m) === incomingId);
 
   if (existingIdx >= 0) {
     // Merge with existing message
@@ -348,7 +363,7 @@ export function mergeSSEMessage(
         return {
           messages: updated,
           replacedTemp: true,
-          replacedTempId: existingTemp.id,
+          replacedTempId: existingTemp.id ?? null, // Return raw id for temp message
           index: tempIdx,
         };
       }
