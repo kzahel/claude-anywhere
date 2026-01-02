@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import type { GlobInput, GlobResult, ToolRenderer } from "./types";
 
 const MAX_FILES_COLLAPSED = 20;
@@ -33,11 +37,34 @@ function GlobToolResult({
   isError: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Glob", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Glob", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Glob");
 
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
       <div className="glob-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Glob" errors={validationErrors} />
+        )}
         {typeof result === "object" && errorResult?.content
           ? String(errorResult.content)
           : "Glob search failed"}
@@ -46,7 +73,14 @@ function GlobToolResult({
   }
 
   if (!result?.filenames || result.filenames.length === 0) {
-    return <div className="glob-empty">No files found</div>;
+    return (
+      <div className="glob-empty">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Glob" errors={validationErrors} />
+        )}
+        No files found
+      </div>
+    );
   }
 
   const { filenames, numFiles, truncated } = result;
@@ -61,6 +95,9 @@ function GlobToolResult({
       <div className="glob-header">
         <span className="glob-count">{numFiles} files</span>
         {truncated && <span className="badge badge-warning">truncated</span>}
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Glob" errors={validationErrors} />
+        )}
       </div>
       <div className="file-list">
         {displayFiles.map((file) => (

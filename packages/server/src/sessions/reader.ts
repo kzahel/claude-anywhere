@@ -472,6 +472,44 @@ export class SessionReader {
   }
 
   /**
+   * Get session summary only if the file has changed since the cached values.
+   * Used by SessionIndexService for cache invalidation.
+   *
+   * @param sessionId - The session ID
+   * @param projectId - The project ID
+   * @param cachedMtime - The mtime (ms since epoch) from the cache
+   * @param cachedSize - The file size (bytes) from the cache
+   * @returns Summary with file stats if changed, null if unchanged
+   */
+  async getSessionSummaryIfChanged(
+    sessionId: string,
+    projectId: UrlProjectId,
+    cachedMtime: number,
+    cachedSize: number,
+  ): Promise<{ summary: SessionSummary; mtime: number; size: number } | null> {
+    const filePath = join(this.sessionDir, `${sessionId}.jsonl`);
+
+    try {
+      const stats = await stat(filePath);
+      const mtime = stats.mtimeMs;
+      const size = stats.size;
+
+      // If mtime and size match cached values, return null (no change)
+      if (mtime === cachedMtime && size === cachedSize) {
+        return null;
+      }
+
+      // Otherwise parse the file and return { summary, mtime, size }
+      const summary = await this.getSessionSummary(sessionId, projectId);
+      if (!summary) return null;
+
+      return { summary, mtime, size };
+    } catch {
+      return null; // File doesn't exist or error
+    }
+  }
+
+  /**
    * Convert a raw JSONL message to our Message format.
    *
    * We pass through all fields from JSONL without stripping.

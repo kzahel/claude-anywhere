@@ -7,14 +7,14 @@ import { MessageList } from "../components/MessageList";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { SessionMenu } from "../components/SessionMenu";
 import { StatusIndicator } from "../components/StatusIndicator";
-import { ToastContainer } from "../components/Toast";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
+import { useToastContext } from "../contexts/ToastContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import type { DraftControls } from "../hooks/useDraftPersistence";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
 import { useSession } from "../hooks/useSession";
-import { useToast } from "../hooks/useToast";
 import { useProjectLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { truncateText } from "../lib/text";
@@ -48,8 +48,13 @@ function SessionPageContent({
   projectId: string;
   sessionId: string;
 }) {
-  const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
-    useProjectLayout();
+  const {
+    openSidebar,
+    isWideScreen,
+    toggleSidebar,
+    isSidebarCollapsed,
+    project,
+  } = useProjectLayout();
   const navigate = useNavigate();
   const location = useLocation();
   // Get initial status and title from navigation state (passed by NewSessionPage)
@@ -82,13 +87,12 @@ function SessionPageContent({
     addUserMessage,
     removeOptimisticMessage,
   } = useSession(projectId, sessionId, initialStatus);
-  const [sending, setSending] = useState(false);
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
   const handleDraftControlsReady = useCallback((controls: DraftControls) => {
     draftControlsRef.current = controls;
   }, []);
-  const { toasts, showToast, dismissToast } = useToast();
+  const { showToast } = useToastContext();
 
   // Inline title editing state
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -144,7 +148,6 @@ function SessionPageContent({
   });
 
   const handleSend = async (text: string) => {
-    setSending(true);
     addUserMessage(text); // Optimistic display with temp ID
     setProcessState("running"); // Optimistic: show processing indicator immediately
     setScrollTrigger((prev) => prev + 1); // Force scroll to bottom
@@ -201,8 +204,6 @@ function SessionPageContent({
         const errorMsg = err instanceof Error ? err.message : "Unknown error";
         showToast(`Failed to send message: ${errorMsg}`, "error");
       }
-    } finally {
-      setSending(false);
     }
   };
 
@@ -348,6 +349,9 @@ function SessionPageContent({
   const isArchived = localIsArchived ?? session?.isArchived ?? false;
   const isStarred = localIsStarred ?? session?.isStarred ?? false;
 
+  // Update browser tab title
+  useDocumentTitle(project?.name, displayTitle);
+
   const handleStartEditingTitle = () => {
     setRenameValue(displayTitle);
     setIsEditingTitle(true);
@@ -460,7 +464,6 @@ function SessionPageContent({
     <div
       className={isWideScreen ? "main-content-wrapper" : "main-content-mobile"}
     >
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <div
         className={
           isWideScreen
@@ -617,7 +620,6 @@ function SessionPageContent({
             ) && (
               <MessageInput
                 onSend={handleSend}
-                disabled={sending}
                 placeholder={
                   status.state === "idle"
                     ? "Send a message to resume..."

@@ -2,6 +2,7 @@ import type { HttpBindings } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { Hono } from "hono";
 import type { FrontendProxy } from "./frontend/index.js";
+import type { SessionIndexService } from "./indexes/index.js";
 import type { SessionMetadataService } from "./metadata/index.js";
 import { corsMiddleware, requireCustomHeader } from "./middleware/security.js";
 import type { NotificationService } from "./notifications/index.js";
@@ -12,6 +13,7 @@ import { createActivityRoutes } from "./routes/activity.js";
 import { createDevRoutes } from "./routes/dev.js";
 import { createFilesRoutes } from "./routes/files.js";
 import { health } from "./routes/health.js";
+import { createInboxRoutes } from "./routes/inbox.js";
 import { createProcessesRoutes } from "./routes/processes.js";
 import { createProjectsRoutes } from "./routes/projects.js";
 import { createSessionsRoutes } from "./routes/sessions.js";
@@ -43,6 +45,8 @@ export interface AppOptions {
   notificationService?: NotificationService;
   /** SessionMetadataService for custom titles and archive status */
   sessionMetadataService?: SessionMetadataService;
+  /** SessionIndexService for caching session summaries */
+  sessionIndexService?: SessionIndexService;
   /** Maximum concurrent workers. 0 = unlimited (default) */
   maxWorkers?: number;
   /** Idle threshold in milliseconds for preemption */
@@ -122,6 +126,7 @@ export function createApp(
       externalTracker,
       notificationService: options.notificationService,
       sessionMetadataService: options.sessionMetadataService,
+      sessionIndexService: options.sessionIndexService,
     }),
   );
   app.route(
@@ -136,8 +141,28 @@ export function createApp(
       eventBus: options.eventBus,
     }),
   );
-  app.route("/api/processes", createProcessesRoutes({ supervisor }));
+  app.route(
+    "/api/processes",
+    createProcessesRoutes({
+      supervisor,
+      scanner,
+      readerFactory,
+      sessionIndexService: options.sessionIndexService,
+    }),
+  );
   app.route("/api", createStreamRoutes({ supervisor }));
+
+  // Inbox routes (cross-project session aggregation)
+  app.route(
+    "/api/inbox",
+    createInboxRoutes({
+      scanner,
+      readerFactory,
+      supervisor,
+      notificationService: options.notificationService,
+      sessionIndexService: options.sessionIndexService,
+    }),
+  );
 
   // Files routes (file browser)
   app.route("/api/projects", createFilesRoutes({ scanner }));

@@ -106,3 +106,28 @@ export {
   isSummaryMessage,
   isConversationMessage,
 } from "./app-types.js";
+
+// Session utilities
+export {
+  SessionView,
+  getSessionDisplayTitle,
+  SESSION_TITLE_MAX_LENGTH,
+} from "./session/index.js";
+
+// Tool result schemas (for runtime validation)
+export {
+  TaskResultSchema,
+  BashResultSchema,
+  ReadResultSchema,
+  EditResultSchema,
+  WriteResultSchema,
+  GlobResultSchema,
+  GrepResultSchema,
+  TodoWriteResultSchema,
+  WebSearchResultSchema,
+  WebFetchResultSchema,
+  AskUserQuestionResultSchema,
+  BashOutputResultSchema,
+  TaskOutputResultSchema,
+  KillShellResultSchema,
+} from "./claude-sdk-schema/tool/ToolResultSchemas.js";

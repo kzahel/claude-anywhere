@@ -2,13 +2,29 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import pino from "pino";
 
+/**
+ * Valid log levels.
+ */
+export const LOG_LEVELS = [
+  "trace",
+  "debug",
+  "info",
+  "warn",
+  "error",
+  "fatal",
+  "silent",
+] as const;
+export type LogLevel = (typeof LOG_LEVELS)[number];
+
 export interface LogConfig {
   /** Directory for log files. Default: .claude-anywhere/logs relative to cwd */
   logDir: string;
   /** Log filename. Default: server.log */
   logFile: string;
-  /** Minimum log level. Default: info */
-  logLevel: pino.Level;
+  /** Minimum log level for console. Default: info */
+  consoleLevel: LogLevel;
+  /** Minimum log level for file. Default: info (or LOG_FILE_LEVEL env var) */
+  fileLevel: LogLevel;
   /** Also log to console. Default: true */
   logToConsole: boolean;
   /** Log to file. Default: true */
@@ -20,13 +36,23 @@ export interface LogConfig {
 const defaultConfig: LogConfig = {
   logDir: path.join(process.cwd(), ".claude-anywhere", "logs"),
   logFile: "server.log",
-  logLevel: "info",
+  consoleLevel: (process.env.LOG_LEVEL as LogLevel) || "info",
+  fileLevel:
+    (process.env.LOG_FILE_LEVEL as LogLevel) ||
+    (process.env.LOG_LEVEL as LogLevel) ||
+    "info",
   logToConsole: true,
   logToFile: true,
   prettyPrint: process.env.NODE_ENV !== "production",
 };
 
 let logger: pino.Logger | null = null;
+/** Current console log level (for dynamic adjustment) */
+let currentConsoleLevel: LogLevel = defaultConfig.consoleLevel;
+/** Current file log level (for dynamic adjustment) */
+let currentFileLevel: LogLevel = defaultConfig.fileLevel;
+/** Multistream instance (needed for dynamic level changes) */
+let multistream: pino.MultiStreamRes | null = null;
 let originalConsole: {
   log: typeof console.log;
   error: typeof console.error;
@@ -41,6 +67,10 @@ let originalConsole: {
  */
 export function initLogger(config: Partial<LogConfig> = {}): pino.Logger {
   const finalConfig = { ...defaultConfig, ...config };
+
+  // Store current levels
+  currentConsoleLevel = finalConfig.consoleLevel;
+  currentFileLevel = finalConfig.fileLevel;
 
   // Ensure log directory exists
   if (finalConfig.logToFile) {
@@ -61,9 +91,15 @@ export function initLogger(config: Partial<LogConfig> = {}): pino.Logger {
           ignore: "pid,hostname",
         },
       });
-      streams.push({ stream: pretty, level: finalConfig.logLevel });
+      streams.push({
+        stream: pretty,
+        level: finalConfig.consoleLevel as pino.Level,
+      });
     } else {
-      streams.push({ stream: process.stdout, level: finalConfig.logLevel });
+      streams.push({
+        stream: process.stdout,
+        level: finalConfig.consoleLevel as pino.Level,
+      });
     }
   }
 
@@ -71,19 +107,44 @@ export function initLogger(config: Partial<LogConfig> = {}): pino.Logger {
   if (finalConfig.logToFile) {
     const logPath = path.join(finalConfig.logDir, finalConfig.logFile);
     const fileStream = fs.createWriteStream(logPath, { flags: "a" });
-    streams.push({ stream: fileStream, level: finalConfig.logLevel });
+    streams.push({
+      stream: fileStream,
+      level: finalConfig.fileLevel as pino.Level,
+    });
   }
+
+  // Determine minimum level across all streams (pino needs base level <= stream levels)
+  const minLevel = getMinLevel(finalConfig.consoleLevel, finalConfig.fileLevel);
 
   if (streams.length === 0) {
     // No streams configured, use a silent logger
     logger = pino({ level: "silent" });
+    multistream = null;
   } else if (streams.length === 1 && streams[0]) {
-    logger = pino({ level: finalConfig.logLevel }, streams[0].stream);
+    logger = pino({ level: streams[0].level }, streams[0].stream);
+    multistream = null;
   } else {
-    logger = pino({ level: finalConfig.logLevel }, pino.multistream(streams));
+    multistream = pino.multistream(streams);
+    logger = pino({ level: minLevel }, multistream);
   }
 
   return logger;
+}
+
+/**
+ * Get the minimum (most verbose) of two log levels.
+ */
+function getMinLevel(a: LogLevel, b: LogLevel): LogLevel {
+  const order: Record<LogLevel, number> = {
+    trace: 0,
+    debug: 1,
+    info: 2,
+    warn: 3,
+    error: 4,
+    fatal: 5,
+    silent: 6,
+  };
+  return order[a] <= order[b] ? a : b;
 }
 
 /**
@@ -185,4 +246,64 @@ export function getLogFilePath(config: Partial<LogConfig> = {}): string {
 export function getLogDir(config: Partial<LogConfig> = {}): string {
   const finalConfig = { ...defaultConfig, ...config };
   return finalConfig.logDir;
+}
+
+/**
+ * Set log levels dynamically at runtime.
+ * Changes take effect immediately for new log calls.
+ *
+ * Note: Due to pino's multistream architecture, dynamic level changes
+ * work by updating the base logger level. Individual stream levels
+ * are set at initialization and filtered at the stream level.
+ *
+ * @param console - New console log level (optional)
+ * @param file - New file log level (optional)
+ */
+export function setLogLevels(options: {
+  console?: LogLevel;
+  file?: LogLevel;
+}): void {
+  if (options.console !== undefined) {
+    currentConsoleLevel = options.console;
+  }
+  if (options.file !== undefined) {
+    currentFileLevel = options.file;
+  }
+
+  // Update the base logger level to the minimum of both
+  // This ensures messages can flow to the appropriate streams
+  const log = getLogger();
+  const minLevel = getMinLevel(currentConsoleLevel, currentFileLevel);
+  log.level = minLevel;
+
+  // Note: For true per-stream dynamic levels, we'd need to reinitialize
+  // the logger with new streams. The current approach works for the
+  // common case of making console quieter while keeping file verbose.
+}
+
+/**
+ * Get current log levels for both console and file.
+ */
+export function getLogLevels(): { console: LogLevel; file: LogLevel } {
+  return {
+    console: currentConsoleLevel,
+    file: currentFileLevel,
+  };
+}
+
+/**
+ * Set the log level dynamically at runtime (legacy, sets both).
+ * @deprecated Use setLogLevels({ console, file }) instead
+ */
+export function setLogLevel(level: LogLevel): void {
+  setLogLevels({ console: level, file: level });
+}
+
+/**
+ * Get the current base log level.
+ * @deprecated Use getLogLevels() instead
+ */
+export function getLogLevel(): LogLevel {
+  const log = getLogger();
+  return log.level as LogLevel;
 }

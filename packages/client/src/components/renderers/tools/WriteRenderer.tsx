@@ -1,4 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import { Modal } from "../../ui/Modal";
 import type { ToolRenderer, WriteInput, WriteResult } from "./types";
 
@@ -62,6 +66,26 @@ function WriteToolResult({
   isError: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Write", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Write", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Write");
 
   if (isError || !result?.file) {
     // Extract error message - can be a string or object with content
@@ -74,7 +98,14 @@ function WriteToolResult({
         errorMessage = String(errorResult.content);
       }
     }
-    return <div className="write-error">{errorMessage}</div>;
+    return (
+      <div className="write-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Write" errors={validationErrors} />
+        )}
+        {errorMessage}
+      </div>
+    );
   }
 
   const { file } = result;
@@ -90,6 +121,9 @@ function WriteToolResult({
       <div className="file-header">
         <span className="file-path">{fileName}</span>
         <span className="file-range">{file.numLines} lines written</span>
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Write" errors={validationErrors} />
+        )}
       </div>
       <div className="file-content-with-lines">
         <div className="line-numbers">
@@ -130,6 +164,26 @@ function WriteCollapsedPreview({
   isError: boolean;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Write", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Write", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Write");
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -167,6 +221,9 @@ function WriteCollapsedPreview({
     }
     return (
       <div className="write-collapsed-preview write-collapsed-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Write" errors={validationErrors} />
+        )}
         <span className="write-preview-error">{errorMessage}</span>
       </div>
     );
@@ -179,7 +236,12 @@ function WriteCollapsedPreview({
         className="write-collapsed-preview"
         onClick={handleClick}
       >
-        <div className="write-preview-lines">{lineCount} lines</div>
+        <div className="write-preview-lines">
+          {lineCount} lines
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Write" errors={validationErrors} />
+          )}
+        </div>
         <div
           className={`write-preview-content ${isTruncated ? "write-preview-truncated" : ""}`}
         >

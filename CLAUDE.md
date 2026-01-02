@@ -44,8 +44,45 @@ Environment variables:
 - `LOG_DIR` - Custom log directory
 - `LOG_FILE` - Custom log filename (default: server.log)
 - `LOG_LEVEL` - Minimum level: fatal, error, warn, info, debug, trace (default: info)
+- `LOG_FILE_LEVEL` - Separate level for file logging (default: same as LOG_LEVEL)
 - `LOG_TO_FILE` - Set to "false" to disable file logging
 - `LOG_TO_CONSOLE` - Set to "false" to disable console logging
+
+## Maintenance Server
+
+A separate lightweight HTTP server runs on port 3401 (main port + 1) for out-of-band diagnostics. Useful when the main server is unresponsive.
+
+```bash
+# Check server status
+curl http://localhost:3401/status
+
+# Enable proxy debug logging at runtime
+curl -X PUT http://localhost:3401/proxy/debug -d '{"enabled": true}'
+
+# Change log levels at runtime
+curl -X PUT http://localhost:3401/log/level -d '{"console": "debug"}'
+
+# Enable Chrome DevTools inspector
+curl -X POST http://localhost:3401/inspector/open
+# Then open chrome://inspect in Chrome
+
+# Trigger server restart
+curl -X POST http://localhost:3401/reload
+```
+
+Available endpoints:
+- `GET /health` - Health check
+- `GET /status` - Memory, uptime, connections
+- `GET|PUT /log/level` - Get/set log levels
+- `GET|PUT /proxy/debug` - Get/set proxy debug logging
+- `GET /inspector` - Inspector status
+- `POST /inspector/open` - Enable Chrome DevTools
+- `POST /inspector/close` - Disable Chrome DevTools
+- `POST /reload` - Restart server
+
+Environment variables:
+- `MAINTENANCE_PORT` - Port for maintenance server (default: PORT + 1, set to 0 to disable)
+- `PROXY_DEBUG` - Enable proxy debug logging at startup (default: false)
 
 ## Validating Session Data
 

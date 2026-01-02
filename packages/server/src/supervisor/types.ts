@@ -150,9 +150,14 @@ export interface ProcessInfo {
   sessionId: string;
   projectId: UrlProjectId;
   projectPath: string;
+  projectName: string; // path.basename(projectPath)
+  sessionTitle: string | null; // from session data
   state: ProcessStateType;
   startedAt: string;
   queueDepth: number;
+  idleSince?: string; // ISO timestamp when entered idle
+  terminationReason?: string; // why it terminated
+  terminatedAt?: string; // when it terminated (ISO timestamp)
 }
 
 // Process events for subscribers
@@ -160,6 +165,7 @@ export type ProcessEvent =
   | { type: "message"; message: SDKMessage }
   | { type: "state-change"; state: ProcessState }
   | { type: "mode-change"; mode: PermissionMode; version: number }
+  | { type: "session-id-changed"; oldSessionId: string; newSessionId: string }
   | { type: "error"; error: Error }
   | { type: "complete" }
   | { type: "terminated"; reason: string; error?: Error };

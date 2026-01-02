@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import type { ToolRenderer, WebFetchInput, WebFetchResult } from "./types";
 
 const MAX_CONTENT_LINES = 30;
@@ -42,11 +46,34 @@ function WebFetchToolResult({
   isError: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("WebFetch", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("WebFetch", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("WebFetch");
 
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
       <div className="webfetch-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="WebFetch" errors={validationErrors} />
+        )}
         {typeof result === "object" && errorResult?.content
           ? String(errorResult.content)
           : "Fetch failed"}
@@ -87,6 +114,9 @@ function WebFetchToolResult({
         <span className="webfetch-meta">
           {formatBytes(result.bytes)} &middot; {result.durationMs}ms
         </span>
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="WebFetch" errors={validationErrors} />
+        )}
       </div>
       {result.result && (
         <>

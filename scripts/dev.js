@@ -92,7 +92,12 @@ function startServer() {
     const idx = children.indexOf(server);
     if (idx !== -1) children.splice(idx, 1);
 
-    if (code !== null && code !== 0) {
+    // If server exited cleanly (code 0) and we're in manual reload mode,
+    // it was a reload request - restart it
+    if (!backendWatch && code === 0 && signal === null) {
+      console.log("\nRestarting server...");
+      startServer();
+    } else if (code !== null && code !== 0) {
       console.error(`Server exited with code ${code}`);
     }
   });

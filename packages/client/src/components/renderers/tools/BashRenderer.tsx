@@ -1,4 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import { Modal } from "../../ui/Modal";
 import type { RenderContext } from "../types";
 import type { BashInput, BashResult, ToolRenderer } from "./types";
@@ -94,6 +98,26 @@ function BashToolResult({
   isError: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Bash", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Bash", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Bash");
 
   const stdout = result?.stdout || "";
   const stderr = result?.stderr || "";
@@ -106,6 +130,9 @@ function BashToolResult({
 
   return (
     <div className={`bash-result ${isError ? "bash-result-error" : ""}`}>
+      {showValidationWarning && validationErrors && (
+        <SchemaWarning toolName="Bash" errors={validationErrors} />
+      )}
       {result?.interrupted && (
         <span className="badge badge-warning">Interrupted</span>
       )}
@@ -186,6 +213,27 @@ function BashCollapsedPreview({
   isError: boolean;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Bash", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Bash", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Bash");
+
   const output = result?.stdout || result?.stderr || "";
   const { text: previewText, truncated } = truncateOutput(output);
   const hasOutput = previewText.length > 0;
@@ -208,6 +256,9 @@ function BashCollapsedPreview({
         <div className="bash-preview-row">
           <span className="bash-preview-label">IN</span>
           <code className="bash-preview-command">{input.command}</code>
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Bash" errors={validationErrors} />
+          )}
         </div>
         {hasOutput && (
           <div className="bash-preview-row bash-preview-output-row">

@@ -1,3 +1,8 @@
+import { useEffect, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import type {
   Todo,
   TodoWriteInput,
@@ -75,10 +80,34 @@ function TodoWriteToolResult({
   result: TodoWriteResult;
   isError: boolean;
 }) {
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("TodoWrite", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("TodoWrite", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("TodoWrite");
+
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
       <div className="todo-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="TodoWrite" errors={validationErrors} />
+        )}
         {typeof result === "object" && errorResult?.content
           ? String(errorResult.content)
           : "Failed to update todos"}
@@ -87,11 +116,21 @@ function TodoWriteToolResult({
   }
 
   if (!result?.newTodos || result.newTodos.length === 0) {
-    return <div className="todo-empty">No todos</div>;
+    return (
+      <div className="todo-empty">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="TodoWrite" errors={validationErrors} />
+        )}
+        No todos
+      </div>
+    );
   }
 
   return (
     <div className="todo-result">
+      {showValidationWarning && validationErrors && (
+        <SchemaWarning toolName="TodoWrite" errors={validationErrors} />
+      )}
       <div className="todo-list">
         {result.newTodos.map((todo, index) => (
           <TodoItem key={`${todo.content}-${index}`} todo={todo} />

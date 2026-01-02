@@ -18,7 +18,20 @@ export function ToastContainer({ toasts, onDismiss }: Props) {
           onKeyDown={(e) => e.key === "Enter" && onDismiss(toast.id)}
           role="alert"
         >
-          {toast.message}
+          <span className="toast-message">{toast.message}</span>
+          {toast.action && (
+            <button
+              type="button"
+              className="toast-action"
+              onClick={(e) => {
+                e.stopPropagation();
+                toast.action?.onClick();
+                onDismiss(toast.id);
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
         </div>
       ))}
     </div>

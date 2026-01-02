@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 const MODEL_KEY = "claude-anywhere-model";
 const THINKING_LEVEL_KEY = "claude-anywhere-thinking-level";
 const THINKING_ENABLED_KEY = "claude-anywhere-thinking-enabled";
+const VOICE_INPUT_ENABLED_KEY = "claude-anywhere-voice-input-enabled";
 
 /**
  * Available model options.
@@ -81,6 +82,16 @@ function saveThinkingEnabled(enabled: boolean) {
   localStorage.setItem(THINKING_ENABLED_KEY, enabled ? "true" : "false");
 }
 
+function loadVoiceInputEnabled(): boolean {
+  const stored = localStorage.getItem(VOICE_INPUT_ENABLED_KEY);
+  // Default to true (enabled) if not set
+  return stored !== "false";
+}
+
+function saveVoiceInputEnabled(enabled: boolean) {
+  localStorage.setItem(VOICE_INPUT_ENABLED_KEY, enabled ? "true" : "false");
+}
+
 /**
  * Hook to manage model and thinking preferences.
  */
@@ -90,6 +101,9 @@ export function useModelSettings() {
     useState<ThinkingLevel>(loadThinkingLevel);
   const [thinkingEnabled, setThinkingEnabledState] =
     useState<boolean>(loadThinkingEnabled);
+  const [voiceInputEnabled, setVoiceInputEnabledState] = useState<boolean>(
+    loadVoiceInputEnabled,
+  );
 
   const setModel = useCallback((m: ModelOption) => {
     setModelState(m);
@@ -112,6 +126,17 @@ export function useModelSettings() {
     saveThinkingEnabled(newEnabled);
   }, [thinkingEnabled]);
 
+  const setVoiceInputEnabled = useCallback((enabled: boolean) => {
+    setVoiceInputEnabledState(enabled);
+    saveVoiceInputEnabled(enabled);
+  }, []);
+
+  const toggleVoiceInput = useCallback(() => {
+    const newEnabled = !voiceInputEnabled;
+    setVoiceInputEnabledState(newEnabled);
+    saveVoiceInputEnabled(newEnabled);
+  }, [voiceInputEnabled]);
+
   return {
     model,
     setModel,
@@ -120,6 +145,9 @@ export function useModelSettings() {
     thinkingEnabled,
     setThinkingEnabled,
     toggleThinking,
+    voiceInputEnabled,
+    setVoiceInputEnabled,
+    toggleVoiceInput,
   };
 }
 
@@ -162,4 +190,11 @@ export function setThinkingEnabled(enabled: boolean): void {
 export function getThinkingTokens(level: ThinkingLevel): number {
   const opt = THINKING_LEVEL_OPTIONS.find((o) => o.value === level);
   return opt?.tokens ?? 16000; // Default to medium
+}
+
+/**
+ * Get voice input enabled state without React state.
+ */
+export function getVoiceInputEnabled(): boolean {
+  return loadVoiceInputEnabled();
 }

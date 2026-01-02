@@ -15,6 +15,7 @@ import {
 import { useModelSettings } from "../hooks/useModelSettings";
 import type { ContextUsage, PermissionMode } from "../types";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
+import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
 /** Progress info for an in-flight upload */
 export interface UploadProgress {
@@ -101,10 +102,18 @@ export function MessageInput({
   uploadProgress = [],
 }: Props) {
   const [text, setText, controls] = useDraftPersistence(draftKey);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
   // User-controlled collapse state (independent of external collapse from approval panel)
   const [userCollapsed, setUserCollapsed] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState("");
   const { thinkingEnabled, toggleThinking, thinkingLevel } = useModelSettings();
+
+  // Combined display text: committed text + interim transcript
+  const displayText = interimTranscript
+    ? text + (text.trimEnd() ? " " : "") + interimTranscript
+    : text;
 
   // Panel is collapsed if user collapsed it OR if externally collapsed (approval panel showing)
   const collapsed = userCollapsed || externalCollapsed;
@@ -125,16 +134,37 @@ export function MessageInput({
   }, [controls, onDraftControlsReady]);
 
   const handleSubmit = useCallback(() => {
-    const hasContent = text.trim() || attachments.length > 0;
+    // Stop voice recording and get any pending interim text
+    const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
+
+    // Combine committed text with any pending voice text
+    let finalText = text.trimEnd();
+    if (pendingVoice) {
+      finalText = finalText ? `${finalText} ${pendingVoice}` : pendingVoice;
+    }
+
+    const hasContent = finalText.trim() || attachments.length > 0;
     if (hasContent && !disabled) {
-      const message = text.trim();
+      const message = finalText.trim();
       // Clear input state but keep localStorage for failure recovery
       controls.clearInput();
+      setInterimTranscript("");
       onSend(message);
+      // Refocus the textarea so user can continue typing
+      textareaRef.current?.focus();
     }
   }, [text, disabled, controls, onSend, attachments.length]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    // Ctrl+Space toggles voice input
+    if (e.key === " " && e.ctrlKey && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      if (voiceButtonRef.current?.isAvailable) {
+        voiceButtonRef.current.toggle();
+      }
+      return;
+    }
+
     if (e.key === "Enter") {
       if (ENTER_SENDS_MESSAGE) {
         // Enter sends, Ctrl+Enter adds newline
@@ -188,6 +218,29 @@ export function MessageInput({
     }
   };
 
+  // Voice input handlers
+  const handleVoiceTranscript = useCallback(
+    (transcript: string) => {
+      // Append transcript to existing text with space separator
+      // Trim the transcript since mobile speech API includes leading/trailing spaces
+      const trimmedTranscript = transcript.trim();
+      if (!trimmedTranscript) return;
+
+      const trimmedText = text.trimEnd();
+      if (trimmedText) {
+        setText(`${trimmedText} ${trimmedTranscript}`);
+      } else {
+        setText(trimmedTranscript);
+      }
+      setInterimTranscript("");
+    },
+    [text, setText],
+  );
+
+  const handleInterimTranscript = useCallback((transcript: string) => {
+    setInterimTranscript(transcript);
+  }, []);
+
   return (
     <div className="message-input-wrapper">
       {/* Floating toggle button - only show when user can control collapse (not externally collapsed) */}
@@ -218,11 +271,17 @@ export function MessageInput({
         </button>
       )}
       <div
-        className={`message-input ${collapsed ? "message-input-collapsed" : ""}`}
+        className={`message-input ${collapsed ? "message-input-collapsed" : ""} ${interimTranscript ? "voice-recording" : ""}`}
       >
         <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
+          ref={textareaRef}
+          value={displayText}
+          onChange={(e) => {
+            // If user edits while recording, only update committed text
+            // This clears interim since they're now typing
+            setInterimTranscript("");
+            setText(e.target.value);
+          }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder={
@@ -339,6 +398,12 @@ export function MessageInput({
                   <polyline points="12 6 12 12 16 14" />
                 </svg>
               </button>
+              <VoiceInputButton
+                ref={voiceButtonRef}
+                onTranscript={handleVoiceTranscript}
+                onInterimTranscript={handleInterimTranscript}
+                disabled={disabled}
+              />
             </div>
             <div className="message-input-actions">
               <ContextUsageIndicator usage={contextUsage} size={16} />

@@ -1,14 +1,15 @@
 import { defineConfig } from "@playwright/test";
 
 // Port configuration for unified server architecture:
-// - E2E_SERVER_PORT: Backend server port (default: 3401, different from dev's 3400)
+// - E2E_SERVER_PORT: Backend server port (default: 3402, different from dev's 3400)
+//   Note: dev server uses 3400 + maintenance on 3401, so E2E uses 3402+ to avoid conflicts
 // - E2E_VITE_PORT: Vite dev server port (default: 5174, different from dev's 5555)
 // - E2E_REUSE_DEV: Set to "true" to run against existing dev server on port 3400
 //   (skips starting mock server - tests run against real Claude SDK)
 const reuseDevServer = process.env.E2E_REUSE_DEV === "true";
 // When reusing dev server, use dev's port 3400; otherwise use isolated ports
 const serverPort = Number.parseInt(
-  process.env.E2E_SERVER_PORT || (reuseDevServer ? "3400" : "3401"),
+  process.env.E2E_SERVER_PORT || (reuseDevServer ? "3400" : "3402"),
 );
 const vitePort = Number.parseInt(process.env.E2E_VITE_PORT || "5174");
 

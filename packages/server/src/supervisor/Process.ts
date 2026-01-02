@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import type { UrlProjectId } from "@claude-anywhere/shared";
+import { getLogger } from "../logging/logger.js";
 import type { MessageQueue } from "../sdk/messageQueue.js";
 import type {
   PermissionMode,
@@ -149,6 +151,26 @@ export class Process {
       return; // Already terminated
     }
 
+    const log = getLogger();
+    const durationMs = Date.now() - this.startedAt.getTime();
+    const pendingApprovalCount = this.pendingToolApprovals.size;
+
+    log.warn(
+      {
+        event: "process_terminated",
+        sessionId: this._sessionId,
+        processId: this.id,
+        projectId: this.projectId,
+        reason,
+        errorMessage: error?.message,
+        errorStack: error?.stack,
+        durationMs,
+        pendingApprovalCount,
+        previousState: this._state.type,
+      },
+      `Process terminated: ${this._sessionId} - ${reason}`,
+    );
+
     this.clearIdleTimer();
     this.iteratorDone = true;
 
@@ -203,15 +225,24 @@ export class Process {
       stateType = "running";
     }
 
-    return {
+    const info: ProcessInfo = {
       id: this.id,
       sessionId: this._sessionId,
       projectId: this.projectId,
       projectPath: this.projectPath,
+      projectName: path.basename(this.projectPath),
+      sessionTitle: null, // Will be populated by Supervisor with session data
       state: stateType,
       startedAt: this.startedAt.toISOString(),
       queueDepth: this.queueDepth,
     };
+
+    // Add idleSince if idle
+    if (this._state.type === "idle") {
+      info.idleSince = this._state.since.toISOString();
+    }
+
+    return info;
   }
 
   /**
@@ -635,8 +666,32 @@ export class Process {
           message.subtype === "init" &&
           message.session_id
         ) {
+          const log = getLogger();
+          const oldSessionId = this._sessionId;
           this._sessionId = message.session_id;
           this.sessionIdResolved = true;
+
+          log.info(
+            {
+              event: "session_id_received",
+              sessionId: this._sessionId,
+              previousTempId: oldSessionId,
+              processId: this.id,
+              projectId: this.projectId,
+            },
+            `Session ID received from SDK: ${this._sessionId}`,
+          );
+
+          // Emit session-id-changed event so Supervisor can update its mapping
+          // This is critical for ExternalSessionTracker to correctly identify owned sessions
+          if (oldSessionId !== this._sessionId) {
+            this.emit({
+              type: "session-id-changed",
+              oldSessionId,
+              newSessionId: this._sessionId,
+            });
+          }
+
           // Resolve any waiters
           for (const resolve of this.sessionIdResolvers) {
             resolve(this._sessionId);
@@ -656,6 +711,21 @@ export class Process {
       }
     } catch (error) {
       const err = error as Error;
+      const log = getLogger();
+
+      log.error(
+        {
+          event: "process_error",
+          sessionId: this._sessionId,
+          processId: this.id,
+          projectId: this.projectId,
+          errorMessage: err.message,
+          errorStack: err.stack,
+          currentState: this._state.type,
+        },
+        `Process error: ${this._sessionId} - ${err.message}`,
+      );
+
       this.emit({ type: "error", error: err });
 
       // Detect process termination errors

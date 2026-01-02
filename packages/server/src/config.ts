@@ -15,6 +15,8 @@ export interface Config {
   defaultPermissionMode: PermissionMode;
   /** Server port */
   port: number;
+  /** Maintenance server port (default: main port + 1). Set to 0 to disable. */
+  maintenancePort: number;
   /** Use mock SDK instead of real Claude SDK */
   useMockSdk: boolean;
   /** Maximum concurrent workers. 0 = unlimited (default for backward compat) */
@@ -35,8 +37,10 @@ export interface Config {
   logDir: string;
   /** Log filename. Default: server.log */
   logFile: string;
-  /** Minimum log level. Default: info */
+  /** Minimum log level for console. Default: info */
   logLevel: LogLevel;
+  /** Minimum log level for file. Default: same as logLevel or LOG_FILE_LEVEL */
+  logFileLevel: LogLevel;
   /** Whether to log to file. Default: true */
   logToFile: boolean;
   /** Whether to log to console. Default: true */
@@ -61,6 +65,11 @@ export function loadConfig(): Config {
     idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 5 * 60) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),
+    // Maintenance port defaults to main port + 1, set to 0 to disable
+    maintenancePort: parseIntOrDefault(
+      process.env.MAINTENANCE_PORT,
+      parseIntOrDefault(process.env.PORT, 3400) + 1,
+    ),
     useMockSdk: process.env.USE_MOCK_SDK === "true",
     maxWorkers: parseIntOrDefault(process.env.MAX_WORKERS, 0),
     idlePreemptThresholdMs:
@@ -83,6 +92,9 @@ export function loadConfig(): Config {
       path.join(process.cwd(), ".claude-anywhere", "logs"),
     logFile: process.env.LOG_FILE ?? "server.log",
     logLevel: parseLogLevel(process.env.LOG_LEVEL),
+    logFileLevel: parseLogLevel(
+      process.env.LOG_FILE_LEVEL ?? process.env.LOG_LEVEL,
+    ),
     logToFile: process.env.LOG_TO_FILE !== "false",
     logToConsole: process.env.LOG_TO_CONSOLE !== "false",
   };

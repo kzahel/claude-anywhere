@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { ProcessStateType } from "../hooks/useFileActivity";
+import { useProcesses } from "../hooks/useProcesses";
 import { type SessionSummary, getSessionDisplayTitle } from "../types";
 import { SessionMenu } from "./SessionMenu";
 
@@ -62,7 +63,6 @@ export function Sidebar({
   onToggleExpanded,
   sessionDrafts,
 }: SidebarProps) {
-  const navigate = useNavigate();
   const sidebarRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
@@ -71,6 +71,7 @@ export function Sidebar({
   const [recentSessionsLimit, setRecentSessionsLimit] = useState(
     RECENT_SESSIONS_INITIAL,
   );
+  const { activeCount } = useProcesses();
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0]?.clientX ?? null;
@@ -162,11 +163,6 @@ export function Sidebar({
       .sort(stableSort)
       .slice(0, 10);
   }, [sessions]);
-
-  const handleNavClick = (path: string) => {
-    onNavigate();
-    navigate(path);
-  };
 
   // In desktop mode, always render. In mobile mode, only render when open.
   if (!isDesktop && !isOpen) return null;
@@ -294,10 +290,33 @@ export function Sidebar({
           </Link>
 
           <div className="sidebar-nav-links">
-            <button
-              type="button"
+            <Link
+              to="/inbox"
               className="sidebar-nav-button"
-              onClick={() => handleNavClick("/projects")}
+              onClick={onNavigate}
+              title="Inbox"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+                <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+              </svg>
+              <span className="sidebar-nav-text">Inbox</span>
+            </Link>
+
+            <Link
+              to="/projects"
+              className="sidebar-nav-button"
+              onClick={onNavigate}
               title="Projects"
             >
               <svg
@@ -312,12 +331,12 @@ export function Sidebar({
                 <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
               </svg>
               <span className="sidebar-nav-text">Projects</span>
-            </button>
+            </Link>
 
-            <button
-              type="button"
+            <Link
+              to={`/projects/${projectId}`}
               className="sidebar-nav-button"
-              onClick={() => handleNavClick(`/projects/${projectId}`)}
+              onClick={onNavigate}
               title="All Sessions"
             >
               <svg
@@ -334,12 +353,41 @@ export function Sidebar({
                 <line x1="9" y1="21" x2="9" y2="9" />
               </svg>
               <span className="sidebar-nav-text">All Sessions</span>
-            </button>
+            </Link>
 
-            <button
-              type="button"
+            <Link
+              to="/agents"
               className="sidebar-nav-button"
-              onClick={() => handleNavClick("/settings")}
+              onClick={onNavigate}
+              title="Agents"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="11" width="18" height="10" rx="2" />
+                <circle cx="12" cy="5" r="3" />
+                <path d="M12 8v3" />
+                <circle cx="8" cy="16" r="1" />
+                <circle cx="16" cy="16" r="1" />
+              </svg>
+              <span className="sidebar-nav-text">Agents</span>
+              {activeCount > 0 && (
+                <span className="sidebar-nav-badge">{activeCount}</span>
+              )}
+            </Link>
+
+            <Link
+              to="/settings"
+              className="sidebar-nav-button"
+              onClick={onNavigate}
               title="Settings"
             >
               <svg
@@ -357,7 +405,7 @@ export function Sidebar({
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </svg>
               <span className="sidebar-nav-text">Settings</span>
-            </button>
+            </Link>
           </div>
         </div>
 
@@ -446,10 +494,10 @@ export function Sidebar({
             )}
 
           <div className="sidebar-all-sessions-link">
-            <button
-              type="button"
+            <Link
+              to={`/projects/${projectId}`}
               className="sidebar-nav-button"
-              onClick={() => handleNavClick(`/projects/${projectId}`)}
+              onClick={onNavigate}
               title="All Sessions"
             >
               <svg
@@ -466,7 +514,7 @@ export function Sidebar({
                 <line x1="9" y1="21" x2="9" y2="9" />
               </svg>
               <span className="sidebar-nav-text">All Sessions</span>
-            </button>
+            </Link>
           </div>
         </div>
       </aside>
@@ -498,9 +546,26 @@ function SidebarSessionItem({
   const [localIsArchived, setLocalIsArchived] = useState<boolean | undefined>(
     undefined,
   );
+  const [isEditing, setIsEditing] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [localTitle, setLocalTitle] = useState<string | undefined>(undefined);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const isSavingRef = useRef(false);
 
   const isStarred = localIsStarred ?? session.isStarred;
   const isArchived = localIsArchived ?? session.isArchived;
+  const displayTitle = localTitle ?? getSessionDisplayTitle(session);
+
+  // Focus input when entering edit mode
+  useEffect(() => {
+    if (isEditing) {
+      setTimeout(() => {
+        renameInputRef.current?.focus();
+        renameInputRef.current?.select();
+      }, 0);
+    }
+  }, [isEditing]);
 
   const handleToggleStar = async () => {
     const newStarred = !isStarred;
@@ -525,9 +590,55 @@ function SidebarSessionItem({
   };
 
   const handleRename = () => {
-    // Navigate to the session page - user can rename there
-    onNavigate();
-    navigate(`/projects/${projectId}/sessions/${session.id}`);
+    setRenameValue(displayTitle);
+    setIsEditing(true);
+  };
+
+  const handleCancelEditing = () => {
+    if (isSavingRef.current) return;
+    setIsEditing(false);
+    setRenameValue("");
+  };
+
+  const handleSaveRename = async () => {
+    if (!renameValue.trim() || isSaving) return;
+    if (renameValue.trim() === displayTitle) {
+      handleCancelEditing();
+      return;
+    }
+    isSavingRef.current = true;
+    setIsSaving(true);
+    try {
+      await api.updateSessionMetadata(session.id, {
+        title: renameValue.trim(),
+      });
+      setLocalTitle(renameValue.trim());
+      setIsEditing(false);
+    } catch (err) {
+      console.error("Failed to rename session:", err);
+    } finally {
+      setIsSaving(false);
+      isSavingRef.current = false;
+    }
+  };
+
+  const handleRenameBlur = () => {
+    if (isSavingRef.current) return;
+    if (!renameValue.trim() || renameValue.trim() === displayTitle) {
+      handleCancelEditing();
+      return;
+    }
+    handleSaveRename();
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSaveRename();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      handleCancelEditing();
+    }
   };
 
   // Determine activity indicator
@@ -566,33 +677,44 @@ function SidebarSessionItem({
 
   return (
     <li className={liClassName || undefined}>
-      <Link
-        to={`/projects/${projectId}/sessions/${session.id}`}
-        onClick={onNavigate}
-        title={session.fullTitle || getSessionDisplayTitle(session)}
-      >
-        <span className="sidebar-session-title">
-          {isStarred && (
-            <svg
-              className="sidebar-star"
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              stroke="currentColor"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-          )}
-          <span className="sidebar-session-title-text">
-            {getSessionDisplayTitle(session)}
+      {isEditing ? (
+        <input
+          ref={renameInputRef}
+          type="text"
+          className="sidebar-rename-input"
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onBlur={handleRenameBlur}
+          onKeyDown={handleRenameKeyDown}
+          disabled={isSaving}
+        />
+      ) : (
+        <Link
+          to={`/projects/${projectId}/sessions/${session.id}`}
+          onClick={onNavigate}
+          title={session.fullTitle || displayTitle}
+        >
+          <span className="sidebar-session-title">
+            {isStarred && (
+              <svg
+                className="sidebar-star"
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+            )}
+            <span className="sidebar-session-title-text">{displayTitle}</span>
+            {hasDraft && <span className="sidebar-draft">(draft)</span>}
           </span>
-          {hasDraft && <span className="sidebar-draft">(draft)</span>}
-        </span>
-        {getActivityIndicator()}
-      </Link>
+          {getActivityIndicator()}
+        </Link>
+      )}
       <SessionMenu
         sessionId={session.id}
         isStarred={isStarred ?? false}

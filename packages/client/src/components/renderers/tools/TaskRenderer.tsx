@@ -1,8 +1,22 @@
-import { useCallback, useContext, useMemo, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { ZodError } from "zod";
 import { AgentContentContext } from "../../../contexts/AgentContentContext";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { preprocessMessages } from "../../../lib/preprocessMessages";
+import {
+  type ValidationResult,
+  validateToolResult,
+} from "../../../lib/validateToolResult";
 import type { Message } from "../../../types";
 import { RenderItemComponent } from "../../RenderItemComponent";
+import { SchemaWarning } from "../../SchemaWarning";
 import { ContentBlockRenderer } from "../ContentBlockRenderer";
 import type { TaskInput, TaskResult, ToolRenderer } from "./types";
 
@@ -103,6 +117,12 @@ function TaskInline({
   toolUseId?: string;
 }) {
   const context = useContext(AgentContentContext);
+  const {
+    reportValidationError,
+    enabled: validationEnabled,
+    isToolIgnored,
+  } = useSchemaValidationContext();
+
   // Get agentId from result, or look it up from toolUseToAgent mapping during streaming
   // The mapping is built when we receive system/init messages with parent_tool_use_id
   const agentId =
@@ -123,6 +143,117 @@ function TaskInline({
   // Start expanded if running, otherwise collapsed for completed tasks
   const [isExpanded, setIsExpanded] = useState(isRunning);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
+
+  // Autoscroll refs
+  const contentRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const isProgrammaticScrollRef = useRef(false);
+  const lastHeightRef = useRef(0);
+
+  // Scroll content container to bottom
+  const scrollToBottom = useCallback((container: HTMLElement) => {
+    isProgrammaticScrollRef.current = true;
+    container.scrollTop = container.scrollHeight - container.clientHeight;
+    lastHeightRef.current = container.scrollHeight;
+
+    requestAnimationFrame(() => {
+      isProgrammaticScrollRef.current = false;
+    });
+  }, []);
+
+  // Track scroll position - only user scrolls affect auto-scroll state
+  const handleScroll = useCallback(() => {
+    if (isProgrammaticScrollRef.current) return;
+
+    const container = contentRef.current;
+    if (!container) return;
+
+    const threshold = 100;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom < threshold;
+  }, []);
+
+  // Attach scroll listener to content container
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container || !isExpanded) return;
+
+    container.addEventListener("scroll", handleScroll);
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+    };
+  }, [handleScroll, isExpanded]);
+
+  // Use ResizeObserver to auto-scroll when content height increases
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container || !isExpanded || !isRunning) return;
+
+    lastHeightRef.current = container.scrollHeight;
+
+    const resizeObserver = new ResizeObserver(() => {
+      const newHeight = container.scrollHeight;
+      const heightIncreased = newHeight > lastHeightRef.current;
+
+      if (heightIncreased && shouldAutoScrollRef.current) {
+        scrollToBottom(container);
+      } else {
+        lastHeightRef.current = newHeight;
+      }
+    });
+
+    // Observe the container's children for size changes
+    for (const child of container.children) {
+      resizeObserver.observe(child);
+    }
+
+    // Also observe container itself
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [isExpanded, isRunning, scrollToBottom]);
+
+  // Reset autoscroll when task starts running or expands
+  useEffect(() => {
+    if (isExpanded && isRunning) {
+      shouldAutoScrollRef.current = true;
+      const container = contentRef.current;
+      if (container) {
+        // Small delay to let content render
+        requestAnimationFrame(() => {
+          scrollToBottom(container);
+        });
+      }
+    }
+  }, [isExpanded, isRunning, scrollToBottom]);
+
+  // Store validation errors for inline warning display
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  // Validate result schema when enabled (debug feature)
+  useEffect(() => {
+    if (!result || !validationEnabled) {
+      setValidationErrors(null);
+      return;
+    }
+
+    const validation = validateToolResult("Task", result);
+    if (!validation.valid && validation.errors) {
+      setValidationErrors(validation.errors);
+      reportValidationError("Task", validation.errors);
+    } else {
+      setValidationErrors(null);
+    }
+  }, [result, validationEnabled, reportValidationError]);
+
+  // Determine if we should show the warning badge
+  const showValidationWarning =
+    validationEnabled && validationErrors !== null && !isToolIgnored("Task");
 
   // Handle expand with lazy-loading
   const handleExpand = async () => {
@@ -193,9 +324,12 @@ function TaskInline({
         )}
         {result && (
           <span className="task-stats">
-            {formatDuration(result.totalDurationMs)} ·{" "}
-            {result.totalTokens.toLocaleString()} tokens
+            {formatDuration(result.totalDurationMs ?? 0)} ·{" "}
+            {(result.totalTokens ?? 0).toLocaleString()} tokens
           </span>
+        )}
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Task" errors={validationErrors} />
         )}
       </button>
 
@@ -208,7 +342,7 @@ function TaskInline({
 
       {/* Expanded content */}
       {isExpanded && (
-        <div className="task-inline-content">
+        <div className="task-inline-content" ref={contentRef}>
           {/* Show live nested content if available */}
           {liveContent?.messages.length ? (
             <TaskNestedContent
@@ -302,9 +436,9 @@ function TaskToolResult({
       <div className="task-result-header">
         <span className={`badge ${statusClass}`}>{result.status}</span>
         <span className="task-stats">
-          {formatDuration(result.totalDurationMs)} &middot;{" "}
-          {result.totalTokens.toLocaleString()} tokens &middot;{" "}
-          {result.totalToolUseCount} tools
+          {formatDuration(result.totalDurationMs ?? 0)} &middot;{" "}
+          {(result.totalTokens ?? 0).toLocaleString()} tokens &middot;{" "}
+          {result.totalToolUseCount ?? 0} tools
         </span>
         <button
           type="button"

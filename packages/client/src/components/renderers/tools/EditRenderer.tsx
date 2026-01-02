@@ -1,4 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import { Modal } from "../../ui/Modal";
 import type { RenderContext } from "../types";
 import type { EditInput, EditResult, PatchHunk, ToolRenderer } from "./types";
@@ -191,6 +195,26 @@ function EditCollapsedPreview({
   isError: boolean;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Edit", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Edit", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Edit");
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -266,6 +290,9 @@ function EditCollapsedPreview({
     }
     return (
       <div className="edit-collapsed-preview edit-collapsed-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Edit" errors={validationErrors} />
+        )}
         <span className="badge badge-error">Edit failed</span>
         {errorMessage && (
           <span className="edit-error-message">{errorMessage}</span>
@@ -282,6 +309,9 @@ function EditCollapsedPreview({
           {isPlan && <span className="badge badge-muted">Plan</span>}
           {result?.userModified && (
             <span className="badge badge-info">User modified</span>
+          )}
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Edit" errors={validationErrors} />
           )}
         </div>
         {changeSummary && (
@@ -332,6 +362,26 @@ function EditToolResult({
   isError: boolean;
 }) {
   const [showModal, setShowModal] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Edit", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Edit", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Edit");
 
   // Count total lines in all hunks
   const totalLines = useMemo(() => {
@@ -379,6 +429,9 @@ function EditToolResult({
     }
     return (
       <div className="edit-result edit-result-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Edit" errors={validationErrors} />
+        )}
         <span className="badge badge-error">Edit failed</span>
         {errorMessage && (
           <div className="edit-error-message">{errorMessage}</div>
@@ -405,6 +458,9 @@ function EditToolResult({
           {result?.userModified && (
             <span className="badge badge-info">User modified</span>
           )}
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Edit" errors={validationErrors} />
+          )}
         </div>
         <div className="edit-simple">
           <div className="edit-old">
@@ -427,6 +483,9 @@ function EditToolResult({
   return (
     <>
       <div className="edit-result">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Edit" errors={validationErrors} />
+        )}
         {changeSummary && (
           <div className="edit-change-summary">{changeSummary}</div>
         )}

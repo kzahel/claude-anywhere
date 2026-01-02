@@ -1,3 +1,8 @@
+import { useEffect, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import type { ToolRenderer, WebSearchInput, WebSearchResult } from "./types";
 
 /**
@@ -21,10 +26,34 @@ function WebSearchToolResult({
   result: WebSearchResult;
   isError: boolean;
 }) {
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("WebSearch", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("WebSearch", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("WebSearch");
+
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
       <div className="websearch-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="WebSearch" errors={validationErrors} />
+        )}
         {typeof result === "object" && errorResult?.content
           ? String(errorResult.content)
           : "Search failed"}
@@ -46,6 +75,9 @@ function WebSearchToolResult({
         <span className="websearch-query-display">"{result.query}"</span>
         {result.durationSeconds !== undefined && (
           <span className="badge">{result.durationSeconds.toFixed(2)}s</span>
+        )}
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="WebSearch" errors={validationErrors} />
         )}
       </div>
       {allResults.length > 0 ? (

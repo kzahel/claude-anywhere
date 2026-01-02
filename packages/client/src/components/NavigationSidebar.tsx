@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { useProcesses } from "../hooks/useProcesses";
 
 const SWIPE_THRESHOLD = 50;
 
@@ -25,11 +26,11 @@ export function NavigationSidebar({
   isCollapsed = false,
   onToggleExpanded,
 }: NavigationSidebarProps) {
-  const navigate = useNavigate();
   const location = useLocation();
   const sidebarRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const { activeCount } = useProcesses();
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0]?.clientX ?? null;
@@ -52,11 +53,6 @@ export function NavigationSidebar({
     }
     touchStartX.current = null;
     setSwipeOffset(0);
-  };
-
-  const handleNavClick = (path: string) => {
-    onClose();
-    navigate(path);
   };
 
   if (!isDesktop && !isOpen) return null;
@@ -145,10 +141,33 @@ export function NavigationSidebar({
         </div>
 
         <div className="sidebar-actions">
-          <button
-            type="button"
+          <Link
+            to="/inbox"
+            className={`sidebar-nav-button ${isActive("/inbox") ? "active" : ""}`}
+            onClick={onClose}
+            title="Inbox"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+              <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+            </svg>
+            <span className="sidebar-nav-text">Inbox</span>
+          </Link>
+
+          <Link
+            to="/projects"
             className={`sidebar-nav-button ${isActive("/projects") ? "active" : ""}`}
-            onClick={() => handleNavClick("/projects")}
+            onClick={onClose}
             title="Projects"
           >
             <svg
@@ -163,12 +182,41 @@ export function NavigationSidebar({
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
             </svg>
             <span className="sidebar-nav-text">Projects</span>
-          </button>
+          </Link>
 
-          <button
-            type="button"
+          <Link
+            to="/agents"
+            className={`sidebar-nav-button ${isActive("/agents") ? "active" : ""}`}
+            onClick={onClose}
+            title="Agents"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="11" width="18" height="10" rx="2" />
+              <circle cx="12" cy="5" r="3" />
+              <path d="M12 8v3" />
+              <circle cx="8" cy="16" r="1" />
+              <circle cx="16" cy="16" r="1" />
+            </svg>
+            <span className="sidebar-nav-text">Agents</span>
+            {activeCount > 0 && (
+              <span className="sidebar-nav-badge">{activeCount}</span>
+            )}
+          </Link>
+
+          <Link
+            to="/settings"
             className={`sidebar-nav-button ${isActive("/settings") ? "active" : ""}`}
-            onClick={() => handleNavClick("/settings")}
+            onClick={onClose}
             title="Settings"
           >
             <svg
@@ -186,7 +234,7 @@ export function NavigationSidebar({
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
             <span className="sidebar-nav-text">Settings</span>
-          </button>
+          </Link>
         </div>
 
         <div className="sidebar-sessions">

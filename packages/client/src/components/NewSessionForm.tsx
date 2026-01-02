@@ -2,16 +2,18 @@ import {
   type ChangeEvent,
   type ClipboardEvent,
   type KeyboardEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { type UploadedFile, api, uploadFile } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
 import type { PermissionMode } from "../types";
+import { VoiceInputButton, type VoiceInputButtonRef } from "./VoiceInputButton";
 
 interface PendingFile {
   id: string;
@@ -60,6 +62,8 @@ export interface NewSessionFormProps {
   placeholder?: string;
   /** Compact mode: no header, no mode selector, inline layout (default: false) */
   compact?: boolean;
+  /** Show a cancel link that navigates back to the project (default: false) */
+  showCancel?: boolean;
 }
 
 export function NewSessionForm({
@@ -69,6 +73,7 @@ export function NewSessionForm({
   rows = 6,
   placeholder = "Describe what you'd like Claude to help you with...",
   compact = false,
+  showCancel = false,
 }: NewSessionFormProps) {
   const navigate = useNavigate();
   const [message, setMessage, draftControls] = useDraftPersistence(
@@ -80,8 +85,15 @@ export function NewSessionForm({
   const [uploadProgress, setUploadProgress] = useState<
     Record<string, { uploaded: number; total: number }>
   >({});
+  const [interimTranscript, setInterimTranscript] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const voiceButtonRef = useRef<VoiceInputButtonRef>(null);
+
+  // Combined display text: committed text + interim transcript
+  const displayText = interimTranscript
+    ? message + (message.trimEnd() ? " " : "") + interimTranscript
+    : message;
 
   // Focus textarea on mount if autoFocus is enabled
   useEffect(() => {
@@ -121,10 +133,22 @@ export function NewSessionForm({
   };
 
   const handleStartSession = async () => {
-    const hasContent = message.trim() || pendingFiles.length > 0;
+    // Stop voice recording and get any pending interim text
+    const pendingVoice = voiceButtonRef.current?.stopAndFinalize() ?? "";
+
+    // Combine committed text with any pending voice text
+    let finalMessage = message.trimEnd();
+    if (pendingVoice) {
+      finalMessage = finalMessage
+        ? `${finalMessage} ${pendingVoice}`
+        : pendingVoice;
+    }
+
+    const hasContent = finalMessage.trim() || pendingFiles.length > 0;
     if (!projectId || !hasContent || isStarting) return;
 
-    const trimmedMessage = message.trim();
+    const trimmedMessage = finalMessage.trim();
+    setInterimTranscript("");
     setIsStarting(true);
 
     try {
@@ -256,17 +280,40 @@ export function NewSessionForm({
     }
   };
 
+  // Voice input handlers
+  const handleVoiceTranscript = useCallback(
+    (transcript: string) => {
+      const trimmed = message.trimEnd();
+      if (trimmed) {
+        setMessage(`${trimmed} ${transcript}`);
+      } else {
+        setMessage(transcript);
+      }
+      setInterimTranscript("");
+    },
+    [message, setMessage],
+  );
+
+  const handleInterimTranscript = useCallback((transcript: string) => {
+    setInterimTranscript(transcript);
+  }, []);
+
   const hasContent = message.trim() || pendingFiles.length > 0;
 
   // Compact mode: inline form with file attachments, no header or mode selector
   if (compact) {
     return (
-      <div className="new-session-form new-session-form-compact">
+      <div
+        className={`new-session-form new-session-form-compact ${interimTranscript ? "voice-recording" : ""}`}
+      >
         <div className="new-session-form-compact-input">
           <textarea
             ref={textareaRef}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            value={displayText}
+            onChange={(e) => {
+              setInterimTranscript("");
+              setMessage(e.target.value);
+            }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={placeholder}
@@ -300,6 +347,13 @@ export function NewSessionForm({
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
               </svg>
             </button>
+            <VoiceInputButton
+              ref={voiceButtonRef}
+              onTranscript={handleVoiceTranscript}
+              onInterimTranscript={handleInterimTranscript}
+              disabled={isStarting}
+              className="voice-button-compact"
+            />
             <button
               type="button"
               onClick={handleStartSession}
@@ -364,7 +418,9 @@ export function NewSessionForm({
 
   // Full mode: form with header, file attachments, and mode selector
   return (
-    <div className="new-session-form new-session-container">
+    <div
+      className={`new-session-form new-session-container ${interimTranscript ? "voice-recording" : ""}`}
+    >
       <div className="new-session-header">
         <h1>Start a New Session</h1>
         <p className="new-session-subtitle">What would you like to work on?</p>
@@ -374,8 +430,11 @@ export function NewSessionForm({
       <div className="new-session-input-area">
         <textarea
           ref={textareaRef}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          value={displayText}
+          onChange={(e) => {
+            setInterimTranscript("");
+            setMessage(e.target.value);
+          }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder={placeholder}
@@ -413,6 +472,13 @@ export function NewSessionForm({
             </svg>
             Attach files
           </button>
+          <VoiceInputButton
+            ref={voiceButtonRef}
+            onTranscript={handleVoiceTranscript}
+            onInterimTranscript={handleInterimTranscript}
+            disabled={isStarting}
+            className="voice-input-button-full"
+          />
 
           {pendingFiles.length > 0 && (
             <div className="pending-files-list">
@@ -488,6 +554,11 @@ export function NewSessionForm({
 
       {/* Submit Button */}
       <div className="new-session-actions">
+        {showCancel && (
+          <Link to={`/projects/${projectId}`} className="cancel-button">
+            Cancel
+          </Link>
+        )}
         <button
           type="button"
           onClick={handleStartSession}

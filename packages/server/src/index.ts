@@ -10,11 +10,13 @@ import {
   createFrontendProxy,
   createStaticRoutes,
 } from "./frontend/index.js";
+import { SessionIndexService } from "./indexes/index.js";
 import {
   getLogFilePath,
   initLogger,
   interceptConsole,
 } from "./logging/index.js";
+import { startMaintenanceServer } from "./maintenance/index.js";
 import { SessionMetadataService } from "./metadata/index.js";
 import { NotificationService } from "./notifications/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
@@ -24,13 +26,18 @@ import { detectClaudeCli } from "./sdk/cli-detection.js";
 import { RealClaudeSDK } from "./sdk/real.js";
 import { EventBus, FileWatcher, SourceWatcher } from "./watcher/index.js";
 
+// Allow many concurrent Claude sessions without listener warnings.
+// Each SDK session registers an exit handler; default limit is 10.
+process.setMaxListeners(50);
+
 const config = loadConfig();
 
 // Initialize logging early to capture all output
 initLogger({
   logDir: config.logDir,
   logFile: config.logFile,
-  logLevel: config.logLevel,
+  consoleLevel: config.logLevel,
+  fileLevel: config.logFileLevel,
   logToFile: config.logToFile,
   logToConsole: config.logToConsole,
   prettyPrint: process.env.NODE_ENV !== "production",
@@ -81,12 +88,16 @@ if (process.env.NO_BACKEND_RELOAD === "true") {
 // Create and initialize services
 const notificationService = new NotificationService({ eventBus });
 const sessionMetadataService = new SessionMetadataService();
+const sessionIndexService = new SessionIndexService({
+  projectsDir: config.claudeProjectsDir,
+});
 const pushService = new PushService();
 
 async function startServer() {
   // Initialize services (loads state from disk)
   await notificationService.initialize();
   await sessionMetadataService.initialize();
+  await sessionIndexService.initialize();
   await pushService.initialize();
 
   // Load VAPID keys if available (run 'pnpm setup-vapid' to generate)
@@ -126,6 +137,7 @@ async function startServer() {
     // Note: uploadeWebSocket not passed yet - will be added below
     notificationService,
     sessionMetadataService,
+    sessionIndexService,
     maxWorkers: config.maxWorkers,
     idlePreemptThresholdMs: config.idlePreemptThresholdMs,
     pushService,
@@ -199,6 +211,16 @@ async function startServer() {
     app,
     wss,
   });
+
+  // Start maintenance server on separate port (for out-of-band diagnostics)
+  // This runs independently from the main server and can be used to debug
+  // issues even when the main server is unresponsive
+  if (config.maintenancePort > 0) {
+    startMaintenanceServer({
+      port: config.maintenancePort,
+      mainServerPort: config.port,
+    });
+  }
 }
 
 startServer().catch((error) => {

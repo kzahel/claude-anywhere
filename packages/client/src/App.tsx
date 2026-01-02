@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { ReloadBanner } from "./components/ReloadBanner";
+import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
+import { ToastProvider } from "./contexts/ToastContext";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
 import { useReloadNotifications } from "./hooks/useReloadNotifications";
 
@@ -8,7 +10,8 @@ interface Props {
 }
 
 /**
- * App wrapper that provides global functionality like reload notifications.
+ * App wrapper that provides global functionality like reload notifications, toasts,
+ * and schema validation.
  */
 export function App({ children }: Props) {
   // Sync notifyInApp setting to service worker on app startup and SW restarts
@@ -25,24 +28,26 @@ export function App({ children }: Props) {
   } = useReloadNotifications();
 
   return (
-    <>
-      {isManualReloadMode && pendingReloads.backend && (
-        <ReloadBanner
-          target="backend"
-          onReload={reloadBackend}
-          onDismiss={() => dismiss("backend")}
-          unsafeToRestart={unsafeToRestart}
-          activeWorkers={workerActivity.activeWorkers}
-        />
-      )}
-      {isManualReloadMode && pendingReloads.frontend && (
-        <ReloadBanner
-          target="frontend"
-          onReload={reloadFrontend}
-          onDismiss={() => dismiss("frontend")}
-        />
-      )}
-      {children}
-    </>
+    <ToastProvider>
+      <SchemaValidationProvider>
+        {isManualReloadMode && pendingReloads.backend && (
+          <ReloadBanner
+            target="backend"
+            onReload={reloadBackend}
+            onDismiss={() => dismiss("backend")}
+            unsafeToRestart={unsafeToRestart}
+            activeWorkers={workerActivity.activeWorkers}
+          />
+        )}
+        {isManualReloadMode && pendingReloads.frontend && (
+          <ReloadBanner
+            target="frontend"
+            onReload={reloadFrontend}
+            onDismiss={() => dismiss("frontend")}
+          />
+        )}
+        {children}
+      </SchemaValidationProvider>
+    </ToastProvider>
   );
 }

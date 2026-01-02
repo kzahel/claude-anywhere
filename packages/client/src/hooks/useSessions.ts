@@ -7,6 +7,7 @@ import {
   type ProcessStateType,
   type SessionCreatedEvent,
   type SessionMetadataChangedEvent,
+  type SessionSeenEvent,
   type SessionStatusEvent,
   useFileActivity,
 } from "./useFileActivity";
@@ -232,6 +233,23 @@ export function useSessions(projectId: string | undefined) {
     [],
   );
 
+  // Handle session seen events (marks session as read)
+  const handleSessionSeen = useCallback((event: SessionSeenEvent) => {
+    setSessions((prev) =>
+      prev.map((session) => {
+        if (session.id !== event.sessionId) return session;
+
+        // Update lastSeenAt and clear hasUnread
+        // hasUnread will be false since we're marking the current timestamp as seen
+        return {
+          ...session,
+          lastSeenAt: event.timestamp,
+          hasUnread: false,
+        };
+      }),
+    );
+  }, []);
+
   // Subscribe to file activity, status changes, session creation, and process state
   useFileActivity({
     onFileChange: handleFileChange,
@@ -239,6 +257,7 @@ export function useSessions(projectId: string | undefined) {
     onSessionCreated: handleSessionCreated,
     onProcessStateChange: handleProcessStateChange,
     onSessionMetadataChange: handleSessionMetadataChange,
+    onSessionSeen: handleSessionSeen,
     onReconnect: fetch, // Refetch to sync state after SSE reconnection
   });
 

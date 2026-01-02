@@ -6,6 +6,7 @@ import { reloadNotify } from "./vite-plugin-reload-notify";
 const noFrontendReload = process.env.NO_FRONTEND_RELOAD === "true";
 
 export default defineConfig({
+  clearScreen: false,
   plugins: [
     react(),
     // When HMR is disabled, use reload-notify plugin to tell backend about changes

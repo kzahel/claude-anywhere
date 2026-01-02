@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import { Modal } from "../../ui/Modal";
 import type {
   ImageFile,
@@ -147,10 +151,34 @@ function ReadToolResult({
   result: ReadResult;
   isError: boolean;
 }) {
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Read", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Read", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Read");
+
   if (isError || !result?.file) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
       <div className="read-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Read" errors={validationErrors} />
+        )}
         {typeof result === "object" && errorResult?.content
           ? String(errorResult.content)
           : "Failed to read file"}
@@ -159,10 +187,24 @@ function ReadToolResult({
   }
 
   if (result.type === "image") {
-    return <ImageFileResult file={result.file as ImageFile} />;
+    return (
+      <>
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Read" errors={validationErrors} />
+        )}
+        <ImageFileResult file={result.file as ImageFile} />
+      </>
+    );
   }
 
-  return <TextFileResult file={result.file as TextFile} />;
+  return (
+    <>
+      {showValidationWarning && validationErrors && (
+        <SchemaWarning toolName="Read" errors={validationErrors} />
+      )}
+      <TextFileResult file={result.file as TextFile} />
+    </>
+  );
 }
 
 /**
@@ -178,10 +220,38 @@ function ReadInteractiveSummary({
   isError: boolean;
 }) {
   const [showModal, setShowModal] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Read", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Read", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Read");
+
   const fileName = getFileName(input.file_path);
 
   if (isError) {
-    return <span>{fileName}</span>;
+    return (
+      <span>
+        {fileName}
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Read" errors={validationErrors} />
+        )}
+      </span>
+    );
   }
 
   if (!result?.file) {
@@ -190,7 +260,14 @@ function ReadInteractiveSummary({
 
   if (result.type === "image") {
     // For images, just show the filename (no modal needed, would need different handling)
-    return <span>{fileName} (image)</span>;
+    return (
+      <span>
+        {fileName} (image)
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Read" errors={validationErrors} />
+        )}
+      </span>
+    );
   }
 
   const file = result.file as TextFile;
@@ -207,6 +284,9 @@ function ReadInteractiveSummary({
       >
         {fileName}
         <span className="file-line-count-inline">{file.numLines} lines</span>
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Read" errors={validationErrors} />
+        )}
       </button>
       {showModal && (
         <Modal

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavigationSidebar } from "../components/NavigationSidebar";
 import { PageHeader } from "../components/PageHeader";
 import { PushNotificationToggle } from "../components/PushNotificationToggle";
+import { useSchemaValidationContext } from "../contexts/SchemaValidationContext";
 import {
   FONT_SIZES,
   type FontSize,
@@ -16,6 +17,7 @@ import {
 } from "../hooks/useModelSettings";
 import { usePwaInstall } from "../hooks/usePwaInstall";
 import { useReloadNotifications } from "../hooks/useReloadNotifications";
+import { useSchemaValidation } from "../hooks/useSchemaValidation";
 import { useSidebarPreference } from "../hooks/useSidebarPreference";
 import { useStreamingEnabled } from "../hooks/useStreamingEnabled";
 import { THEMES, type Theme, getThemeLabel, useTheme } from "../hooks/useTheme";
@@ -42,6 +44,9 @@ export function SettingsPage() {
     setThinkingEnabled,
   } = useModelSettings();
   const { canInstall, isInstalled, install } = usePwaInstall();
+  const { settings: validationSettings, setEnabled: setValidationEnabled } =
+    useSchemaValidation();
+  const { ignoredTools, clearIgnoredTools } = useSchemaValidationContext();
   const [restarting, setRestarting] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -271,6 +276,51 @@ export function SettingsPage() {
 
             <section className="settings-section">
               <h2>Development</h2>
+
+              <div className="settings-group">
+                <div className="settings-item">
+                  <div className="settings-item-info">
+                    <strong>Schema Validation</strong>
+                    <p>
+                      Validate tool results against expected schemas. Shows
+                      toast notifications and logs errors to console.
+                    </p>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={validationSettings.enabled}
+                      onChange={(e) => setValidationEnabled(e.target.checked)}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                </div>
+                {ignoredTools.length > 0 && (
+                  <div className="settings-item">
+                    <div className="settings-item-info">
+                      <strong>Ignored Tools</strong>
+                      <p>
+                        Tools with validation errors you chose to ignore. They
+                        will not show toast notifications.
+                      </p>
+                      <div className="ignored-tools-list">
+                        {ignoredTools.map((tool) => (
+                          <span key={tool} className="ignored-tool-badge">
+                            {tool}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="settings-button settings-button-secondary"
+                      onClick={clearIgnoredTools}
+                    >
+                      Clear Ignored
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {isManualReloadMode ? (
                 <div className="settings-group">

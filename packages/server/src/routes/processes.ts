@@ -1,17 +1,88 @@
+import type { UrlProjectId } from "@claude-anywhere/shared";
 import { Hono } from "hono";
+import type { SessionIndexService } from "../indexes/index.js";
+import type { ProjectScanner } from "../projects/scanner.js";
+import type { SessionReader } from "../sessions/reader.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
+import type { ProcessInfo } from "../supervisor/types.js";
 
 export interface ProcessesDeps {
   supervisor: Supervisor;
+  scanner: ProjectScanner;
+  readerFactory: (sessionDir: string) => SessionReader;
+  sessionIndexService?: SessionIndexService;
+}
+
+/**
+ * Enrich process info with session title, using cache when available.
+ */
+async function enrichWithSessionTitle(
+  process: ProcessInfo,
+  deps: ProcessesDeps,
+): Promise<ProcessInfo> {
+  try {
+    const project = await deps.scanner.getProject(
+      process.projectId as UrlProjectId,
+    );
+    if (!project) return process;
+
+    const reader = deps.readerFactory(project.sessionDir);
+    let title: string | null = null;
+
+    // Use cache if available
+    if (deps.sessionIndexService) {
+      title = await deps.sessionIndexService.getSessionTitle(
+        project.sessionDir,
+        process.projectId as UrlProjectId,
+        process.sessionId,
+        reader,
+      );
+    } else {
+      const summary = await reader.getSessionSummary(
+        process.sessionId,
+        process.projectId as UrlProjectId,
+      );
+      title = summary?.title ?? null;
+    }
+
+    if (title) {
+      return { ...process, sessionTitle: title };
+    }
+  } catch {
+    // Ignore errors - just return process without title
+  }
+  return process;
 }
 
 export function createProcessesRoutes(deps: ProcessesDeps): Hono {
   const routes = new Hono();
 
   // GET /api/processes - List all active processes
+  // Query params:
+  //   - includeTerminated: if "true", also includes recently terminated processes
   routes.get("/", async (c) => {
+    const includeTerminated = c.req.query("includeTerminated") === "true";
     const processes = deps.supervisor.getProcessInfoList();
-    return c.json({ processes });
+
+    // Enrich all processes with session titles
+    const enrichedProcesses = await Promise.all(
+      processes.map((p) => enrichWithSessionTitle(p, deps)),
+    );
+
+    if (includeTerminated) {
+      const terminatedProcesses =
+        deps.supervisor.getRecentlyTerminatedProcesses();
+      // Also enrich terminated processes
+      const enrichedTerminated = await Promise.all(
+        terminatedProcesses.map((p) => enrichWithSessionTitle(p, deps)),
+      );
+      return c.json({
+        processes: enrichedProcesses,
+        terminatedProcesses: enrichedTerminated,
+      });
+    }
+
+    return c.json({ processes: enrichedProcesses });
   });
 
   // POST /api/processes/:processId/abort - Kill a process

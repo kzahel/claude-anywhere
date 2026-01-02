@@ -1,6 +1,6 @@
-import { Link } from "react-router-dom";
 import { NewSessionForm } from "../components/NewSessionForm";
 import { PageHeader } from "../components/PageHeader";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useProjectLayout } from "../layouts";
 
 export function NewSessionPage() {
@@ -15,6 +15,9 @@ export function NewSessionPage() {
     isSidebarCollapsed,
     addOptimisticSession,
   } = useProjectLayout();
+
+  // Update browser tab title
+  useDocumentTitle(project?.name, "New Session");
 
   // Render loading/error states
   if (loading || error) {
@@ -73,10 +76,8 @@ export function NewSessionPage() {
           <NewSessionForm
             projectId={projectId}
             onOptimisticSession={addOptimisticSession}
+            showCancel
           />
-          <div className="new-session-cancel-link">
-            <Link to={`/projects/${projectId}`}>Cancel</Link>
-          </div>
         </main>
       </div>
     </div>

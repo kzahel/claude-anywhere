@@ -12,6 +12,26 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import * as net from "node:net";
 import type { Duplex } from "node:stream";
 
+import { isProxyDebugEnabled } from "../maintenance/index.js";
+
+/** Counter for tracking connections */
+let connectionCounter = 0;
+
+/**
+ * Debug logger that only logs when PROXY_DEBUG is enabled.
+ * Can be toggled at runtime via the maintenance server.
+ */
+function debugLog(
+  context: string,
+  message: string,
+  data?: Record<string, unknown>,
+) {
+  if (!isProxyDebugEnabled()) return;
+  const timestamp = new Date().toISOString();
+  const dataStr = data ? ` ${JSON.stringify(data)}` : "";
+  console.log(`[Proxy:${context}] ${timestamp} ${message}${dataStr}`);
+}
+
 export interface FrontendProxyOptions {
   /** Vite dev server port (default: 5555) */
   vitePort?: number;
@@ -46,7 +66,41 @@ export function createFrontendProxy(
    * Proxy HTTP requests to Vite
    */
   const web = (clientReq: IncomingMessage, clientRes: ServerResponse) => {
-    const proxyReq = http.request(
+    const connId = ++connectionCounter;
+    debugLog("HTTP", `[${connId}] Starting request`, {
+      method: clientReq.method,
+      url: clientReq.url,
+    });
+
+    let clientAborted = false;
+    let proxyReq: http.ClientRequest | null = null;
+
+    // Handle client disconnect/abort BEFORE creating proxy request
+    clientReq.on("error", (err) => {
+      debugLog("HTTP", `[${connId}] Client request error`, {
+        error: err.message,
+      });
+      clientAborted = true;
+      if (proxyReq) {
+        proxyReq.destroy();
+      }
+    });
+
+    clientReq.on("aborted", () => {
+      debugLog("HTTP", `[${connId}] Client aborted`);
+      clientAborted = true;
+      if (proxyReq) {
+        proxyReq.destroy();
+      }
+    });
+
+    // Don't start proxy if client already gone
+    if (clientAborted) {
+      debugLog("HTTP", `[${connId}] Client already aborted, skipping`);
+      return;
+    }
+
+    proxyReq = http.request(
       {
         hostname: viteHost,
         port: vitePort,
@@ -58,14 +112,30 @@ export function createFrontendProxy(
         },
       },
       (proxyRes) => {
+        debugLog("HTTP", `[${connId}] Got response`, {
+          status: proxyRes.statusCode,
+        });
+        if (clientAborted) {
+          debugLog(
+            "HTTP",
+            `[${connId}] Client gone, destroying proxy response`,
+          );
+          proxyRes.destroy();
+          return;
+        }
         clientRes.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
         proxyRes.pipe(clientRes);
+        proxyRes.on("end", () => {
+          debugLog("HTTP", `[${connId}] Response complete`);
+        });
       },
     );
 
     proxyReq.on("error", (err) => {
-      console.error("[Proxy] HTTP error:", err.message);
-      if (!clientRes.headersSent) {
+      debugLog("HTTP", `[${connId}] Proxy request error`, {
+        error: err.message,
+      });
+      if (!clientRes.headersSent && !clientAborted) {
         clientRes.writeHead(502, { "Content-Type": "text/plain" });
         clientRes.end(`Vite dev server not available at ${target}`);
       }
@@ -79,19 +149,79 @@ export function createFrontendProxy(
    * This is simpler and more reliable than http-proxy for WebSocket.
    */
   const ws = (req: IncomingMessage, clientSocket: Duplex, head: Buffer) => {
-    clientSocket.on("error", () => {
-      // Client disconnected - ignore
+    const connId = ++connectionCounter;
+    debugLog("WS", `[${connId}] Starting WebSocket proxy`, { url: req.url });
+
+    let clientClosed = false;
+    let serverClosed = false;
+    let serverSocket: net.Socket | null = null;
+
+    // Helper to clean up both sockets
+    const cleanup = (reason: string) => {
+      debugLog("WS", `[${connId}] Cleanup: ${reason}`, {
+        clientClosed,
+        serverClosed,
+      });
+      if (!clientClosed) {
+        clientClosed = true;
+        clientSocket.end();
+      }
+      if (serverSocket && !serverClosed) {
+        serverClosed = true;
+        serverSocket.end();
+      }
+    };
+
+    // Register client error handler FIRST (before any async operations)
+    clientSocket.on("error", (err) => {
+      debugLog("WS", `[${connId}] Client socket error`, { error: err.message });
+      clientClosed = true;
+      cleanup("client error");
     });
 
-    // Connect to Vite
-    const serverSocket = net.connect(vitePort, viteHost, () => {
+    clientSocket.on("close", () => {
+      debugLog("WS", `[${connId}] Client socket closed`);
+      clientClosed = true;
+      cleanup("client close");
+    });
+
+    // Check if client is already gone before connecting
+    if (clientClosed) {
+      debugLog("WS", `[${connId}] Client already closed, aborting`);
+      return;
+    }
+
+    // Create socket but DON'T connect yet - register handlers first
+    serverSocket = new net.Socket();
+
+    // Register ALL server socket handlers BEFORE connecting
+    serverSocket.on("error", (err) => {
+      debugLog("WS", `[${connId}] Server socket error`, { error: err.message });
+      serverClosed = true;
+      cleanup("server error");
+    });
+
+    serverSocket.on("close", () => {
+      debugLog("WS", `[${connId}] Server socket closed`);
+      serverClosed = true;
+      cleanup("server close");
+    });
+
+    serverSocket.on("connect", () => {
+      debugLog("WS", `[${connId}] Connected to Vite`);
+
+      // Check if client disconnected while we were connecting
+      if (clientClosed) {
+        debugLog("WS", `[${connId}] Client gone during connect, aborting`);
+        serverSocket?.end();
+        return;
+      }
+
       // Build the upgrade request with modified headers
       const headers = { ...req.headers };
-      // Change Origin to match Vite's expected origin
       headers.origin = target;
       headers.host = `${viteHost}:${vitePort}`;
 
-      // Send the upgrade request
       let upgradeReq = `${req.method} ${req.url} HTTP/1.1\r\n`;
       for (const [key, value] of Object.entries(headers)) {
         if (value !== undefined) {
@@ -103,31 +233,21 @@ export function createFrontendProxy(
       }
       upgradeReq += "\r\n";
 
-      serverSocket.write(upgradeReq);
+      serverSocket?.write(upgradeReq);
       if (head.length > 0) {
-        serverSocket.write(head);
+        serverSocket?.write(head);
       }
 
       // Pipe data bidirectionally
-      serverSocket.pipe(clientSocket);
-      clientSocket.pipe(serverSocket);
+      // Note: pipe() handles backpressure automatically
+      serverSocket?.pipe(clientSocket);
+      clientSocket.pipe(serverSocket as net.Socket);
+
+      debugLog("WS", `[${connId}] Bidirectional pipe established`);
     });
 
-    serverSocket.on("error", () => {
-      clientSocket.end();
-    });
-
-    clientSocket.on("error", () => {
-      serverSocket.end();
-    });
-
-    serverSocket.on("close", () => {
-      clientSocket.end();
-    });
-
-    clientSocket.on("close", () => {
-      serverSocket.end();
-    });
+    // NOW connect (all handlers are registered)
+    serverSocket.connect(vitePort, viteHost);
   };
 
   return {
@@ -183,6 +303,9 @@ export interface UnifiedUpgradeOptions {
   wss: WebSocketServerLike;
 }
 
+/** Timeout for API WebSocket upgrade routing (ms) */
+const UPGRADE_TIMEOUT_MS = 10000;
+
 /**
  * Create a unified WebSocket upgrade handler.
  *
@@ -201,20 +324,53 @@ export function attachUnifiedUpgradeHandler(
 ) {
   const { frontendProxy, isApiPath, app, wss } = options;
 
-  server.on("upgrade", async (req, socket, head) => {
+  server.on("upgrade", (req, socket, head) => {
+    const connId = ++connectionCounter;
     const urlPath = req.url || "/";
+    debugLog("Upgrade", `[${connId}] Upgrade request`, { path: urlPath });
+
+    // Track socket state
+    let socketClosed = false;
+    let handled = false;
+
+    // Helper to safely close socket with HTTP response
+    const closeSocket = (response: string, reason: string) => {
+      if (socketClosed || handled) return;
+      debugLog("Upgrade", `[${connId}] Closing socket: ${reason}`);
+      socketClosed = true;
+      socket.end(response);
+    };
+
+    // Register error handler BEFORE any async operations
+    socket.on("error", (err) => {
+      debugLog("Upgrade", `[${connId}] Socket error`, { error: err.message });
+      socketClosed = true;
+    });
+
+    socket.on("close", () => {
+      debugLog("Upgrade", `[${connId}] Socket closed`);
+      socketClosed = true;
+    });
 
     // For non-API paths: proxy to Vite (if frontend proxy is enabled)
     if (!isApiPath(urlPath)) {
       if (frontendProxy) {
+        debugLog("Upgrade", `[${connId}] Proxying to Vite`);
+        handled = true;
         frontendProxy.ws(req, socket, head);
       } else {
-        socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+        closeSocket(
+          "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n",
+          "no frontend proxy",
+        );
       }
       return;
     }
 
     // For API paths: route through Hono (replicate @hono/node-ws logic)
+    // This is async, so we need to handle it carefully
+    debugLog("Upgrade", `[${connId}] Routing API WebSocket through Hono`);
+
     const url = new URL(urlPath, "http://localhost");
     const headers = new Headers();
     for (const key in req.headers) {
@@ -235,26 +391,70 @@ export function attachUnifiedUpgradeHandler(
     // Track symbol properties before routing
     const symbolsBefore = Object.getOwnPropertySymbols(env);
 
+    // Set up timeout to prevent hanging forever
+    const timeoutId = setTimeout(() => {
+      if (!handled && !socketClosed) {
+        debugLog("Upgrade", `[${connId}] Timeout waiting for route handler`);
+        closeSocket(
+          "HTTP/1.1 504 Gateway Timeout\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+          "timeout",
+        );
+      }
+    }, UPGRADE_TIMEOUT_MS);
+
     // Route through Hono - this will call upgradeWebSocket if matched
-    await app.request(url, { headers }, env);
+    // Use Promise handling instead of async/await to avoid potential issues
+    Promise.resolve(app.request(url, { headers }, env))
+      .then(() => {
+        clearTimeout(timeoutId);
 
-    // Check if a WebSocket handler matched by checking if @hono/node-ws
-    // added its connection symbol to env. Since their symbol is private,
-    // we check if any new symbols were added.
-    const symbolsAfter = Object.getOwnPropertySymbols(env);
-    const hasNewSymbols = symbolsAfter.length > symbolsBefore.length;
+        // Check if socket closed during async routing
+        if (socketClosed) {
+          debugLog(
+            "Upgrade",
+            `[${connId}] Socket closed during routing, aborting`,
+          );
+          return;
+        }
 
-    if (!hasNewSymbols) {
-      socket.end(
-        "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
-      );
-      return;
-    }
+        // Check if a WebSocket handler matched by checking if @hono/node-ws
+        // added its connection symbol to env. Since their symbol is private,
+        // we check if any new symbols were added.
+        const symbolsAfter = Object.getOwnPropertySymbols(env);
+        const hasNewSymbols = symbolsAfter.length > symbolsBefore.length;
 
-    // Handle the upgrade with the ws library
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit("connection", ws, req);
-    });
+        if (!hasNewSymbols) {
+          debugLog("Upgrade", `[${connId}] No WebSocket handler matched`);
+          closeSocket(
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+            "no handler matched",
+          );
+          return;
+        }
+
+        // Final check before handling upgrade
+        if (socketClosed) {
+          debugLog("Upgrade", `[${connId}] Socket closed before handleUpgrade`);
+          return;
+        }
+
+        debugLog("Upgrade", `[${connId}] Handling WebSocket upgrade`);
+        handled = true;
+
+        // Handle the upgrade with the ws library
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          debugLog("Upgrade", `[${connId}] WebSocket upgrade complete`);
+          wss.emit("connection", ws, req);
+        });
+      })
+      .catch((err) => {
+        clearTimeout(timeoutId);
+        debugLog("Upgrade", `[${connId}] Route error`, { error: String(err) });
+        closeSocket(
+          "HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+          "route error",
+        );
+      });
   });
 }
 

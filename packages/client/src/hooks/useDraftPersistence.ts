@@ -11,6 +11,19 @@ export interface DraftControls {
   restoreFromStorage: () => void;
 }
 
+/** Save a value to localStorage immediately */
+function saveToStorage(key: string, value: string): void {
+  try {
+    if (value) {
+      localStorage.setItem(key, value);
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // localStorage might be full or unavailable
+  }
+}
+
 /**
  * Hook for persisting draft text to localStorage with debouncing.
  * Supports failure recovery by keeping localStorage until explicitly cleared.
@@ -31,6 +44,8 @@ export function useDraftPersistence(
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyRef = useRef(key);
+  // Track pending value so we can flush on unmount/beforeunload
+  const pendingValueRef = useRef<string | null>(null);
 
   // Update keyRef when key changes
   useEffect(() => {
@@ -47,30 +62,48 @@ export function useDraftPersistence(
     }
   }, [key]);
 
+  // Flush pending value to localStorage
+  const flushPending = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (pendingValueRef.current !== null) {
+      saveToStorage(keyRef.current, pendingValueRef.current);
+      pendingValueRef.current = null;
+    }
+  }, []);
+
+  // Handle beforeunload to save draft before page unload (including HMR)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushPending();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [flushPending]);
+
   // Debounced save to localStorage
   const setValue = useCallback((newValue: string) => {
     setValueInternal(newValue);
+    pendingValueRef.current = newValue;
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
 
     timeoutRef.current = setTimeout(() => {
-      try {
-        if (newValue) {
-          localStorage.setItem(keyRef.current, newValue);
-        } else {
-          localStorage.removeItem(keyRef.current);
-        }
-      } catch {
-        // localStorage might be full or unavailable
-      }
+      saveToStorage(keyRef.current, newValue);
+      pendingValueRef.current = null;
     }, DEBOUNCE_MS);
   }, []);
 
   // Clear input state only (for optimistic UI on submit)
   const clearInput = useCallback(() => {
     setValueInternal("");
+    pendingValueRef.current = null;
     // Cancel pending debounce so we don't overwrite localStorage with ""
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -81,6 +114,7 @@ export function useDraftPersistence(
   // Clear both state and localStorage (for confirmed successful send)
   const clearDraft = useCallback(() => {
     setValueInternal("");
+    pendingValueRef.current = null;
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -104,9 +138,13 @@ export function useDraftPersistence(
     }
   }, []);
 
-  // Cleanup timeout on unmount
+  // Flush pending and cleanup on unmount
   useEffect(() => {
     return () => {
+      // Flush any pending value before unmount (handles HMR and navigation)
+      if (pendingValueRef.current !== null) {
+        saveToStorage(keyRef.current, pendingValueRef.current);
+      }
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }

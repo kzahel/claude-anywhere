@@ -4,6 +4,7 @@ import { ContextUsageIndicator } from "../components/ContextUsageIndicator";
 import { NewSessionForm } from "../components/NewSessionForm";
 import { PageHeader } from "../components/PageHeader";
 import { SessionStatusBadge } from "../components/StatusBadge";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useProjectLayout } from "../layouts";
 import { getSessionDisplayTitle } from "../types";
 
@@ -37,8 +38,8 @@ export function SessionsPage() {
     addOptimisticSession,
   } = useProjectLayout();
 
-  // Filter state: "all" shows non-archived, "starred" shows only starred, "archived" shows only archived
-  type FilterMode = "all" | "starred" | "archived";
+  // Filter state: "all" shows non-archived, "unread" shows only unread, "starred" shows only starred, "archived" shows only archived
+  type FilterMode = "all" | "unread" | "starred" | "archived";
   const [searchQuery, setSearchQuery] = useState("");
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
 
@@ -50,6 +51,10 @@ export function SessionsPage() {
         case "all":
           // Show non-archived sessions
           if (session.isArchived) return false;
+          break;
+        case "unread":
+          // Show only unread non-archived sessions
+          if (!session.hasUnread || session.isArchived) return false;
           break;
         case "starred":
           // Show only starred sessions (including archived starred ones)
@@ -75,7 +80,11 @@ export function SessionsPage() {
     });
   }, [sessions, searchQuery, filterMode]);
 
-  // Count starred and archived sessions for badges
+  // Count unread, starred, and archived sessions for badges
+  const unreadCount = useMemo(
+    () => sessions.filter((s) => s.hasUnread && !s.isArchived).length,
+    [sessions],
+  );
   const starredCount = useMemo(
     () => sessions.filter((s) => s.isStarred).length,
     [sessions],
@@ -84,6 +93,9 @@ export function SessionsPage() {
     () => sessions.filter((s) => s.isArchived).length,
     [sessions],
   );
+
+  // Update browser tab title (project name only, no session)
+  useDocumentTitle(project?.name);
 
   if (loading) return <div className="loading">Loading sessions...</div>;
   if (error) return <div className="error">Error: {error.message}</div>;
@@ -135,6 +147,13 @@ export function SessionsPage() {
                 onClick={() => setFilterMode("all")}
               >
                 All
+              </button>
+              <button
+                type="button"
+                className={`filter-chip ${filterMode === "unread" ? "active" : ""}`}
+                onClick={() => setFilterMode("unread")}
+              >
+                Unread{unreadCount > 0 && ` (${unreadCount})`}
               </button>
               <button
                 type="button"

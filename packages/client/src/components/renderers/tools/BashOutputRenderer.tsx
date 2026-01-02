@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import type { BashOutputInput, BashOutputResult, ToolRenderer } from "./types";
 
 const MAX_LINES_COLLAPSED = 20;
@@ -71,11 +75,34 @@ function BashOutputToolResult({
   isError: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("BashOutput", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("BashOutput", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("BashOutput");
 
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
       <div className="bashoutput-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="BashOutput" errors={validationErrors} />
+        )}
         {typeof result === "object" && errorResult?.content
           ? String(errorResult.content)
           : "Failed to get bash output"}
@@ -115,6 +142,9 @@ function BashOutputToolResult({
           <span className="bashoutput-timestamp">
             {formatTimestamp(result.timestamp)}
           </span>
+        )}
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="BashOutput" errors={validationErrors} />
         )}
       </div>
       {(result.stdout || result.stderr) && (

@@ -1,6 +1,8 @@
 import type {
   FileContentResponse,
   ModelOption,
+  PendingInputType,
+  ProcessStateType,
   ThinkingOption,
   UploadedFile,
 } from "@claude-anywhere/shared";
@@ -13,6 +15,30 @@ import type {
   SessionStatus,
   SessionSummary,
 } from "../types";
+
+/**
+ * An item in the inbox representing a session that may need attention.
+ */
+export interface InboxItem {
+  sessionId: string;
+  projectId: string;
+  projectName: string;
+  sessionTitle: string | null;
+  updatedAt: string;
+  pendingInputType?: PendingInputType;
+  processState?: ProcessStateType;
+}
+
+/**
+ * Inbox response with sessions categorized into priority tiers.
+ */
+export interface InboxResponse {
+  needsAttention: InboxItem[];
+  active: InboxItem[];
+  recentActivity: InboxItem[];
+  unread8h: InboxItem[];
+  unread24h: InboxItem[];
+}
 
 export interface SessionOptions {
   mode?: PermissionMode;
@@ -273,4 +299,7 @@ export const api = {
     if (download) params.set("download", "true");
     return `/api/projects/${projectId}/files/raw?${params.toString()}`;
   },
+
+  // Inbox API
+  getInbox: () => fetchJSON<InboxResponse>("/inbox"),
 };

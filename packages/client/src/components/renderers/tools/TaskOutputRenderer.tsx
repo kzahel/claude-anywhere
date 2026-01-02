@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import type { TaskOutputInput, TaskOutputResult, ToolRenderer } from "./types";
 
 const MAX_LINES_COLLAPSED = 20;
@@ -57,11 +61,34 @@ function TaskOutputToolResult({
   isError: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("TaskOutput", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("TaskOutput", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("TaskOutput");
 
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
       <div className="taskoutput-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="TaskOutput" errors={validationErrors} />
+        )}
         {typeof result === "object" && errorResult?.content
           ? String(errorResult.content)
           : "Failed to get task output"}
@@ -90,6 +117,9 @@ function TaskOutputToolResult({
         )}
         {task?.description && (
           <span className="taskoutput-desc">{task.description}</span>
+        )}
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="TaskOutput" errors={validationErrors} />
         )}
       </div>
       {task && (

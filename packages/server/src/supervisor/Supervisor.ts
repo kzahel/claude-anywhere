@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { UrlProjectId } from "@claude-anywhere/shared";
+import { getLogger } from "../logging/logger.js";
 import type {
   ClaudeSDK,
   PermissionMode,
@@ -31,6 +32,12 @@ import {
   type SessionSummary,
   encodeProjectId,
 } from "./types.js";
+
+/** Maximum number of terminated processes to retain */
+const MAX_TERMINATED_PROCESSES = 50;
+
+/** How long to retain terminated process info (10 minutes) */
+const TERMINATED_RETENTION_MS = 10 * 60 * 1000;
 
 /**
  * Model and thinking settings for a session.
@@ -70,6 +77,7 @@ export class Supervisor {
   private processes: Map<string, Process> = new Map();
   private sessionToProcess: Map<string, string> = new Map(); // sessionId -> processId
   private everOwnedSessions: Set<string> = new Set(); // Sessions we've ever owned (for orphan detection)
+  private terminatedProcesses: ProcessInfo[] = []; // Recently terminated processes
   private sdk: ClaudeSDK | null;
   private realSdk: RealClaudeSDKInterface | null;
   private idleTimeoutMs?: number;
@@ -515,6 +523,18 @@ export class Supervisor {
     const process = this.processes.get(processId);
     if (!process) return false;
 
+    const log = getLogger();
+    log.info(
+      {
+        event: "session_abort_requested",
+        sessionId: process.sessionId,
+        processId: process.id,
+        projectId: process.projectId,
+        currentState: process.state.type,
+      },
+      `Session abort requested: ${process.sessionId}`,
+    );
+
     // Emit session-aborted event BEFORE aborting, so ExternalSessionTracker
     // can set up the grace period before any file changes arrive
     this.emitSessionAborted(process.sessionId, process.projectId);
@@ -537,6 +557,20 @@ export class Supervisor {
   }
 
   private registerProcess(process: Process, isNewSession: boolean): void {
+    const log = getLogger();
+    log.info(
+      {
+        event: "session_registered",
+        sessionId: process.sessionId,
+        processId: process.id,
+        projectId: process.projectId,
+        projectPath: process.projectPath,
+        isNewSession,
+        permissionMode: process.permissionMode,
+      },
+      `Session registered: ${process.sessionId} (process: ${process.id})`,
+    );
+
     this.processes.set(process.id, process);
     this.sessionToProcess.set(process.sessionId, process.id);
     this.everOwnedSessions.add(process.sessionId);
@@ -573,6 +607,35 @@ export class Supervisor {
     process.subscribe((event) => {
       if (event.type === "complete") {
         this.unregisterProcess(process);
+      } else if (event.type === "session-id-changed") {
+        // Update session→process mapping when temp ID is replaced by real ID from SDK
+        // This is critical for ExternalSessionTracker to correctly identify owned sessions
+        const log = getLogger();
+        log.info(
+          {
+            event: "session_id_mapping_updated",
+            oldSessionId: event.oldSessionId,
+            newSessionId: event.newSessionId,
+            processId: process.id,
+            projectId: process.projectId,
+          },
+          `Session ID mapping updated: ${event.oldSessionId} → ${event.newSessionId}`,
+        );
+
+        // Keep both temp and real session ID mappings to support lookups by either ID
+        // Clients might still be using the temp ID when the real ID arrives
+        // The old temp ID mapping is retained (no delete)
+        this.sessionToProcess.set(event.newSessionId, process.id);
+        this.everOwnedSessions.add(event.newSessionId);
+
+        // Emit status change for new session ID so clients can update
+        const status: SessionStatus = {
+          state: "owned",
+          processId: process.id,
+          permissionMode: process.permissionMode,
+          modeVersion: process.modeVersion,
+        };
+        this.emitStatusChange(event.newSessionId, process.projectId, status);
       } else if (event.type === "state-change") {
         // Emit process state change for running/waiting-input states
         if (
@@ -592,8 +655,38 @@ export class Supervisor {
   }
 
   private unregisterProcess(process: Process): void {
+    const log = getLogger();
+    const durationMs = Date.now() - process.startedAt.getTime();
+    log.info(
+      {
+        event: "session_unregistered",
+        sessionId: process.sessionId,
+        processId: process.id,
+        projectId: process.projectId,
+        durationMs,
+        finalState: process.state.type,
+        terminationReason: process.terminationReason,
+      },
+      `Session unregistered: ${process.sessionId} after ${durationMs}ms (reason: ${process.terminationReason ?? process.state.type})`,
+    );
+
+    // Capture process info for terminated list before deleting
+    const terminatedInfo = process.getInfo();
+    terminatedInfo.terminatedAt = new Date().toISOString();
+    if (process.terminationReason) {
+      terminatedInfo.terminationReason = process.terminationReason;
+    }
+    this.addTerminatedProcess(terminatedInfo);
+
     this.processes.delete(process.id);
-    this.sessionToProcess.delete(process.sessionId);
+
+    // Delete all session ID mappings that point to this process
+    // This handles both temp and real session IDs
+    for (const [sessionId, processId] of this.sessionToProcess.entries()) {
+      if (processId === process.id) {
+        this.sessionToProcess.delete(sessionId);
+      }
+    }
 
     // Emit status change event (back to idle)
     this.emitStatusChange(process.sessionId, process.projectId, {
@@ -605,6 +698,38 @@ export class Supervisor {
 
     // Process queue when a worker becomes available
     void this.processQueue();
+  }
+
+  /**
+   * Add a terminated process to the tracking list.
+   * Prunes old entries and caps at MAX_TERMINATED_PROCESSES.
+   */
+  private addTerminatedProcess(info: ProcessInfo): void {
+    this.terminatedProcesses.push(info);
+
+    // Cap at max entries
+    if (this.terminatedProcesses.length > MAX_TERMINATED_PROCESSES) {
+      this.terminatedProcesses = this.terminatedProcesses.slice(
+        -MAX_TERMINATED_PROCESSES,
+      );
+    }
+  }
+
+  /**
+   * Get recently terminated processes (within retention window).
+   * Prunes expired entries before returning.
+   */
+  getRecentlyTerminatedProcesses(): ProcessInfo[] {
+    const now = Date.now();
+    const cutoff = now - TERMINATED_RETENTION_MS;
+
+    // Prune old entries
+    this.terminatedProcesses = this.terminatedProcesses.filter((p) => {
+      if (!p.terminatedAt) return false;
+      return new Date(p.terminatedAt).getTime() > cutoff;
+    });
+
+    return [...this.terminatedProcesses];
   }
 
   private emitStatusChange(

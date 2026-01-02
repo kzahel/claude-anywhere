@@ -1,5 +1,6 @@
 import { isUrlProjectId, toUrlProjectId } from "@claude-anywhere/shared";
 import { Hono } from "hono";
+import type { SessionIndexService } from "../indexes/index.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { ProjectScanner } from "../projects/scanner.js";
@@ -19,6 +20,7 @@ export interface ProjectsDeps {
   externalTracker?: ExternalSessionTracker;
   notificationService?: NotificationService;
   sessionMetadataService?: SessionMetadataService;
+  sessionIndexService?: SessionIndexService;
 }
 
 interface ProjectActivityCounts {
@@ -241,7 +243,16 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
 
     // Get sessions for this project using the stored sessionDir
     const reader = deps.readerFactory(project.sessionDir);
-    let sessions = await reader.listSessions(project.id);
+    let sessions: SessionSummary[];
+    if (deps.sessionIndexService) {
+      sessions = await deps.sessionIndexService.getSessionsWithCache(
+        project.sessionDir,
+        project.id,
+        reader,
+      );
+    } else {
+      sessions = await reader.listSessions(project.id);
+    }
 
     // Add missing owned sessions (new sessions that don't have user/assistant messages yet)
     sessions = addMissingOwnedSessions(sessions, projectId);
@@ -307,7 +318,16 @@ export function createProjectsRoutes(deps: ProjectsDeps): Hono {
     }
 
     const reader = deps.readerFactory(project.sessionDir);
-    let sessions = await reader.listSessions(project.id);
+    let sessions: SessionSummary[];
+    if (deps.sessionIndexService) {
+      sessions = await deps.sessionIndexService.getSessionsWithCache(
+        project.sessionDir,
+        project.id,
+        reader,
+      );
+    } else {
+      sessions = await reader.listSessions(project.id);
+    }
 
     // Add missing owned sessions (new sessions that don't have user/assistant messages yet)
     sessions = addMissingOwnedSessions(sessions, projectId);

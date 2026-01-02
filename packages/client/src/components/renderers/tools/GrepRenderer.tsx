@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { ZodError } from "zod";
+import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { validateToolResult } from "../../../lib/validateToolResult";
+import { SchemaWarning } from "../../SchemaWarning";
 import type { GrepInput, GrepResult, ToolRenderer } from "./types";
 
 const MAX_FILES_COLLAPSED = 20;
@@ -116,11 +120,34 @@ function GrepToolResult({
   isError: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const { enabled, reportValidationError, isToolIgnored } =
+    useSchemaValidationContext();
+  const [validationErrors, setValidationErrors] = useState<ZodError | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (enabled && result) {
+      const validation = validateToolResult("Grep", result);
+      if (!validation.valid && validation.errors) {
+        setValidationErrors(validation.errors);
+        reportValidationError("Grep", validation.errors);
+      } else {
+        setValidationErrors(null);
+      }
+    }
+  }, [enabled, result, reportValidationError]);
+
+  const showValidationWarning =
+    enabled && validationErrors && !isToolIgnored("Grep");
 
   if (isError) {
     const errorResult = result as unknown as { content?: unknown } | undefined;
     return (
       <div className="grep-error">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Grep" errors={validationErrors} />
+        )}
         {typeof result === "object" && errorResult?.content
           ? String(errorResult.content)
           : "Search failed"}
@@ -138,6 +165,9 @@ function GrepToolResult({
   if (mode === "count") {
     return (
       <div className="grep-result">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Grep" errors={validationErrors} />
+        )}
         <div className="grep-count-summary">
           {numFiles} {numFiles === 1 ? "file" : "files"} matched
         </div>
@@ -160,6 +190,9 @@ function GrepToolResult({
           {appliedLimit && (
             <span className="badge badge-info">limit: {appliedLimit}</span>
           )}
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Grep" errors={validationErrors} />
+          )}
         </div>
         <ContentView
           content={content}
@@ -172,13 +205,23 @@ function GrepToolResult({
 
   // files_with_matches mode (default) - show file list
   if (!filenames || filenames.length === 0) {
-    return <div className="grep-empty">No matches found</div>;
+    return (
+      <div className="grep-empty">
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Grep" errors={validationErrors} />
+        )}
+        No matches found
+      </div>
+    );
   }
 
   return (
     <div className="grep-result">
       <div className="grep-header">
         <span className="grep-count">{numFiles} files</span>
+        {showValidationWarning && validationErrors && (
+          <SchemaWarning toolName="Grep" errors={validationErrors} />
+        )}
       </div>
       <FileListView
         filenames={filenames}
