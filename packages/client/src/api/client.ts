@@ -51,12 +51,18 @@ export type { UploadedFile } from "@claude-anywhere/shared";
 
 const API_BASE = "/api";
 
+export interface AuthStatus {
+  authenticated: boolean;
+  setupRequired: boolean;
+}
+
 export async function fetchJSON<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       "X-Claude-Anywhere": "true",
@@ -65,7 +71,17 @@ export async function fetchJSON<T>(
   });
 
   if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
+    // Include setup required info in error for auth handling
+    const setupRequired = res.headers.get("X-Setup-Required") === "true";
+    const error = new Error(
+      `API error: ${res.status} ${res.statusText}`,
+    ) as Error & {
+      status: number;
+      setupRequired?: boolean;
+    };
+    error.status = res.status;
+    if (setupRequired) error.setupRequired = true;
+    throw error;
   }
 
   return res.json();
@@ -314,4 +330,30 @@ export const api = {
         ? `/inbox?projectId=${encodeURIComponent(projectId)}`
         : "/inbox",
     ),
+
+  // Auth API
+  getAuthStatus: () => fetchJSON<AuthStatus>("/auth/status"),
+
+  setupAccount: (password: string) =>
+    fetchJSON<{ success: boolean }>("/auth/setup", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+
+  login: (password: string) =>
+    fetchJSON<{ success: boolean }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+
+  logout: () =>
+    fetchJSON<{ success: boolean }>("/auth/logout", {
+      method: "POST",
+    }),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    fetchJSON<{ success: boolean }>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
 };

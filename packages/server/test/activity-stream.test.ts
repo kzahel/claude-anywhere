@@ -41,7 +41,7 @@ describe("Activity Stream SSE", () => {
     mockSdk.addScenario(createMockScenario("test-session", "Hello response"));
 
     // Start the activity stream
-    const streamRes = await app.request("/api/activity/stream", {
+    const streamRes = await app.request("/api/activity/fswatch", {
       headers: { "X-Claude-Anywhere": "true" },
     });
 
@@ -179,7 +179,7 @@ describe("Activity Stream SSE", () => {
     });
 
     // Start the activity stream
-    const streamRes = await app.request("/api/activity/stream", {
+    const streamRes = await app.request("/api/activity/fswatch", {
       headers: { "X-Claude-Anywhere": "true" },
     });
 

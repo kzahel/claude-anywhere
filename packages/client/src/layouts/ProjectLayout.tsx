@@ -3,6 +3,7 @@ import { Outlet, useOutletContext, useParams } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar";
 import { useDrafts } from "../hooks/useDrafts";
 import type { ProcessStateType } from "../hooks/useFileActivity";
+import { useInbox } from "../hooks/useInbox";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useSessions } from "../hooks/useSessions";
 import { useSidebarPreference } from "../hooks/useSidebarPreference";
@@ -52,6 +53,10 @@ export function ProjectLayout() {
   const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
   const sessionDrafts = useDrafts(sessionIds);
 
+  // Inbox counts - lifted here so it survives sidebar mount/unmount transitions
+  const { totalNeedsAttention, totalActive } = useInbox({ projectId });
+  const inboxCount = totalNeedsAttention + totalActive;
+
   // Guard against missing projectId
   if (!projectId) {
     return <div className="error">Invalid project URL</div>;
@@ -91,6 +96,7 @@ export function ProjectLayout() {
             isCollapsed={!isExpanded}
             onToggleExpanded={toggleExpanded}
             sessionDrafts={sessionDrafts}
+            inboxCount={inboxCount}
           />
         </aside>
       )}
@@ -106,6 +112,7 @@ export function ProjectLayout() {
           processStates={processStates}
           onNavigate={() => setSidebarOpen(false)}
           sessionDrafts={sessionDrafts}
+          inboxCount={inboxCount}
         />
       )}
 

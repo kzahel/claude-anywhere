@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { ProcessStateType } from "../hooks/useFileActivity";
-import { useInbox } from "../hooks/useInbox";
 import { useProcesses } from "../hooks/useProcesses";
 import { type SessionSummary, getSessionDisplayTitle } from "../types";
 import { ActivityIndicator } from "./ActivityIndicator";
@@ -55,6 +54,8 @@ interface SidebarProps {
   onToggleExpanded?: () => void;
   /** Set of session IDs that have unsent draft messages */
   sessionDrafts?: Set<string>;
+  /** Inbox badge count (passed from parent to survive mount/unmount) */
+  inboxCount?: number;
 }
 
 export function Sidebar({
@@ -69,6 +70,7 @@ export function Sidebar({
   isCollapsed = false,
   onToggleExpanded,
   sessionDrafts,
+  inboxCount = 0,
 }: SidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
@@ -79,9 +81,6 @@ export function Sidebar({
     RECENT_SESSIONS_INITIAL,
   );
   const { activeCount } = useProcesses();
-  // Filter inbox to this project only for badge count
-  const { totalNeedsAttention, totalActive } = useInbox({ projectId });
-  const inboxCount = totalNeedsAttention + totalActive;
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0]?.clientX ?? null;

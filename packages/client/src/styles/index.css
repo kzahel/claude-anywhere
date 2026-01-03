@@ -618,6 +618,7 @@ h2 {
   height: 100vh;
   height: 100dvh; /* Dynamic viewport height - accounts for mobile browser chrome */
   overflow: hidden; /* Prevent body scroll */
+  background: var(--bg-surface);
 }
 
 .session-header {
@@ -4460,4 +4461,171 @@ button.agent-card {
   .inbox-item-meta {
     font-size: var(--font-size-xs);
   }
+}
+
+/* ==========================================================================
+   Login Page
+   ========================================================================== */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  padding: var(--space-4);
+}
+
+.login-container {
+  width: 100%;
+  max-width: 360px;
+  padding: var(--space-4);
+}
+
+.login-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2) 0;
+  text-align: center;
+}
+
+.login-subtitle {
+  font-size: var(--font-size-base);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-4) 0;
+  text-align: center;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.login-field label {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.login-field input {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+}
+
+.login-field input:focus {
+  outline: none;
+  border-color: var(--focus-border);
+}
+
+.login-error {
+  color: var(--error-color);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: var(--space-2);
+  background: rgba(199, 78, 57, 0.1);
+  border-radius: var(--radius-md);
+}
+
+.login-button {
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--app-claude-orange);
+  color: white;
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.login-button:hover:not(:disabled) {
+  background: var(--app-claude-clay-button-orange);
+}
+
+.login-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-hint {
+  font-size: var(--font-size-sm);
+  color: var(--text-dimmed);
+  text-align: center;
+  margin-top: var(--space-3);
+}
+
+.login-loading {
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ==========================================================================
+   Settings Form Styles (Password Change, etc.)
+   ========================================================================== */
+
+.settings-item-form {
+  width: 100%;
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-muted);
+}
+
+.settings-item-form form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.form-field label {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.form-field input {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+}
+
+.form-field input:focus {
+  outline: none;
+  border-color: var(--focus-border);
+}
+
+.form-error {
+  color: var(--error-color);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2);
+  background: rgba(199, 78, 57, 0.1);
+  border-radius: var(--radius-md);
+}
+
+.form-success {
+  color: var(--success-color, #22c55e);
+  font-size: var(--font-size-sm);
+  padding: var(--space-2);
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: var(--radius-md);
 }

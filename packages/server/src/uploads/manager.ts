@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { type WriteStream, createWriteStream } from "node:fs";
 import { mkdir, rm, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import { extname, join } from "node:path";
 import type { UploadedFile } from "@claude-anywhere/shared";
+import { getDataDir } from "../config.js";
 
-/** Root directory for uploads */
-export const UPLOADS_DIR = join(homedir(), ".claude-anywhere", "uploads");
+/** Root directory for uploads (uses dataDir from config for profile support) */
+export const UPLOADS_DIR = join(getDataDir(), "uploads");
 
 /**
  * State machine for a single upload operation.

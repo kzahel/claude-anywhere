@@ -15,9 +15,23 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
   );
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  // Track connected URL to skip StrictMode double-mount (not reset in cleanup)
+  const mountedUrlRef = useRef<string | null>(null);
 
   const connect = useCallback(() => {
-    if (!url) return;
+    if (!url) {
+      // Reset tracking when URL becomes null so we can reconnect later
+      // (e.g., when status goes idle → owned again for the same session)
+      mountedUrlRef.current = null;
+      return;
+    }
+
+    // Don't create duplicate connections
+    if (eventSourceRef.current) return;
+
+    // Skip StrictMode double-mount (same URL, already connected once)
+    if (mountedUrlRef.current === url) return;
+    mountedUrlRef.current = url;
 
     const fullUrl = lastEventIdRef.current
       ? `${url}?lastEventId=${lastEventIdRef.current}`
@@ -62,6 +76,8 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
 
       // Auto-reconnect after 2s
       es.close();
+      eventSourceRef.current = null;
+      mountedUrlRef.current = null; // Reset so reconnect isn't blocked
       reconnectTimeoutRef.current = setTimeout(connect, 2000);
     };
 
@@ -77,6 +93,7 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
         reconnectTimeoutRef.current = null;
       }
       eventSourceRef.current?.close();
+      eventSourceRef.current = null;
     };
   }, [connect]);
 

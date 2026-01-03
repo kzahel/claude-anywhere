@@ -19,7 +19,6 @@ export type {
 } from "./types.js";
 export {
   generateVapidKeys,
-  getDataDir,
   getOrCreateVapidKeys,
   getVapidFilePath,
   loadVapidKeys,

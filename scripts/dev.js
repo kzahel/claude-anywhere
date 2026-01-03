@@ -35,8 +35,19 @@ Options:
 const backendWatch = args.includes("--watch");
 const noFrontendReload = args.includes("--no-frontend-reload");
 
+// Port configuration: PORT + 0 = server, PORT + 1 = maintenance, PORT + 2 = vite
+const basePort = process.env.PORT
+  ? Number.parseInt(process.env.PORT, 10)
+  : 3400;
+const vitePort = process.env.VITE_PORT
+  ? Number.parseInt(process.env.VITE_PORT, 10)
+  : basePort + 2;
+
 console.log("Starting dev server...");
-console.log("  Access at: http://localhost:3400");
+console.log(`  Access at: http://localhost:${basePort}`);
+console.log(
+  `  Ports: server=${basePort}, maintenance=${basePort + 1}, vite=${vitePort}`,
+);
 if (backendWatch) console.log("  Backend auto-reload: ENABLED (--watch)");
 if (noFrontendReload) console.log("  Frontend HMR: DISABLED");
 if (!backendWatch && !noFrontendReload)
@@ -48,6 +59,8 @@ const env = {
   // When not using --watch, enable manual reload mode (shows banner on file changes)
   NO_BACKEND_RELOAD: backendWatch ? "" : "true",
   NO_FRONTEND_RELOAD: noFrontendReload ? "true" : "",
+  // Pass vite port to both server and client for consistency
+  VITE_PORT: String(vitePort),
 };
 
 // Track child processes for cleanup

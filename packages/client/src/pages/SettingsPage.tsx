@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { PageHeader } from "../components/PageHeader";
 import { PushNotificationToggle } from "../components/PushNotificationToggle";
+import { useAuth } from "../contexts/AuthContext";
 import { useSchemaValidationContext } from "../contexts/SchemaValidationContext";
 import {
   FONT_SIZES,
@@ -44,7 +45,15 @@ export function SettingsPage() {
   const { settings: validationSettings, setEnabled: setValidationEnabled } =
     useSchemaValidation();
   const { ignoredTools, clearIgnoredTools } = useSchemaValidationContext();
+  const { isAuthenticated, authDisabled, logout, changePassword } = useAuth();
   const [restarting, setRestarting] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   const { openSidebar, isWideScreen } = useNavigationLayout();
 
@@ -240,6 +249,156 @@ export function SettingsPage() {
               <PushNotificationToggle />
             </div>
           </section>
+
+          {!authDisabled && isAuthenticated && (
+            <section className="settings-section">
+              <h2>Security</h2>
+              <div className="settings-group">
+                <div className="settings-item">
+                  <div className="settings-item-info">
+                    <strong>Change Password</strong>
+                    <p>Update your account password.</p>
+                  </div>
+                  {!showChangePassword ? (
+                    <button
+                      type="button"
+                      className="settings-button"
+                      onClick={() => setShowChangePassword(true)}
+                    >
+                      Change Password
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="settings-button settings-button-secondary"
+                      onClick={() => {
+                        setShowChangePassword(false);
+                        setCurrentPassword("");
+                        setNewPassword("");
+                        setConfirmPassword("");
+                        setPasswordError(null);
+                        setPasswordSuccess(false);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+
+                {showChangePassword && (
+                  <div className="settings-item settings-item-form">
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        setPasswordError(null);
+                        setPasswordSuccess(false);
+
+                        if (newPassword !== confirmPassword) {
+                          setPasswordError("Passwords do not match");
+                          return;
+                        }
+
+                        if (newPassword.length < 8) {
+                          setPasswordError(
+                            "Password must be at least 8 characters",
+                          );
+                          return;
+                        }
+
+                        setIsChangingPassword(true);
+                        try {
+                          await changePassword(currentPassword, newPassword);
+                          setPasswordSuccess(true);
+                          setCurrentPassword("");
+                          setNewPassword("");
+                          setConfirmPassword("");
+                          setTimeout(() => {
+                            setShowChangePassword(false);
+                            setPasswordSuccess(false);
+                          }, 2000);
+                        } catch (err) {
+                          setPasswordError(
+                            err instanceof Error
+                              ? err.message
+                              : "Failed to change password",
+                          );
+                        } finally {
+                          setIsChangingPassword(false);
+                        }
+                      }}
+                    >
+                      <div className="form-field">
+                        <label htmlFor="current-password">
+                          Current Password
+                        </label>
+                        <input
+                          id="current-password"
+                          type="password"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          autoComplete="current-password"
+                          required
+                        />
+                      </div>
+                      <div className="form-field">
+                        <label htmlFor="new-password">New Password</label>
+                        <input
+                          id="new-password"
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          autoComplete="new-password"
+                          minLength={8}
+                          required
+                        />
+                      </div>
+                      <div className="form-field">
+                        <label htmlFor="confirm-password">
+                          Confirm New Password
+                        </label>
+                        <input
+                          id="confirm-password"
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          autoComplete="new-password"
+                          minLength={8}
+                          required
+                        />
+                      </div>
+                      {passwordError && (
+                        <p className="form-error">{passwordError}</p>
+                      )}
+                      {passwordSuccess && (
+                        <p className="form-success">Password changed!</p>
+                      )}
+                      <button
+                        type="submit"
+                        className="settings-button"
+                        disabled={isChangingPassword}
+                      >
+                        {isChangingPassword ? "Changing..." : "Update Password"}
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                <div className="settings-item">
+                  <div className="settings-item-info">
+                    <strong>Logout</strong>
+                    <p>Sign out of your account on this device.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="settings-button settings-button-danger"
+                    onClick={logout}
+                  >
+                    Logout
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
 
           <section className="settings-section">
             <h2>Development</h2>

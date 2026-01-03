@@ -404,13 +404,14 @@ async function handleNotificationClick(action, data) {
         requestId,
       });
 
-      // Show error notification so user knows it failed
-      await self.registration.showNotification("Action Failed", {
-        body: `Could not ${action}: ${response.status} ${errorText.slice(0, 50)}`,
+      // Show user-friendly notification - tapping opens the session
+      await self.registration.showNotification("Couldn't complete action", {
+        body: "Tap to open the session and try again",
         tag: "action-error",
         icon: "/icon-192.png",
         badge: "/badge-96.png",
         data: { sessionId, projectId },
+        requireInteraction: true,
       });
 
       return;
@@ -423,13 +424,14 @@ async function handleNotificationClick(action, data) {
         action,
       });
 
-      // Show error notification so user knows it failed
-      await self.registration.showNotification("Action Failed", {
-        body: `Network error: ${e.message}`,
+      // Show user-friendly notification - tapping opens the session
+      await self.registration.showNotification("Couldn't complete action", {
+        body: "Tap to open the session and try again",
         tag: "action-error",
         icon: "/icon-192.png",
         badge: "/badge-96.png",
         data: { sessionId, projectId },
+        requireInteraction: true,
       });
 
       return;

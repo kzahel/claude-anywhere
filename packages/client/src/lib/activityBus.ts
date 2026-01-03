@@ -97,7 +97,7 @@ const API_BASE = "/api";
 const RECONNECT_DELAY_MS = 2000;
 
 /**
- * Singleton that manages a single SSE connection to /api/activity/stream.
+ * Singleton that manages a single SSE connection to /api/activity/fswatch.
  * Hooks subscribe via on() and receive events through callbacks.
  */
 class ActivityBus {
@@ -117,7 +117,7 @@ class ActivityBus {
   connect(): void {
     if (this.eventSource) return;
 
-    const es = new EventSource(`${API_BASE}/activity/stream`);
+    const es = new EventSource(`${API_BASE}/activity/fswatch`);
 
     es.onopen = () => {
       const isReconnect = this.hasConnected;

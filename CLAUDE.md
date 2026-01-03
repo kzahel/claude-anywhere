@@ -12,6 +12,58 @@ A mobile-first supervisor for Claude Code agents. Like the VS Code Claude extens
 
 For detailed overview, see `docs/project/`. Historical vision docs in `docs/archive/`.
 
+## Port Configuration
+
+All ports are derived from a single `PORT` environment variable (default: 3400):
+
+| Port | Purpose |
+|------|---------|
+| PORT + 0 | Main server (default: 3400) |
+| PORT + 1 | Maintenance server (default: 3401) |
+| PORT + 2 | Vite dev server (default: 3402) |
+
+To run on different ports:
+```bash
+PORT=4000 pnpm dev  # Uses 4000, 4001, 4002
+```
+
+Individual overrides (rarely needed):
+- `MAINTENANCE_PORT` - Override maintenance port (set to 0 to disable)
+- `VITE_PORT` - Override vite dev port
+
+## Data Directory & Profiles
+
+Server state is stored in a data directory (default: `~/.claude-anywhere/`). This includes:
+- `logs/` - Server logs
+- `indexes/` - Session index cache
+- `uploads/` - Uploaded files
+- `session-metadata.json` - Custom titles, archive/starred status
+- `notifications.json` - Last-seen timestamps
+- `push-subscriptions.json` - Web push subscriptions
+- `vapid.json` - VAPID keys for push
+
+### Running Multiple Instances
+
+Use profiles to run dev and production instances simultaneously (like Chrome profiles):
+
+```bash
+# Production (default profile, port 3400)
+PORT=3400 pnpm start
+
+# Development (dev profile, port 4000)
+PORT=4000 CLAUDE_ANYWHERE_PROFILE=dev pnpm dev
+```
+
+This creates separate data directories:
+- Production: `~/.claude-anywhere/`
+- Development: `~/.claude-anywhere-dev/`
+
+Environment variables:
+- `CLAUDE_ANYWHERE_PROFILE` - Profile name suffix (creates `~/.claude-anywhere-{profile}/`)
+- `CLAUDE_ANYWHERE_DATA_DIR` - Full path override for data directory
+
+Note: Both instances share `~/.claude/projects/` (SDK-managed sessions).
+
 ## After Editing Code
 
 After editing TypeScript or other source files, verify your changes compile and pass checks:
@@ -31,7 +83,7 @@ Never mention Claude, AI, or any AI assistant in commit messages. Write commit m
 
 ## Server Logs
 
-Server logs are written to `~/.claude-anywhere/logs/`:
+Server logs are written to `{dataDir}/logs/` (default: `~/.claude-anywhere/logs/`):
 
 - `server.log` - Main server log (dev mode with `pnpm dev`)
 - `e2e-server.log` - Server log during E2E tests
@@ -50,7 +102,7 @@ Environment variables:
 
 ## Maintenance Server
 
-A separate lightweight HTTP server runs on port 3401 (main port + 1) for out-of-band diagnostics. Useful when the main server is unresponsive.
+A separate lightweight HTTP server runs on PORT + 1 (default 3401) for out-of-band diagnostics. Useful when the main server is unresponsive.
 
 ```bash
 # Check server status

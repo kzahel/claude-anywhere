@@ -1,9 +1,12 @@
 import type { HttpBindings } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { Hono } from "hono";
+import type { AuthService } from "./auth/AuthService.js";
+import { createAuthRoutes } from "./auth/routes.js";
 import type { FrontendProxy } from "./frontend/index.js";
 import type { SessionIndexService } from "./indexes/index.js";
 import type { SessionMetadataService } from "./metadata/index.js";
+import { createAuthMiddleware } from "./middleware/auth.js";
 import { corsMiddleware, requireCustomHeader } from "./middleware/security.js";
 import type { NotificationService } from "./notifications/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
@@ -59,6 +62,10 @@ export interface AppOptions {
   maxUploadSizeBytes?: number;
   /** Maximum queue size for pending requests. 0 = unlimited */
   maxQueueSize?: number;
+  /** AuthService for cookie-based auth (optional) */
+  authService?: AuthService;
+  /** Whether auth is enabled */
+  authEnabled?: boolean;
 }
 
 export function createApp(
@@ -69,6 +76,26 @@ export function createApp(
   // Security middleware: CORS + custom header requirement
   app.use("/api/*", corsMiddleware);
   app.use("/api/*", requireCustomHeader);
+
+  // Auth middleware (if authService is provided and enabled)
+  if (options.authService && options.authEnabled !== false) {
+    app.use(
+      "/api/*",
+      createAuthMiddleware({
+        authService: options.authService,
+        enabled: true,
+      }),
+    );
+  }
+
+  // Auth routes (always mounted if authService is provided, even if auth is disabled)
+  // This allows checking auth status and setting up account
+  if (options.authService) {
+    app.route(
+      "/api/auth",
+      createAuthRoutes({ authService: options.authService }),
+    );
+  }
 
   // Create dependencies
   const scanner = new ProjectScanner({ projectsDir: options.projectsDir });

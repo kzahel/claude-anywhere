@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ReloadBanner } from "./components/ReloadBanner";
+import { AuthProvider } from "./contexts/AuthContext";
 import { SchemaValidationProvider } from "./contexts/SchemaValidationContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { useSyncNotifyInAppSetting } from "./hooks/useNotifyInApp";
@@ -29,25 +30,27 @@ export function App({ children }: Props) {
 
   return (
     <ToastProvider>
-      <SchemaValidationProvider>
-        {isManualReloadMode && pendingReloads.backend && (
-          <ReloadBanner
-            target="backend"
-            onReload={reloadBackend}
-            onDismiss={() => dismiss("backend")}
-            unsafeToRestart={unsafeToRestart}
-            activeWorkers={workerActivity.activeWorkers}
-          />
-        )}
-        {isManualReloadMode && pendingReloads.frontend && (
-          <ReloadBanner
-            target="frontend"
-            onReload={reloadFrontend}
-            onDismiss={() => dismiss("frontend")}
-          />
-        )}
-        {children}
-      </SchemaValidationProvider>
+      <AuthProvider>
+        <SchemaValidationProvider>
+          {isManualReloadMode && pendingReloads.backend && (
+            <ReloadBanner
+              target="backend"
+              onReload={reloadBackend}
+              onDismiss={() => dismiss("backend")}
+              unsafeToRestart={unsafeToRestart}
+              activeWorkers={workerActivity.activeWorkers}
+            />
+          )}
+          {isManualReloadMode && pendingReloads.frontend && (
+            <ReloadBanner
+              target="frontend"
+              onReload={reloadFrontend}
+              onDismiss={() => dismiss("frontend")}
+            />
+          )}
+          {children}
+        </SchemaValidationProvider>
+      </AuthProvider>
     </ToastProvider>
   );
 }

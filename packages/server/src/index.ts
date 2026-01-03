@@ -4,6 +4,7 @@ import { serve } from "@hono/node-server";
 import { RESPONSE_ALREADY_SENT } from "@hono/node-server/utils/response";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { createApp } from "./app.js";
+import { AuthService } from "./auth/AuthService.js";
 import { loadConfig } from "./config.js";
 import {
   attachUnifiedUpgradeHandler,
@@ -23,6 +24,7 @@ import { ProjectScanner } from "./projects/scanner.js";
 import { PushService, loadVapidKeys } from "./push/index.js";
 import { createUploadRoutes } from "./routes/upload.js";
 import { detectClaudeCli } from "./sdk/cli-detection.js";
+import { initMessageLogger } from "./sdk/messageLogger.js";
 import { RealClaudeSDK } from "./sdk/real.js";
 import { EventBus, FileWatcher, SourceWatcher } from "./watcher/index.js";
 
@@ -44,9 +46,13 @@ initLogger({
 });
 interceptConsole();
 
-// Log the log file location for discoverability
+// Initialize SDK message logger (if LOG_SDK_MESSAGES=true)
+initMessageLogger();
+
+// Log configuration for discoverability
+console.log(`[Config] Data dir: ${config.dataDir}`);
 console.log(
-  `[Logging] Log file: ${getLogFilePath({ logDir: config.logDir, logFile: config.logFile })}`,
+  `[Config] Log file: ${getLogFilePath({ logDir: config.logDir, logFile: config.logFile })}`,
 );
 
 // Check for Claude CLI
@@ -85,13 +91,24 @@ if (process.env.NO_BACKEND_RELOAD === "true") {
   sourceWatcher.start();
 }
 
-// Create and initialize services
-const notificationService = new NotificationService({ eventBus });
-const sessionMetadataService = new SessionMetadataService();
+// Create and initialize services (all use config.dataDir for state)
+const notificationService = new NotificationService({
+  eventBus,
+  dataDir: config.dataDir,
+});
+const sessionMetadataService = new SessionMetadataService({
+  dataDir: config.dataDir,
+});
 const sessionIndexService = new SessionIndexService({
   projectsDir: config.claudeProjectsDir,
+  dataDir: path.join(config.dataDir, "indexes"),
 });
-const pushService = new PushService();
+const pushService = new PushService({ dataDir: config.dataDir });
+const authService = new AuthService({
+  dataDir: config.dataDir,
+  sessionTtlMs: config.authSessionTtlMs,
+  cookieSecret: config.authCookieSecret,
+});
 
 async function startServer() {
   // Initialize services (loads state from disk)
@@ -99,6 +116,20 @@ async function startServer() {
   await sessionMetadataService.initialize();
   await sessionIndexService.initialize();
   await pushService.initialize();
+  await authService.initialize();
+
+  // Log auth status
+  if (config.authEnabled) {
+    if (authService.hasAccount()) {
+      console.log("[Auth] Cookie auth enabled (account configured)");
+    } else {
+      console.log(
+        "[Auth] Cookie auth enabled (setup required - visit /settings)",
+      );
+    }
+  } else {
+    console.log("[Auth] Cookie auth disabled (AUTH_ENABLED=false)");
+  }
 
   // Load VAPID keys if available (run 'pnpm setup-vapid' to generate)
   const vapidKeys = await loadVapidKeys();
@@ -141,6 +172,8 @@ async function startServer() {
     maxWorkers: config.maxWorkers,
     idlePreemptThresholdMs: config.idlePreemptThresholdMs,
     pushService,
+    authService,
+    authEnabled: config.authEnabled,
     // Note: frontendProxy not passed - will be added below
   });
 

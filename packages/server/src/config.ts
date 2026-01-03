@@ -4,9 +4,31 @@ import type { Level as LogLevel } from "pino";
 import type { PermissionMode } from "./sdk/types.js";
 
 /**
+ * Get the data directory for claude-anywhere state files.
+ * Supports profiles for running multiple instances (like Chrome profiles).
+ *
+ * Priority:
+ * 1. CLAUDE_ANYWHERE_DATA_DIR - Full path override
+ * 2. CLAUDE_ANYWHERE_PROFILE - Appends suffix: ~/.claude-anywhere-{profile}
+ * 3. Default: ~/.claude-anywhere
+ */
+export function getDataDir(): string {
+  if (process.env.CLAUDE_ANYWHERE_DATA_DIR) {
+    return process.env.CLAUDE_ANYWHERE_DATA_DIR;
+  }
+  const profile = process.env.CLAUDE_ANYWHERE_PROFILE;
+  if (profile) {
+    return path.join(os.homedir(), `.claude-anywhere-${profile}`);
+  }
+  return path.join(os.homedir(), ".claude-anywhere");
+}
+
+/**
  * Server configuration loaded from environment variables.
  */
 export interface Config {
+  /** Data directory for claude-anywhere state files (indexes, metadata, uploads, etc.) */
+  dataDir: string;
   /** Directory where Claude projects are stored */
   claudeProjectsDir: string;
   /** Idle timeout in milliseconds before process cleanup */
@@ -45,6 +67,12 @@ export interface Config {
   logToFile: boolean;
   /** Whether to log to console. Default: true */
   logToConsole: boolean;
+  /** Whether cookie-based auth is enabled. Default: false (enable in settings) */
+  authEnabled: boolean;
+  /** Cookie signing secret. Auto-generated if not provided. */
+  authCookieSecret?: string;
+  /** Session TTL in milliseconds. Default: 30 days */
+  authSessionTtlMs: number;
 }
 
 /**
@@ -58,7 +86,11 @@ export function loadConfig(): Config {
   // Set SERVE_FRONTEND=false to disable frontend serving (API-only mode)
   const serveFrontend = process.env.SERVE_FRONTEND !== "false";
 
+  // Get data directory (supports profiles for multiple instances)
+  const dataDir = getDataDir();
+
   return {
+    dataDir,
     claudeProjectsDir:
       process.env.CLAUDE_PROJECTS_DIR ??
       path.join(os.homedir(), ".claude", "projects"),
@@ -75,7 +107,11 @@ export function loadConfig(): Config {
     idlePreemptThresholdMs:
       parseIntOrDefault(process.env.IDLE_PREEMPT_THRESHOLD, 10) * 1000,
     serveFrontend,
-    vitePort: parseIntOrDefault(process.env.VITE_PORT, 5555),
+    // Vite port defaults to main port + 2, keeping all ports sequential
+    vitePort: parseIntOrDefault(
+      process.env.VITE_PORT,
+      parseIntOrDefault(process.env.PORT, 3400) + 2,
+    ),
     // In production, serve from ../client/dist relative to server package
     // This assumes standard monorepo layout
     clientDistPath:
@@ -86,10 +122,8 @@ export function loadConfig(): Config {
       parseIntOrDefault(process.env.MAX_UPLOAD_SIZE_MB, 100) * 1024 * 1024,
     // Default 100 max queue size
     maxQueueSize: parseIntOrDefault(process.env.MAX_QUEUE_SIZE, 100),
-    // Logging configuration
-    logDir:
-      process.env.LOG_DIR ??
-      path.join(os.homedir(), ".claude-anywhere", "logs"),
+    // Logging configuration (uses dataDir as base)
+    logDir: process.env.LOG_DIR ?? path.join(dataDir, "logs"),
     logFile: process.env.LOG_FILE ?? "server.log",
     logLevel: parseLogLevel(process.env.LOG_LEVEL),
     logFileLevel: parseLogLevel(
@@ -97,6 +131,15 @@ export function loadConfig(): Config {
     ),
     logToFile: process.env.LOG_TO_FILE !== "false",
     logToConsole: process.env.LOG_TO_CONSOLE !== "false",
+    // Auth configuration (disabled by default, enable with AUTH_ENABLED=true or in settings)
+    authEnabled: process.env.AUTH_ENABLED === "true",
+    authCookieSecret: process.env.AUTH_COOKIE_SECRET,
+    authSessionTtlMs:
+      parseIntOrDefault(process.env.AUTH_SESSION_TTL_DAYS, 30) *
+      24 *
+      60 *
+      60 *
+      1000,
   };
 }
 

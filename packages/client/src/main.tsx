@@ -10,6 +10,7 @@ import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
 import { FilePage } from "./pages/FilePage";
 import { InboxPage } from "./pages/InboxPage";
+import { LoginPage } from "./pages/LoginPage";
 import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectInboxPage } from "./pages/ProjectInboxPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
@@ -36,6 +37,8 @@ createRoot(rootElement).render(
       <App>
         <Routes>
           <Route path="/" element={<Navigate to="/projects" replace />} />
+          {/* Login page (no layout wrapper) */}
+          <Route path="/login" element={<LoginPage />} />
           {/* Top-level navigation pages share NavigationLayout */}
           <Route element={<NavigationLayout />}>
             <Route path="/projects" element={<ProjectsPage />} />

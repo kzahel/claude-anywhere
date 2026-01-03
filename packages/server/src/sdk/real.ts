@@ -3,6 +3,7 @@ import {
   type CanUseTool as SDKCanUseTool,
   query,
 } from "@anthropic-ai/claude-agent-sdk";
+import { logSDKMessage } from "./messageLogger.js";
 import { MessageQueue } from "./messageQueue.js";
 import type {
   ContentBlock,
@@ -124,6 +125,10 @@ export class RealClaudeSDK implements RealClaudeSDKInterface {
   ): AsyncIterableIterator<SDKMessage> {
     try {
       for await (const message of iterator) {
+        // Log raw SDK message for analysis (if LOG_SDK_MESSAGES=true)
+        const sessionId =
+          (message as { session_id?: string }).session_id ?? "unknown";
+        logSDKMessage(sessionId, message);
         yield this.convertMessage(message);
       }
     } catch (error) {

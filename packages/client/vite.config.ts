@@ -5,6 +5,11 @@ import { reloadNotify } from "./vite-plugin-reload-notify";
 // NO_FRONTEND_RELOAD: Disable HMR and use manual reload notifications instead
 const noFrontendReload = process.env.NO_FRONTEND_RELOAD === "true";
 
+// Port defaults to 3402 (base port 3400 + 2), can be overridden via VITE_PORT
+const vitePort = process.env.VITE_PORT
+  ? Number.parseInt(process.env.VITE_PORT, 10)
+  : 3402;
+
 export default defineConfig({
   clearScreen: false,
   plugins: [
@@ -16,7 +21,7 @@ export default defineConfig({
     conditions: ["source"],
   },
   server: {
-    port: 5555,
+    port: vitePort,
     allowedHosts: true,
     // HMR configuration for reverse proxy setup
     // When accessed through backend proxy (port 3400) or Tailscale, HMR needs to

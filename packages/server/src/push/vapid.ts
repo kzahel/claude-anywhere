@@ -2,21 +2,16 @@
  * VAPID Key Management
  *
  * Manages VAPID (Voluntary Application Server Identification) keys for Web Push.
- * Keys are stored in ~/.claude-anywhere/vapid.json and reused across server restarts.
+ * Keys are stored in dataDir/vapid.json and reused across server restarts.
  */
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import webPush from "web-push";
+import { getDataDir } from "../config.js";
 
-const DATA_DIR =
-  process.env.CLAUDE_ANYWHERE_DATA_DIR ??
-  path.join(
-    process.env.HOME ?? process.env.USERPROFILE ?? ".",
-    ".claude-anywhere",
-  );
-
-const VAPID_FILE = path.join(DATA_DIR, "vapid.json");
+/** VAPID keys file path (uses dataDir from config for profile support) */
+const VAPID_FILE = path.join(getDataDir(), "vapid.json");
 
 export interface VapidKeys {
   /** Base64url-encoded public key (for client subscription) */
@@ -171,11 +166,4 @@ export async function getOrCreateVapidKeys(
  */
 export function getVapidFilePath(): string {
   return VAPID_FILE;
-}
-
-/**
- * Get data directory path (for external use).
- */
-export function getDataDir(): string {
-  return DATA_DIR;
 }
