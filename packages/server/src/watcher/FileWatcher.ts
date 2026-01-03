@@ -1,10 +1,17 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { EventBus, FileChangeEvent, FileChangeType } from "./EventBus.js";
+import type {
+  EventBus,
+  FileChangeEvent,
+  FileChangeType,
+  WatchProvider,
+} from "./EventBus.js";
 
 export interface FileWatcherOptions {
   /** Directory to watch (e.g., ~/.claude) */
   watchDir: string;
+  /** Provider that owns this directory */
+  provider: WatchProvider;
   /** EventBus to emit events to */
   eventBus: EventBus;
   /** Debounce delay in ms (default: 200) */
@@ -13,6 +20,7 @@ export interface FileWatcherOptions {
 
 export class FileWatcher {
   private watchDir: string;
+  private provider: WatchProvider;
   private eventBus: EventBus;
   private debounceMs: number;
   private watcher: fs.FSWatcher | null = null;
@@ -21,6 +29,7 @@ export class FileWatcher {
 
   constructor(options: FileWatcherOptions) {
     this.watchDir = options.watchDir;
+    this.provider = options.provider;
     this.eventBus = options.eventBus;
     this.debounceMs = options.debounceMs ?? 200;
   }
@@ -145,6 +154,7 @@ export class FileWatcher {
 
     const event: FileChangeEvent = {
       type: "file-change",
+      provider: this.provider,
       path: fullPath,
       relativePath,
       changeType,
@@ -156,32 +166,46 @@ export class FileWatcher {
   }
 
   private parseFileType(relativePath: string): FileChangeEvent["fileType"] {
-    // Session files: projects/<encoded-path>/<session-id>.jsonl
-    if (relativePath.includes("projects/") && relativePath.endsWith(".jsonl")) {
+    switch (this.provider) {
+      case "claude":
+        return this.parseClaudeFileType(relativePath);
+      case "gemini":
+        return this.parseGeminiFileType(relativePath);
+      case "codex":
+        return this.parseCodexFileType(relativePath);
+    }
+  }
+
+  private parseClaudeFileType(
+    relativePath: string,
+  ): FileChangeEvent["fileType"] {
+    // Watching ~/.claude/projects - relativePath is {hash}/{session}.jsonl
+    if (relativePath.endsWith(".jsonl")) {
       if (path.basename(relativePath).startsWith("agent-")) {
         return "agent-session";
       }
       return "session";
     }
+    return "other";
+  }
 
-    // Settings file
-    if (relativePath === "settings.json") {
-      return "settings";
+  private parseGeminiFileType(
+    relativePath: string,
+  ): FileChangeEvent["fileType"] {
+    // Watching ~/.gemini/tmp - relativePath is {hash}/chats/session-*.json
+    if (relativePath.includes("/chats/") && relativePath.endsWith(".json")) {
+      return "session";
     }
+    return "other";
+  }
 
-    // Credentials
-    if (
-      relativePath === "credentials.json" ||
-      relativePath.includes("credentials")
-    ) {
-      return "credentials";
+  private parseCodexFileType(
+    relativePath: string,
+  ): FileChangeEvent["fileType"] {
+    // Watching ~/.codex/sessions - relativePath is {year}/{month}/{day}/rollout-*.jsonl
+    if (relativePath.endsWith(".jsonl")) {
+      return "session";
     }
-
-    // Telemetry (statsig, analytics)
-    if (relativePath.startsWith("statsig/")) {
-      return "telemetry";
-    }
-
     return "other";
   }
 }

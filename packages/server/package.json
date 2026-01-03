@@ -12,16 +12,14 @@
     "test": "vitest run",
     "test:e2e": "vitest run test/e2e",
     "test:e2e:real": "REAL_SDK_TESTS=true vitest run test/e2e",
-    "test:e2e:real:fg": "REAL_SDK_TESTS=true FOREGROUND=1 vitest run test/e2e",
-    "test:e2e:local": "vitest run test/e2e/local-model.e2e.test.ts",
-    "test:e2e:local:quality": "LOCAL_MODEL_QUALITY=true vitest run test/e2e/local-model.e2e.test.ts",
-    "test:e2e:local:fg": "FOREGROUND=1 vitest run test/e2e/local-model.e2e.test.ts"
+    "test:e2e:real:fg": "REAL_SDK_TESTS=true FOREGROUND=1 vitest run test/e2e"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@claude-anywhere/shared": "workspace:*",
     "@hono/node-server": "^1.13.7",
     "@hono/node-ws": "^1.2.0",
+    "@openai/codex-sdk": "^0.77.0",
     "bcrypt": "^6.0.0",
     "hono": "^4.6.14",
     "http-proxy": "^1.18.1",

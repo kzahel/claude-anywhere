@@ -14,15 +14,22 @@ import type {
   Session,
   SessionSummary,
 } from "../supervisor/types.js";
+import type { GetSessionOptions, ISessionReader } from "./types.js";
+
+// Re-export interface types
+export type { GetSessionOptions, ISessionReader } from "./types.js";
 
 // Claude model context window size (200K tokens)
 const CONTEXT_WINDOW_SIZE = 200_000;
 
 import { buildDag, findOrphanedToolUses } from "./dag.js";
 
-export interface SessionReaderOptions {
+export interface ClaudeSessionReaderOptions {
   sessionDir: string;
 }
+
+/** @deprecated Use ClaudeSessionReaderOptions */
+export type SessionReaderOptions = ClaudeSessionReaderOptions;
 
 // Re-export AgentStatus for backwards compatibility
 export type { AgentStatus } from "@claude-anywhere/shared";
@@ -79,10 +86,16 @@ interface RawSessionMessage {
   [key: string]: unknown;
 }
 
-export class SessionReader {
+/**
+ * Claude-specific session reader for Claude Code JSONL files.
+ *
+ * Handles Claude's DAG-based conversation structure with parentUuid,
+ * agent sessions, orphaned tool detection, and context window tracking.
+ */
+export class ClaudeSessionReader implements ISessionReader {
   private sessionDir: string;
 
-  constructor(options: SessionReaderOptions) {
+  constructor(options: ClaudeSessionReaderOptions) {
     this.sessionDir = options.sessionDir;
   }
 
@@ -185,7 +198,7 @@ export class SessionReader {
     sessionId: string,
     projectId: UrlProjectId,
     afterMessageId?: string,
-    options?: { includeOrphans?: boolean },
+    options?: GetSessionOptions,
   ): Promise<Session | null> {
     const summary = await this.getSessionSummary(sessionId, projectId);
     if (!summary) return null;
@@ -565,3 +578,8 @@ export class SessionReader {
     return message;
   }
 }
+
+/** @deprecated Use ClaudeSessionReader */
+export const SessionReader = ClaudeSessionReader;
+/** @deprecated Use ClaudeSessionReader */
+export type SessionReader = ClaudeSessionReader;

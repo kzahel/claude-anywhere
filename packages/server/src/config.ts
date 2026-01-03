@@ -31,6 +31,12 @@ export interface Config {
   dataDir: string;
   /** Directory where Claude projects are stored */
   claudeProjectsDir: string;
+  /** Claude sessions directory (~/.claude/projects) */
+  claudeSessionsDir: string;
+  /** Gemini sessions directory (~/.gemini/tmp) */
+  geminiSessionsDir: string;
+  /** Codex sessions directory (~/.codex/sessions) */
+  codexSessionsDir: string;
   /** Idle timeout in milliseconds before process cleanup */
   idleTimeoutMs: number;
   /** Default permission mode for new sessions */
@@ -89,11 +95,16 @@ export function loadConfig(): Config {
   // Get data directory (supports profiles for multiple instances)
   const dataDir = getDataDir();
 
+  const claudeSessionsDir = path.join(os.homedir(), ".claude", "projects");
+  const geminiSessionsDir = path.join(os.homedir(), ".gemini", "tmp");
+  const codexSessionsDir = path.join(os.homedir(), ".codex", "sessions");
+
   return {
     dataDir,
-    claudeProjectsDir:
-      process.env.CLAUDE_PROJECTS_DIR ??
-      path.join(os.homedir(), ".claude", "projects"),
+    claudeProjectsDir: process.env.CLAUDE_PROJECTS_DIR ?? claudeSessionsDir,
+    claudeSessionsDir,
+    geminiSessionsDir,
+    codexSessionsDir,
     idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 5 * 60) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),

@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   type SDKMessage as AgentSDKMessage,
   type CanUseTool as SDKCanUseTool,
@@ -12,6 +15,19 @@ import type {
   AuthStatus,
   StartSessionOptions,
 } from "./types.js";
+
+/**
+ * OAuth credentials from ~/.claude/.credentials.json
+ */
+interface ClaudeCredentials {
+  claudeAiOauth?: {
+    accessToken?: string;
+    refreshToken?: string;
+    expiresAt?: number;
+    scopes?: string[];
+    subscriptionType?: string;
+  };
+}
 
 /**
  * Claude provider implementation using @anthropic-ai/claude-agent-sdk.
@@ -35,23 +51,75 @@ export class ClaudeProvider implements AgentProvider {
 
   /**
    * Check if Claude is authenticated.
-   * Returns true if ANTHROPIC_API_KEY is set.
+   * Returns true if ANTHROPIC_API_KEY is set or OAuth credentials exist.
    */
   async isAuthenticated(): Promise<boolean> {
-    return !!process.env.ANTHROPIC_API_KEY;
+    const authStatus = await this.getAuthStatus();
+    return authStatus.authenticated;
   }
 
   /**
    * Get detailed authentication status.
+   * Checks for API key env var or OAuth credentials file.
    */
   async getAuthStatus(): Promise<AuthStatus> {
-    const hasKey = !!process.env.ANTHROPIC_API_KEY;
-    return {
-      installed: true,
-      authenticated: hasKey,
-      enabled: hasKey,
-      // API keys don't expire, and we don't have user info
-    };
+    // Check for API key first
+    if (process.env.ANTHROPIC_API_KEY) {
+      return {
+        installed: true,
+        authenticated: true,
+        enabled: true,
+      };
+    }
+
+    // Check for OAuth credentials file
+    const credsPath = join(homedir(), ".claude", ".credentials.json");
+    if (!existsSync(credsPath)) {
+      return {
+        installed: true,
+        authenticated: false,
+        enabled: false,
+      };
+    }
+
+    try {
+      const creds: ClaudeCredentials = JSON.parse(
+        readFileSync(credsPath, "utf-8"),
+      );
+
+      const oauth = creds.claudeAiOauth;
+      if (!oauth?.accessToken && !oauth?.refreshToken) {
+        return {
+          installed: true,
+          authenticated: false,
+          enabled: false,
+        };
+      }
+
+      // Check expiry - if expired but has refresh token, still authenticated
+      // The SDK will handle token refresh
+      let expiresAt: Date | undefined;
+      let authenticated = true;
+      if (oauth.expiresAt) {
+        expiresAt = new Date(oauth.expiresAt);
+        if (expiresAt < new Date() && !oauth.refreshToken) {
+          authenticated = false;
+        }
+      }
+
+      return {
+        installed: true,
+        authenticated,
+        enabled: authenticated,
+        expiresAt,
+      };
+    } catch {
+      return {
+        installed: true,
+        authenticated: false,
+        enabled: false,
+      };
+    }
   }
 
   /**

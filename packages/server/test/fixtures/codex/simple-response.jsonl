@@ -1,3 +1,5 @@
-{"type":"system","subtype":"init","session_id":"codex-fixture-001","model":"gpt-4","cwd":"/test"}
-{"type":"assistant","session_id":"codex-fixture-001","message":{"role":"assistant","content":"Hello! I'm Codex. How can I help you today?"}}
-{"type":"result","session_id":"codex-fixture-001","usage":{"input_tokens":50,"output_tokens":20}}
+{"type":"thread.started","thread_id":"019b8510-300f-7dc2-9129-03f5bd8d360e"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"**Seeking exact phrase**"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Hello, I am ready to help!"}}
+{"type":"turn.completed","usage":{"input_tokens":4072,"cached_input_tokens":3200,"output_tokens":14}}

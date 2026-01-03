@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { UrlProjectId } from "@claude-anywhere/shared";
+import type { ProviderName, UrlProjectId } from "@claude-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
+import { getProvider } from "../sdk/providers/index.js";
 import type { AgentProvider } from "../sdk/providers/types.js";
 import type {
   ClaudeSDK,
@@ -48,6 +49,8 @@ export interface ModelSettings {
   model?: string;
   /** Max thinking tokens. undefined = thinking disabled */
   maxThinkingTokens?: number;
+  /** Provider to use for this session. undefined = use default (Claude) */
+  providerName?: ProviderName;
 }
 
 /** Error response when queue is full */
@@ -146,8 +149,13 @@ export class Supervisor {
       }
     }
 
+    // Resolve provider: use specified provider name, or fall back to default provider
+    const provider = modelSettings?.providerName
+      ? getProvider(modelSettings.providerName)
+      : this.provider;
+
     // Use provider if available (preferred)
-    if (this.provider) {
+    if (provider) {
       return this.startProviderSession(
         projectPath,
         projectId,
@@ -155,6 +163,7 @@ export class Supervisor {
         undefined,
         permissionMode,
         modelSettings,
+        provider,
       );
     }
 
@@ -219,13 +228,19 @@ export class Supervisor {
       }
     }
 
+    // Resolve provider: use specified provider name, or fall back to default provider
+    const provider = modelSettings?.providerName
+      ? getProvider(modelSettings.providerName)
+      : this.provider;
+
     // Use provider if available (preferred)
-    if (this.provider) {
+    if (provider) {
       return this.createProviderSession(
         projectPath,
         projectId,
         permissionMode,
         modelSettings,
+        provider,
       );
     }
 
@@ -391,8 +406,10 @@ export class Supervisor {
     projectId: UrlProjectId,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    provider?: AgentProvider,
   ): Promise<Process> {
-    if (!this.provider) {
+    const activeProvider = provider ?? this.provider;
+    if (!activeProvider) {
       throw new Error("provider is not available");
     }
 
@@ -400,7 +417,7 @@ export class Supervisor {
     const effectiveMode = permissionMode ?? this.defaultPermissionMode;
 
     // Start session WITHOUT an initial message - agent will wait
-    const result = await this.provider.startSession({
+    const result = await activeProvider.startSession({
       cwd: projectPath,
       // No initialMessage - queue will block until one is pushed
       permissionMode: effectiveMode,
@@ -449,8 +466,10 @@ export class Supervisor {
     resumeSessionId?: string,
     permissionMode?: PermissionMode,
     modelSettings?: ModelSettings,
+    provider?: AgentProvider,
   ): Promise<Process> {
-    if (!this.provider) {
+    const activeProvider = provider ?? this.provider;
+    if (!activeProvider) {
       throw new Error("provider is not available");
     }
 
@@ -466,7 +485,7 @@ export class Supervisor {
     const messageUuid = randomUUID();
     const messageWithUuid: UserMessage = { ...message, uuid: messageUuid };
 
-    const result = await this.provider.startSession({
+    const result = await activeProvider.startSession({
       cwd: projectPath,
       initialMessage: messageWithUuid,
       resumeSessionId,

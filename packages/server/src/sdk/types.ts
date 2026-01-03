@@ -5,8 +5,10 @@ export type { PermissionMode } from "@claude-anywhere/shared";
 import type { PermissionMode, UploadedFile } from "@claude-anywhere/shared";
 
 export interface ContentBlock {
-  type: "text" | "tool_use" | "tool_result" | "image";
+  type: "text" | "tool_use" | "tool_result" | "image" | "thinking";
   text?: string;
+  /** For thinking blocks */
+  thinking?: string;
   id?: string;
   name?: string;
   input?: unknown;

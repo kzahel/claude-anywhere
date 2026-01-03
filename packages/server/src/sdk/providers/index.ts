@@ -34,20 +34,12 @@ export {
   type GeminiProviderConfig,
 } from "./gemini.js";
 
-// Local model provider (uses Ollama)
-import { localModelProvider } from "./local-model.js";
-export {
-  LocalModelProvider,
-  localModelProvider,
-  type LocalModelConfig,
-} from "./local-model.js";
-
 /**
  * Get all available provider instances.
  * Useful for provider detection UI.
  */
 export function getAllProviders(): AgentProvider[] {
-  return [claudeProvider, codexProvider, geminiProvider, localModelProvider];
+  return [claudeProvider, codexProvider, geminiProvider];
 }
 
 /**
@@ -61,8 +53,6 @@ export function getProvider(name: ProviderName): AgentProvider | null {
       return codexProvider;
     case "gemini":
       return geminiProvider;
-    case "local":
-      return localModelProvider;
     default:
       return null;
   }

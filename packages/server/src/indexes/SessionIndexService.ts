@@ -10,8 +10,9 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { UrlProjectId } from "@claude-anywhere/shared";
 import { getLogger } from "../logging/logger.js";
-import type { SessionReader } from "../sessions/reader.js";
+import type { ISessionReader } from "../sessions/types.js";
 import type { SessionSummary } from "../supervisor/types.js";
+import type { ISessionIndexService } from "./types.js";
 
 const logger = getLogger();
 
@@ -45,7 +46,14 @@ export interface SessionIndexServiceOptions {
   projectsDir?: string;
 }
 
-export class SessionIndexService {
+/**
+ * Claude-specific session index service.
+ *
+ * Caches session summaries for Claude Code JSONL files to avoid
+ * re-parsing on every request. Currently works with Claude's
+ * ~/.claude/projects/ directory structure.
+ */
+export class SessionIndexService implements ISessionIndexService {
   private dataDir: string;
   private projectsDir: string;
   private indexCache: Map<string, SessionIndexState> = new Map();
@@ -193,7 +201,7 @@ export class SessionIndexService {
   async getSessionsWithCache(
     sessionDir: string,
     projectId: UrlProjectId,
-    reader: SessionReader,
+    reader: ISessionReader,
   ): Promise<SessionSummary[]> {
     const index = await this.loadIndex(sessionDir, projectId);
     const summaries: SessionSummary[] = [];
@@ -348,7 +356,7 @@ export class SessionIndexService {
     sessionDir: string,
     projectId: UrlProjectId,
     sessionId: string,
-    reader: SessionReader,
+    reader: ISessionReader,
   ): Promise<string | null> {
     const index = await this.loadIndex(sessionDir, projectId);
     const cached = index.sessions[sessionId];

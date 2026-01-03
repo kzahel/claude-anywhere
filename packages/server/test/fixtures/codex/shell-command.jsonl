@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"019b8510-9494-7ce3-ad86-aff5125d356e"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"**Preparing shell command**"}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'echo hello world'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc 'echo hello world'","aggregated_output":"hello world\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"hello world"}}
+{"type":"turn.completed","usage":{"input_tokens":8215,"cached_input_tokens":7168,"output_tokens":38}}

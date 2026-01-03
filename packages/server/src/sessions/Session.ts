@@ -17,18 +17,21 @@ import {
   type UrlProjectId,
   type AppSessionSummary,
 } from "@claude-anywhere/shared";
-import type { SessionIndexService } from "../indexes/SessionIndexService.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
-import type { SessionReader } from "./reader.js";
+import type { ISessionIndexService } from "../indexes/types.js";
+import type { ISessionReader } from "./types.js";
 
 /**
  * Dependencies required by Session for I/O operations.
  * Passed via constructor or load() for testability.
+ *
+ * These are provider-agnostic interfaces, allowing Session to work
+ * with any provider (Claude, Codex, Gemini, etc.).
  */
 export interface SessionDeps {
-  indexService: SessionIndexService;
+  indexService: ISessionIndexService;
   metadataService: SessionMetadataService;
-  reader: SessionReader;
+  reader: ISessionReader;
   sessionDir: string;
 }
 

@@ -9,6 +9,7 @@
  * - MOCK_DELAY_MS: Delay between mock messages in ms. Default: 200
  */
 
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { serve } from "@hono/node-server";
@@ -19,6 +20,7 @@ import { loadConfig } from "./config.js";
 import {
   attachUnifiedUpgradeHandler,
   createFrontendProxy,
+  createStaticRoutes,
 } from "./frontend/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
 import { createUploadRoutes } from "./routes/upload.js";
@@ -135,7 +137,6 @@ const mockProviders: Record<ProviderName, MockAgentProvider> = {
   claude: new MockClaudeProvider({ scenarios: createMockScenarios("claude") }),
   codex: new MockCodexProvider({ scenarios: createMockScenarios("codex") }),
   gemini: new MockGeminiProvider({ scenarios: createMockScenarios("gemini") }),
-  local: new MockClaudeProvider({ scenarios: createMockScenarios("local") }),
 };
 
 // Create legacy mock SDK for backward compatibility
@@ -145,23 +146,58 @@ const mockSdk = new MockClaudeSDK(
   createMockScenarios("test-session") as LegacyMockScenario[],
 );
 
-// Create EventBus and FileWatcher for ~/.claude
+// Create EventBus and FileWatchers for all provider directories
 const eventBus = new EventBus();
-const claudeDir = path.join(os.homedir(), ".claude");
-const fileWatcher = new FileWatcher({
-  watchDir: claudeDir,
-  eventBus,
-  debounceMs: 200,
-});
-fileWatcher.start();
+const fileWatchers: FileWatcher[] = [];
 
-// Create frontend proxy if serving frontend
+// Helper to create watcher if directory exists
+function createWatcherIfExists(
+  watchDir: string,
+  provider: "claude" | "gemini" | "codex",
+): void {
+  if (fs.existsSync(watchDir)) {
+    const watcher = new FileWatcher({
+      watchDir,
+      provider,
+      eventBus,
+      debounceMs: 200,
+    });
+    watcher.start();
+    fileWatchers.push(watcher);
+  }
+}
+
+// Create watchers for session directories only (not full provider dirs)
+// This reduces inotify pressure and memory usage
+createWatcherIfExists(path.join(os.homedir(), ".claude", "projects"), "claude");
+createWatcherIfExists(path.join(os.homedir(), ".gemini", "tmp"), "gemini");
+createWatcherIfExists(path.join(os.homedir(), ".codex", "sessions"), "codex");
+
+// Create frontend proxy or static routes depending on configuration
+// If VITE_PORT=0 and CLIENT_DIST_PATH exists, serve static files
+// Otherwise, proxy to Vite dev server
 let frontendProxy: ReturnType<typeof createFrontendProxy> | undefined;
+let useStaticFiles = false;
+
 if (config.serveFrontend) {
-  frontendProxy = createFrontendProxy({ vitePort: config.vitePort });
-  console.log(
-    `[Frontend] Proxying to Vite at http://localhost:${config.vitePort}`,
-  );
+  const distExists = fs.existsSync(config.clientDistPath);
+  if (config.vitePort === 0 && distExists) {
+    // E2E mode: serve pre-built static files
+    useStaticFiles = true;
+    console.log(
+      `[Frontend] Serving static files from ${config.clientDistPath}`,
+    );
+  } else if (config.vitePort > 0) {
+    // Dev mode: proxy to Vite
+    frontendProxy = createFrontendProxy({ vitePort: config.vitePort });
+    console.log(
+      `[Frontend] Proxying to Vite at http://localhost:${config.vitePort}`,
+    );
+  } else {
+    console.warn(
+      `[Frontend] No frontend available (VITE_PORT=0 and no dist at ${config.clientDistPath})`,
+    );
+  }
 }
 
 // Create the main app first (without WebSocket support or frontend proxy)
@@ -225,8 +261,15 @@ app.get("/api/providers/:name/status", async (c) => {
   });
 });
 
-// Add frontend proxy as the final catch-all (AFTER all API routes including uploads)
-if (frontendProxy) {
+// Add frontend serving as the final catch-all (AFTER all API routes including uploads)
+if (useStaticFiles) {
+  // E2E mode: serve static files
+  const staticRoutes = createStaticRoutes({
+    distPath: config.clientDistPath,
+  });
+  app.route("/", staticRoutes);
+} else if (frontendProxy) {
+  // Dev mode: proxy to Vite
   const proxy = frontendProxy;
   app.all("*", (c) => {
     const { incoming, outgoing } = c.env;
@@ -237,7 +280,10 @@ if (frontendProxy) {
 
 const port = config.port;
 const server = serve({ fetch: app.fetch, port }, () => {
-  console.log(`Mock server running at http://localhost:${port}`);
+  // Get actual port (important when binding to port 0)
+  const addr = server.address();
+  const actualPort = typeof addr === "object" && addr ? addr.port : port;
+  console.log(`Mock server running at http://localhost:${actualPort}`);
   console.log(`Default provider: ${DEFAULT_PROVIDER}`);
   console.log(`Message delay: ${DELAY_MS}ms`);
   console.log("Available mock providers: claude, codex, gemini, local");

@@ -72,17 +72,34 @@ console.log(`Claude CLI found: ${cliInfo.path} (${cliInfo.version})`);
 // Create the real SDK
 const realSdk = new RealClaudeSDK();
 
-// Create EventBus and FileWatcher for ~/.claude
+// Create EventBus and FileWatchers for all provider directories
 const eventBus = new EventBus();
-const claudeDir = path.dirname(config.claudeProjectsDir); // ~/.claude
-const fileWatcher = new FileWatcher({
-  watchDir: claudeDir,
-  eventBus,
-  debounceMs: 200,
-});
+const fileWatchers: FileWatcher[] = [];
 
-// Start file watcher
-fileWatcher.start();
+// Helper to create watcher if directory exists
+function createWatcherIfExists(
+  watchDir: string,
+  provider: "claude" | "gemini" | "codex",
+): void {
+  if (fs.existsSync(watchDir)) {
+    const watcher = new FileWatcher({
+      watchDir,
+      provider,
+      eventBus,
+      debounceMs: 200,
+    });
+    watcher.start();
+    fileWatchers.push(watcher);
+  } else {
+    console.log(`[FileWatcher] Skipping ${provider} (${watchDir} not found)`);
+  }
+}
+
+// Create watchers for session directories only (not full provider dirs)
+// This reduces inotify pressure and memory usage
+createWatcherIfExists(config.claudeSessionsDir, "claude");
+createWatcherIfExists(config.geminiSessionsDir, "gemini");
+createWatcherIfExists(config.codexSessionsDir, "codex");
 
 // When running without tsx watch (NO_BACKEND_RELOAD=true), start source watcher
 // to notify the UI when server code changes and needs manual reload

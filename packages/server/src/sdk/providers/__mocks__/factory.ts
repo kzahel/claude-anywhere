@@ -29,12 +29,6 @@ export function createMockProvider(
       return new MockCodexProvider(config);
     case "gemini":
       return new MockGeminiProvider(config);
-    case "local":
-      // Local model uses the same mock pattern as Claude
-      return new MockClaudeProvider({
-        ...config,
-        // Override display name for local
-      });
     default:
       throw new Error(`Unknown provider type: ${type}`);
   }

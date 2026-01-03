@@ -5,14 +5,14 @@
  * Based on the event types from `gemini -o stream-json`.
  *
  * Event types:
- * - user: User messages
- * - gemini: Gemini responses with text, thoughts, and token usage
- * - info: Status/metadata info
+ * - init: Session initialization with model and session_id
+ * - message: User or assistant messages (distinguished by role)
+ * - tool_use: Tool invocation
+ * - tool_result: Tool execution result
+ * - result: Final result with stats
  * - error: Error messages
- * - done: Completion signal
- * - tool: Tool execution events
  */
 
 export * from "./events.js";
-export * from "./content.js";
+export * from "./session.js";
 export * from "./types.js";

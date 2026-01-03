@@ -1,11 +1,10 @@
 /**
  * Provider name - which AI agent provider to use.
  * - "claude": Claude via Anthropic SDK
- * - "codex": OpenAI Codex via CLI
+ * - "codex": OpenAI Codex via CLI (supports local models via --oss)
  * - "gemini": Google Gemini via CLI
- * - "local": Local model via Ollama
  */
-export type ProviderName = "claude" | "codex" | "gemini" | "local";
+export type ProviderName = "claude" | "codex" | "gemini";
 
 /**
  * Provider info for UI display.

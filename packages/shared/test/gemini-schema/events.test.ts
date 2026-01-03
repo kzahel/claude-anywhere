@@ -1,139 +1,233 @@
 /**
  * Tests for Gemini event schema parsing.
+ *
+ * These tests verify parsing of actual Gemini CLI stream-json output format.
  */
 
 import { describe, expect, it } from "vitest";
 import { parseGeminiEvent } from "../../src/gemini-schema/events.js";
 
 describe("parseGeminiEvent", () => {
-  describe("user events", () => {
-    it("should parse user message event", () => {
+  describe("init events", () => {
+    it("should parse init event", () => {
       const line = JSON.stringify({
-        type: "user",
-        content: "Hello, Gemini!",
-        timestamp: "2024-01-01T00:00:00Z",
+        type: "init",
+        timestamp: "2026-01-03T16:55:40.045Z",
+        session_id: "225478c2-5332-4800-8999-7c7f5dc03d44",
+        model: "auto-gemini-2.5",
       });
 
       const event = parseGeminiEvent(line);
 
       expect(event).not.toBeNull();
-      expect(event?.type).toBe("user");
-      if (event?.type === "user") {
-        expect(event.content).toBe("Hello, Gemini!");
-        expect(event.timestamp).toBe("2024-01-01T00:00:00Z");
+      expect(event?.type).toBe("init");
+      if (event?.type === "init") {
+        expect(event.session_id).toBe("225478c2-5332-4800-8999-7c7f5dc03d44");
+        expect(event.model).toBe("auto-gemini-2.5");
+        expect(event.timestamp).toBe("2026-01-03T16:55:40.045Z");
       }
-    });
-
-    it("should parse user message with parts", () => {
-      const line = JSON.stringify({
-        type: "user",
-        parts: [{ text: "Hello" }, { text: "World" }],
-      });
-
-      const event = parseGeminiEvent(line);
-
-      expect(event).not.toBeNull();
-      expect(event?.type).toBe("user");
     });
   });
 
-  describe("gemini response events", () => {
-    it("should parse text response", () => {
+  describe("message events", () => {
+    it("should parse user message event", () => {
       const line = JSON.stringify({
-        type: "gemini",
-        text: "Hello! How can I help you?",
-        finishReason: "STOP",
+        type: "message",
+        timestamp: "2026-01-03T16:55:40.047Z",
+        role: "user",
+        content: "Say hello world and nothing else",
       });
 
       const event = parseGeminiEvent(line);
 
       expect(event).not.toBeNull();
-      expect(event?.type).toBe("gemini");
-      if (event?.type === "gemini") {
-        expect(event.text).toBe("Hello! How can I help you?");
-        expect(event.finishReason).toBe("STOP");
+      expect(event?.type).toBe("message");
+      if (event?.type === "message") {
+        expect(event.role).toBe("user");
+        expect(event.content).toBe("Say hello world and nothing else");
       }
     });
 
-    it("should parse response with thoughts", () => {
+    it("should parse assistant message event", () => {
       const line = JSON.stringify({
-        type: "gemini",
-        text: "Here is the answer.",
-        thoughts: [
-          { subject: "Analysis", description: "Thinking about the problem..." },
-          { thought: "The solution involves..." },
-        ],
+        type: "message",
+        timestamp: "2026-01-03T16:55:43.189Z",
+        role: "assistant",
+        content: "hello world",
+        delta: true,
       });
 
       const event = parseGeminiEvent(line);
 
       expect(event).not.toBeNull();
-      expect(event?.type).toBe("gemini");
-      if (event?.type === "gemini") {
-        expect(event.thoughts).toHaveLength(2);
-        expect(event.thoughts?.[0].subject).toBe("Analysis");
+      expect(event?.type).toBe("message");
+      if (event?.type === "message") {
+        expect(event.role).toBe("assistant");
+        expect(event.content).toBe("hello world");
+        expect(event.delta).toBe(true);
       }
     });
 
-    it("should parse response with token usage", () => {
+    it("should parse assistant message without delta flag", () => {
       const line = JSON.stringify({
-        type: "gemini",
-        text: "Response text",
-        tokens: {
-          promptTokenCount: 100,
-          candidatesTokenCount: 50,
-          totalTokenCount: 150,
+        type: "message",
+        role: "assistant",
+        content: "Complete response",
+      });
+
+      const event = parseGeminiEvent(line);
+
+      expect(event).not.toBeNull();
+      expect(event?.type).toBe("message");
+      if (event?.type === "message") {
+        expect(event.role).toBe("assistant");
+        expect(event.delta).toBeUndefined();
+      }
+    });
+  });
+
+  describe("tool_use events", () => {
+    it("should parse tool_use event", () => {
+      const line = JSON.stringify({
+        type: "tool_use",
+        timestamp: "2026-01-03T16:57:04.279Z",
+        tool_name: "list_directory",
+        tool_id: "list_directory-1767459424279-756cb8408b25c",
+        parameters: { dir_path: "." },
+      });
+
+      const event = parseGeminiEvent(line);
+
+      expect(event).not.toBeNull();
+      expect(event?.type).toBe("tool_use");
+      if (event?.type === "tool_use") {
+        expect(event.tool_name).toBe("list_directory");
+        expect(event.tool_id).toBe(
+          "list_directory-1767459424279-756cb8408b25c",
+        );
+        expect(event.parameters).toEqual({ dir_path: "." });
+      }
+    });
+
+    it("should parse tool_use event without parameters", () => {
+      const line = JSON.stringify({
+        type: "tool_use",
+        tool_name: "get_cwd",
+        tool_id: "get_cwd-123",
+      });
+
+      const event = parseGeminiEvent(line);
+
+      expect(event).not.toBeNull();
+      expect(event?.type).toBe("tool_use");
+      if (event?.type === "tool_use") {
+        expect(event.parameters).toBeUndefined();
+      }
+    });
+  });
+
+  describe("tool_result events", () => {
+    it("should parse successful tool_result event", () => {
+      const line = JSON.stringify({
+        type: "tool_result",
+        timestamp: "2026-01-03T16:57:04.317Z",
+        tool_id: "list_directory-1767459424279-756cb8408b25c",
+        status: "success",
+        output: "Listed 18 item(s). (5 ignored)",
+      });
+
+      const event = parseGeminiEvent(line);
+
+      expect(event).not.toBeNull();
+      expect(event?.type).toBe("tool_result");
+      if (event?.type === "tool_result") {
+        expect(event.tool_id).toBe(
+          "list_directory-1767459424279-756cb8408b25c",
+        );
+        expect(event.status).toBe("success");
+        expect(event.output).toBe("Listed 18 item(s). (5 ignored)");
+      }
+    });
+
+    it("should parse error tool_result event", () => {
+      const line = JSON.stringify({
+        type: "tool_result",
+        tool_id: "read_file-456",
+        status: "error",
+        error: "File not found",
+      });
+
+      const event = parseGeminiEvent(line);
+
+      expect(event).not.toBeNull();
+      expect(event?.type).toBe("tool_result");
+      if (event?.type === "tool_result") {
+        expect(event.status).toBe("error");
+        expect(event.error).toBe("File not found");
+      }
+    });
+  });
+
+  describe("result events", () => {
+    it("should parse successful result event", () => {
+      const line = JSON.stringify({
+        type: "result",
+        timestamp: "2026-01-03T16:55:43.195Z",
+        status: "success",
+        stats: {
+          total_tokens: 11974,
+          input_tokens: 11640,
+          output_tokens: 50,
+          cached: 5502,
+          input: 6138,
+          duration_ms: 3150,
+          tool_calls: 0,
         },
       });
 
       const event = parseGeminiEvent(line);
 
       expect(event).not.toBeNull();
-      expect(event?.type).toBe("gemini");
-      if (event?.type === "gemini") {
-        expect(event.tokens?.promptTokenCount).toBe(100);
-        expect(event.tokens?.candidatesTokenCount).toBe(50);
-        expect(event.tokens?.totalTokenCount).toBe(150);
+      expect(event?.type).toBe("result");
+      if (event?.type === "result") {
+        expect(event.status).toBe("success");
+        expect(event.stats?.total_tokens).toBe(11974);
+        expect(event.stats?.input_tokens).toBe(11640);
+        expect(event.stats?.output_tokens).toBe(50);
+        expect(event.stats?.duration_ms).toBe(3150);
+        expect(event.stats?.tool_calls).toBe(0);
       }
     });
 
-    it("should parse response with function call", () => {
+    it("should parse error result event", () => {
       const line = JSON.stringify({
-        type: "gemini",
-        parts: [
-          {
-            functionCall: {
-              name: "read_file",
-              args: { path: "/tmp/test.txt" },
-            },
-          },
-        ],
+        type: "result",
+        status: "error",
+        error: "API rate limit exceeded",
       });
 
       const event = parseGeminiEvent(line);
 
       expect(event).not.toBeNull();
-      expect(event?.type).toBe("gemini");
+      expect(event?.type).toBe("result");
+      if (event?.type === "result") {
+        expect(event.status).toBe("error");
+        expect(event.error).toBe("API rate limit exceeded");
+      }
     });
-  });
 
-  describe("info events", () => {
-    it("should parse info event", () => {
+    it("should parse cancelled result event", () => {
       const line = JSON.stringify({
-        type: "info",
-        message: "Session started",
-        model: "gemini-2.0-pro",
-        session_id: "gemini-123",
+        type: "result",
+        status: "cancelled",
       });
 
       const event = parseGeminiEvent(line);
 
       expect(event).not.toBeNull();
-      expect(event?.type).toBe("info");
-      if (event?.type === "info") {
-        expect(event.message).toBe("Session started");
-        expect(event.model).toBe("gemini-2.0-pro");
-        expect(event.session_id).toBe("gemini-123");
+      expect(event?.type).toBe("result");
+      if (event?.type === "result") {
+        expect(event.status).toBe("cancelled");
       }
     });
   });
@@ -155,48 +249,19 @@ describe("parseGeminiEvent", () => {
         expect(event.code).toBe("RATE_LIMIT");
       }
     });
-  });
 
-  describe("done events", () => {
-    it("should parse done event", () => {
+    it("should parse error event with message", () => {
       const line = JSON.stringify({
-        type: "done",
-        tokens: {
-          promptTokenCount: 200,
-          candidatesTokenCount: 100,
-          totalTokenCount: 300,
-        },
-        duration_ms: 1500,
+        type: "error",
+        message: "Connection failed",
       });
 
       const event = parseGeminiEvent(line);
 
       expect(event).not.toBeNull();
-      expect(event?.type).toBe("done");
-      if (event?.type === "done") {
-        expect(event.tokens?.totalTokenCount).toBe(300);
-        expect(event.duration_ms).toBe(1500);
-      }
-    });
-  });
-
-  describe("tool events", () => {
-    it("should parse tool event", () => {
-      const line = JSON.stringify({
-        type: "tool",
-        name: "bash",
-        args: { command: "ls -la" },
-        status: "running",
-      });
-
-      const event = parseGeminiEvent(line);
-
-      expect(event).not.toBeNull();
-      expect(event?.type).toBe("tool");
-      if (event?.type === "tool") {
-        expect(event.name).toBe("bash");
-        expect(event.args).toEqual({ command: "ls -la" });
-        expect(event.status).toBe("running");
+      expect(event?.type).toBe("error");
+      if (event?.type === "error") {
+        expect(event.message).toBe("Connection failed");
       }
     });
   });

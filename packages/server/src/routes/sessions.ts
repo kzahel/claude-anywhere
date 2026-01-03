@@ -336,7 +336,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       project.path,
       userMessage,
       body.mode,
-      { model, maxThinkingTokens },
+      { model, maxThinkingTokens, providerName: body.provider },
     );
 
     // Check if queue is full
@@ -400,6 +400,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       {
         model,
         maxThinkingTokens,
+        providerName: body.provider,
       },
     );
 

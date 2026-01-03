@@ -4,15 +4,19 @@
  * Validates JSONL session files against our Zod schemas.
  *
  * Usage:
- *   npx tsx scripts/validate-jsonl.ts [path]
- *
- * If no path is provided, validates all sessions in ~/.claude/projects
+ *   npx tsx scripts/validate-jsonl.ts           # Validate both Claude and Codex
+ *   npx tsx scripts/validate-jsonl.ts --claude  # Validate only Claude sessions
+ *   npx tsx scripts/validate-jsonl.ts --codex   # Validate only Codex sessions
+ *   npx tsx scripts/validate-jsonl.ts [path]    # Validate specific path (auto-detects type)
  */
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { SessionEntrySchema } from "../packages/shared/src/claude-sdk-schema/index.js";
+import { CodexSessionEntrySchema } from "../packages/shared/src/codex-schema/session.js";
+
+type SchemaType = "claude" | "codex";
 
 interface ValidationError {
   file: string;
@@ -26,6 +30,12 @@ interface ValidationResult {
   totalLines: number;
   validLines: number;
   errors: ValidationError[];
+}
+
+interface ValidationTarget {
+  path: string;
+  schemaType: SchemaType;
+  label: string;
 }
 
 function findJsonlFiles(dir: string): string[] {
@@ -51,7 +61,7 @@ function findJsonlFiles(dir: string): string[] {
   return files;
 }
 
-function validateFile(filePath: string): ValidationResult {
+function validateFile(filePath: string, schemaType: SchemaType): ValidationResult {
   const content = fs.readFileSync(filePath, "utf-8");
   const lines = content
     .trim()
@@ -65,13 +75,15 @@ function validateFile(filePath: string): ValidationResult {
     errors: [],
   };
 
+  const schema = schemaType === "codex" ? CodexSessionEntrySchema : SessionEntrySchema;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNumber = i + 1;
 
     try {
       const parsed = JSON.parse(line);
-      const validated = SessionEntrySchema.safeParse(parsed);
+      const validated = schema.safeParse(parsed);
 
       if (validated.success) {
         result.validLines++;
@@ -100,60 +112,112 @@ function validateFile(filePath: string): ValidationResult {
   return result;
 }
 
-function main() {
-  const args = process.argv.slice(2);
-  let targetPath: string;
+function validateTarget(target: ValidationTarget): {
+  totalFiles: number;
+  totalLines: number;
+  totalValid: number;
+  errors: ValidationError[];
+} {
+  console.log(`\n${"=".repeat(60)}`);
+  console.log(`${target.label}: ${target.path}\n`);
 
-  if (args.length > 0) {
-    targetPath = args[0];
-  } else {
-    targetPath = path.join(os.homedir(), ".claude", "projects");
-  }
-
-  if (!fs.existsSync(targetPath)) {
-    console.error(`Path does not exist: ${targetPath}`);
-    process.exit(1);
+  if (!fs.existsSync(target.path)) {
+    console.log(`  Path does not exist, skipping.`);
+    return { totalFiles: 0, totalLines: 0, totalValid: 0, errors: [] };
   }
 
   let files: string[];
-  if (fs.statSync(targetPath).isDirectory()) {
-    files = findJsonlFiles(targetPath);
+  if (fs.statSync(target.path).isDirectory()) {
+    files = findJsonlFiles(target.path);
   } else {
-    files = [targetPath];
+    files = [target.path];
   }
 
   if (files.length === 0) {
-    console.log("No .jsonl files found");
-    process.exit(0);
+    console.log(`  No .jsonl files found.`);
+    return { totalFiles: 0, totalLines: 0, totalValid: 0, errors: [] };
   }
 
-  console.log(`Found ${files.length} JSONL file(s)\n`);
+  console.log(`  Found ${files.length} JSONL file(s)\n`);
 
   let totalFiles = 0;
   let totalLines = 0;
   let totalValid = 0;
-  let totalErrors = 0;
   const allErrors: ValidationError[] = [];
 
   for (const file of files) {
-    const result = validateFile(file);
+    const result = validateFile(file, target.schemaType);
     totalFiles++;
     totalLines += result.totalLines;
     totalValid += result.validLines;
-    totalErrors += result.errors.length;
     allErrors.push(...result.errors);
 
     const status =
       result.errors.length === 0 ? "✓" : `✗ (${result.errors.length} errors)`;
     console.log(
-      `${status} ${path.relative(process.cwd(), file)} - ${result.validLines}/${result.totalLines} valid`,
+      `  ${status} ${path.relative(process.cwd(), file)} - ${result.validLines}/${result.totalLines} valid`,
     );
   }
 
+  return { totalFiles, totalLines, totalValid, errors: allErrors };
+}
+
+function main() {
+  const args = process.argv.slice(2);
+
+  // Parse flags
+  const claudeOnly = args.includes("--claude");
+  const codexOnly = args.includes("--codex");
+  const filteredArgs = args.filter((a) => a !== "--claude" && a !== "--codex");
+
+  // Build targets
+  const targets: ValidationTarget[] = [];
+
+  if (filteredArgs.length > 0) {
+    // Specific path provided - auto-detect type based on path
+    const targetPath = filteredArgs[0];
+    const isCodexPath = targetPath.includes(".codex");
+    targets.push({
+      path: targetPath,
+      schemaType: isCodexPath ? "codex" : "claude",
+      label: isCodexPath ? "CODEX" : "CLAUDE",
+    });
+  } else {
+    // No path - use defaults based on flags
+    if (!codexOnly) {
+      targets.push({
+        path: path.join(os.homedir(), ".claude", "projects"),
+        schemaType: "claude",
+        label: "CLAUDE",
+      });
+    }
+    if (!claudeOnly) {
+      targets.push({
+        path: path.join(os.homedir(), ".codex", "sessions"),
+        schemaType: "codex",
+        label: "CODEX",
+      });
+    }
+  }
+
+  console.log("Session JSONL Validator");
+
+  let grandTotalFiles = 0;
+  let grandTotalLines = 0;
+  let grandTotalValid = 0;
+  const allErrors: ValidationError[] = [];
+
+  for (const target of targets) {
+    const result = validateTarget(target);
+    grandTotalFiles += result.totalFiles;
+    grandTotalLines += result.totalLines;
+    grandTotalValid += result.totalValid;
+    allErrors.push(...result.errors);
+  }
+
   console.log(`\n${"=".repeat(60)}`);
-  console.log(
-    `Summary: ${totalValid}/${totalLines} lines valid across ${totalFiles} files`,
-  );
+  console.log("GRAND TOTAL");
+  console.log(`  ${grandTotalValid}/${grandTotalLines} lines valid across ${grandTotalFiles} files`);
 
   if (allErrors.length > 0) {
     console.log(`\nErrors (${allErrors.length} total):\n`);

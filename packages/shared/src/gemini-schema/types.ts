@@ -4,22 +4,25 @@
  */
 
 export type {
-  GeminiTextPart,
-  GeminiFunctionCallPart,
-  GeminiFunctionResponsePart,
-  GeminiInlineDataPart,
-  GeminiPart,
-  GeminiContent,
-} from "./content.js";
-
-export type {
-  GeminiThought,
-  GeminiTokens,
-  GeminiUserEvent,
-  GeminiResponseEvent,
-  GeminiInfoEvent,
+  GeminiStats,
+  GeminiInitEvent,
+  GeminiMessageEvent,
+  GeminiToolUseEvent,
+  GeminiToolResultEvent,
+  GeminiResultEvent,
   GeminiErrorEvent,
-  GeminiDoneEvent,
-  GeminiToolEvent,
   GeminiEvent,
 } from "./events.js";
+
+// Session file types (persisted format)
+export type {
+  GeminiFunctionResponse,
+  GeminiToolCallResult,
+  GeminiToolCall,
+  GeminiThought,
+  GeminiTokens,
+  GeminiUserMessage,
+  GeminiAssistantMessage,
+  GeminiSessionMessage,
+  GeminiSessionFile,
+} from "./session.js";

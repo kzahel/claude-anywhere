@@ -28,7 +28,7 @@ import type {
   PermissionMode,
   RealClaudeSDKInterface,
 } from "./sdk/types.js";
-import { SessionReader } from "./sessions/reader.js";
+import { ClaudeSessionReader } from "./sessions/reader.js";
 import { ExternalSessionTracker } from "./supervisor/ExternalSessionTracker.js";
 import { Supervisor } from "./supervisor/Supervisor.js";
 import type { EventBus } from "./watcher/index.js";
@@ -114,7 +114,7 @@ export function createApp(
     maxQueueSize: options.maxQueueSize,
   });
   const readerFactory = (sessionDir: string) =>
-    new SessionReader({ sessionDir });
+    new ClaudeSessionReader({ sessionDir });
 
   // Create external session tracker if eventBus is available
   const externalTracker = options.eventBus

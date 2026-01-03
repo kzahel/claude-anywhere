@@ -12,14 +12,16 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import type {
   GeminiEvent,
-  GeminiInfoEvent,
-  GeminiResponseEvent,
-  GeminiTokens,
-  GeminiUserEvent,
+  GeminiInitEvent,
+  GeminiMessageEvent,
+  GeminiResultEvent,
+  GeminiStats,
+  GeminiToolResultEvent,
+  GeminiToolUseEvent,
 } from "@claude-anywhere/shared";
 import { parseGeminiEvent } from "@claude-anywhere/shared";
 import { MessageQueue } from "../messageQueue.js";
-import type { ContentBlock, SDKMessage, UserMessage } from "../types.js";
+import type { SDKMessage } from "../types.js";
 import type {
   AgentProvider,
   AgentSession,
@@ -289,7 +291,7 @@ export class GeminiProvider implements AgentProvider {
       });
 
       let realSessionId: string | undefined;
-      let lastTokens: GeminiTokens | undefined;
+      let lastStats: GeminiStats | undefined;
 
       for await (const line of rl) {
         if (signal.aborted) break;
@@ -297,29 +299,24 @@ export class GeminiProvider implements AgentProvider {
         const event = parseGeminiEvent(line);
         if (!event) continue;
 
+        // Update real session ID from init event
+        if (event.type === "init") {
+          const init = event as GeminiInitEvent;
+          realSessionId = init.session_id;
+        }
+
+        // Track stats from result event
+        if (event.type === "result") {
+          const result = event as GeminiResultEvent;
+          lastStats = result.stats;
+        }
+
         // Convert Gemini event to SDKMessage
         const sdkMessage = this.convertEventToSDKMessage(
           event,
           realSessionId ?? sessionId,
         );
         if (sdkMessage) {
-          // Update real session ID if we got it from info event
-          if (event.type === "info") {
-            const info = event as GeminiInfoEvent;
-            if (info.session_id) {
-              realSessionId = info.session_id;
-              sdkMessage.session_id = realSessionId;
-            }
-          }
-
-          // Track tokens for final result
-          if (event.type === "gemini" || event.type === "done") {
-            const tokens = (event as { tokens?: GeminiTokens }).tokens;
-            if (tokens) {
-              lastTokens = tokens;
-            }
-          }
-
           yield sdkMessage;
         }
       }
@@ -335,10 +332,10 @@ export class GeminiProvider implements AgentProvider {
         type: "result",
         session_id: realSessionId ?? sessionId,
         exitCode,
-        usage: lastTokens
+        usage: lastStats
           ? {
-              input_tokens: lastTokens.promptTokenCount,
-              output_tokens: lastTokens.candidatesTokenCount,
+              input_tokens: lastStats.input_tokens,
+              output_tokens: lastStats.output_tokens,
             }
           : undefined,
       } as SDKMessage;
@@ -361,50 +358,87 @@ export class GeminiProvider implements AgentProvider {
     sessionId: string,
   ): SDKMessage | null {
     switch (event.type) {
-      case "info": {
-        const info = event as GeminiInfoEvent;
+      case "init": {
+        const init = event as GeminiInitEvent;
         return {
           type: "system",
           subtype: "init",
-          session_id: info.session_id ?? sessionId,
-          model: info.model,
-          cwd: info.cwd,
-          message: info.message,
+          session_id: init.session_id,
+          model: init.model,
         } as SDKMessage;
       }
 
-      case "user": {
-        const userEvent = event as GeminiUserEvent;
-        return {
-          type: "user",
-          session_id: sessionId,
-          timestamp: userEvent.timestamp,
-          message: {
-            role: "user",
-            content: userEvent.content ?? this.partsToContent(userEvent.parts),
-          },
-        } as SDKMessage;
-      }
-
-      case "gemini": {
-        const geminiEvent = event as GeminiResponseEvent;
-        const content = this.buildGeminiContent(geminiEvent);
-
+      case "message": {
+        const msg = event as GeminiMessageEvent;
+        if (msg.role === "user") {
+          return {
+            type: "user",
+            session_id: sessionId,
+            timestamp: msg.timestamp,
+            message: {
+              role: "user",
+              content: msg.content,
+            },
+          } as SDKMessage;
+        }
+        // Assistant message
         return {
           type: "assistant",
           session_id: sessionId,
-          timestamp: geminiEvent.timestamp,
+          timestamp: msg.timestamp,
           message: {
             role: "assistant",
-            content,
-            stop_reason: this.mapFinishReason(geminiEvent.finishReason),
+            content: msg.content,
+            // Delta messages are streamed chunks
           },
         } as SDKMessage;
       }
 
-      case "tool": {
-        // Tool events are handled as part of the assistant message
-        // or we can emit them as separate tool_use events
+      case "tool_use": {
+        const toolUse = event as GeminiToolUseEvent;
+        return {
+          type: "assistant",
+          session_id: sessionId,
+          timestamp: toolUse.timestamp,
+          message: {
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: toolUse.tool_id,
+                name: toolUse.tool_name,
+                input: toolUse.parameters ?? {},
+              },
+            ],
+          },
+        } as SDKMessage;
+      }
+
+      case "tool_result": {
+        const toolResult = event as GeminiToolResultEvent;
+        return {
+          type: "user",
+          session_id: sessionId,
+          timestamp: toolResult.timestamp,
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: toolResult.tool_id,
+                content:
+                  toolResult.status === "error"
+                    ? (toolResult.error ?? "Tool error")
+                    : (toolResult.output ?? ""),
+              },
+            ],
+          },
+        } as SDKMessage;
+      }
+
+      case "result": {
+        // Result events are tracked for stats but don't emit a separate message
+        // The final result is emitted after the process exits
         return null;
       }
 
@@ -415,140 +449,9 @@ export class GeminiProvider implements AgentProvider {
           error: event.error ?? event.message ?? "Unknown error",
         } as SDKMessage;
       }
-
-      case "done": {
-        // Done events are tracked for token counts but not emitted as messages
-        return null;
-      }
     }
 
     return null;
-  }
-
-  /**
-   * Build content array from Gemini response event.
-   */
-  private buildGeminiContent(
-    event: GeminiResponseEvent,
-  ): string | ContentBlock[] {
-    const blocks: ContentBlock[] = [];
-
-    // Add thoughts as thinking blocks (wrapped in text for compatibility)
-    if (event.thoughts && event.thoughts.length > 0) {
-      const thoughtsText = event.thoughts
-        .map((t) => {
-          const parts: string[] = [];
-          if (t.subject) parts.push(`[${t.subject}]`);
-          if (t.description) parts.push(t.description);
-          if (t.thought) parts.push(t.thought);
-          return parts.join(" ");
-        })
-        .join("\n");
-
-      blocks.push({
-        type: "text",
-        text: `<thinking>\n${thoughtsText}\n</thinking>`,
-      });
-    }
-
-    // Add text content
-    if (event.text) {
-      blocks.push({ type: "text", text: event.text });
-    }
-
-    // Add parts content
-    if (event.parts) {
-      for (const part of event.parts) {
-        if ("text" in part) {
-          blocks.push({ type: "text", text: part.text });
-        } else if ("functionCall" in part) {
-          blocks.push({
-            type: "tool_use",
-            id: `call-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-            name: part.functionCall.name,
-            input: part.functionCall.args,
-          });
-        } else if ("functionResponse" in part) {
-          blocks.push({
-            type: "tool_result",
-            tool_use_id: `call-${part.functionResponse.name}`,
-            content: JSON.stringify(part.functionResponse.response),
-          });
-        }
-      }
-    }
-
-    // Add content from nested content object
-    if (event.content?.parts) {
-      for (const part of event.content.parts) {
-        if ("text" in part) {
-          blocks.push({ type: "text", text: part.text });
-        } else if ("functionCall" in part) {
-          blocks.push({
-            type: "tool_use",
-            id: `call-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-            name: part.functionCall.name,
-            input: part.functionCall.args,
-          });
-        } else if ("functionResponse" in part) {
-          blocks.push({
-            type: "tool_result",
-            tool_use_id: `call-${part.functionResponse.name}`,
-            content: JSON.stringify(part.functionResponse.response),
-          });
-        }
-      }
-    }
-
-    // Return string if only one text block, otherwise return array
-    const firstBlock = blocks[0];
-    if (blocks.length === 1 && firstBlock && firstBlock.type === "text") {
-      return (firstBlock as { type: "text"; text: string }).text;
-    }
-
-    return blocks.length > 0 ? blocks : "";
-  }
-
-  /**
-   * Convert parts array to string content.
-   * Extracts text from parts that have a text property.
-   */
-  private partsToContent(
-    parts: Array<{ text?: string } | unknown> | undefined,
-  ): string | ContentBlock[] {
-    if (!parts || parts.length === 0) return "";
-
-    const textParts: string[] = [];
-    for (const p of parts) {
-      if (p && typeof p === "object" && "text" in p) {
-        const textPart = p as { text?: string };
-        if (textPart.text) {
-          textParts.push(textPart.text);
-        }
-      }
-    }
-
-    return textParts.join("\n");
-  }
-
-  /**
-   * Map Gemini finish reason to our stop_reason format.
-   */
-  private mapFinishReason(
-    reason: string | undefined,
-  ): "end_turn" | "tool_use" | "max_tokens" | undefined {
-    if (!reason) return undefined;
-
-    switch (reason) {
-      case "STOP":
-        return "end_turn";
-      case "MAX_TOKENS":
-        return "max_tokens";
-      // Note: Gemini doesn't have a direct "tool_use" finish reason
-      // Tool calls are typically followed by continued generation
-      default:
-        return "end_turn";
-    }
   }
 
   /**

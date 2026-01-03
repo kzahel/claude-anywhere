@@ -1,5 +1,7 @@
-{"type":"system","subtype":"init","session_id":"codex-fixture-002","model":"gpt-4","cwd":"/test"}
-{"type":"assistant","session_id":"codex-fixture-002","message":{"role":"assistant","content":[{"type":"text","text":"I'll read the file for you."},{"type":"tool_use","id":"call_123","name":"Read","input":{"file_path":"/test/file.txt"}}]}}
-{"type":"user","session_id":"codex-fixture-002","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_123","content":"Hello from the file!"}]}}
-{"type":"assistant","session_id":"codex-fixture-002","message":{"role":"assistant","content":"The file contains: Hello from the file!"}}
-{"type":"result","session_id":"codex-fixture-002","usage":{"input_tokens":100,"output_tokens":50}}
+{"type":"thread.started","thread_id":"codex-fixture-002"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"**Preparing to read file**"}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc \"cat /test/file.txt\"","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/bash -lc \"cat /test/file.txt\"","aggregated_output":"Hello from the file!","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"The file contains: Hello from the file!"}}
+{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}

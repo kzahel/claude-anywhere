@@ -134,44 +134,43 @@ export {
   KillShellResultSchema,
 } from "./claude-sdk-schema/tool/ToolResultSchemas.js";
 
-// Codex SDK schema types
+// Codex session file types (for reading ~/.codex/sessions/)
+// Note: Streaming events are handled by @openai/codex-sdk directly
 export type {
+  // Content types
   CodexTextContent,
   CodexToolUseContent,
   CodexToolResultContent,
   CodexReasoningContent,
   CodexContentBlock,
   CodexMessageContent,
-  CodexSessionMeta,
-  CodexUserMessage,
-  CodexAgentMessage,
-  CodexAgentReasoning,
-  CodexTokenCount,
-  CodexResponseItem,
-  CodexTurnContext,
-  CodexError,
-  CodexResult,
-  CodexEventMsg,
-  CodexEvent,
+  // Session file entry types
+  CodexSessionMetaPayload,
+  CodexSessionMetaEntry,
+  CodexMessagePayload,
+  CodexReasoningPayload,
+  CodexFunctionCallPayload,
+  CodexFunctionCallOutputPayload,
+  CodexGhostSnapshotPayload,
+  CodexResponseItemPayload,
+  CodexResponseItemEntry,
+  CodexEventMsgPayload,
+  CodexEventMsgEntry,
+  CodexTurnContextPayload,
+  CodexTurnContextEntry,
+  CodexSessionEntry,
 } from "./codex-schema/types.js";
-export { parseCodexEvent } from "./codex-schema/events.js";
+export { parseCodexSessionEntry } from "./codex-schema/session.js";
 
 // Gemini SDK schema types
 export type {
-  GeminiTextPart,
-  GeminiFunctionCallPart,
-  GeminiFunctionResponsePart,
-  GeminiInlineDataPart,
-  GeminiPart,
-  GeminiContent,
-  GeminiThought,
-  GeminiTokens,
-  GeminiUserEvent,
-  GeminiResponseEvent,
-  GeminiInfoEvent,
+  GeminiStats,
+  GeminiInitEvent,
+  GeminiMessageEvent,
+  GeminiToolUseEvent,
+  GeminiToolResultEvent,
+  GeminiResultEvent,
   GeminiErrorEvent,
-  GeminiDoneEvent,
-  GeminiToolEvent,
   GeminiEvent,
 } from "./gemini-schema/types.js";
 export { parseGeminiEvent } from "./gemini-schema/events.js";

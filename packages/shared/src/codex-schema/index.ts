@@ -1,16 +1,17 @@
 /**
  * Codex SDK Schema
  *
- * Zod schemas for parsing Codex CLI JSONL output.
- * Based on the event types from `codex exec --json`.
+ * Zod schemas for parsing Codex session files from ~/.codex/sessions/.
  *
- * Event types:
- * - session_meta: Session metadata (model, session ID, etc.)
- * - event_msg: Event messages (user_message, agent_message, token_count, agent_reasoning)
- * - response_item: Response items (message, reasoning, ghost_snapshot)
- * - turn_context: Turn context information
+ * Session file entry types:
+ * - session_meta: Session initialization metadata
+ * - response_item: Message content (user, assistant, reasoning, function calls)
+ * - event_msg: Event notifications (user_message, agent_message, token_count)
+ * - turn_context: Per-turn context (cwd, approval policy, model)
+ *
+ * Note: Streaming events are handled by @openai/codex-sdk directly.
  */
 
-export * from "./events.js";
 export * from "./content.js";
+export * from "./session.js";
 export * from "./types.js";

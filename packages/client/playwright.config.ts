@@ -1,50 +1,22 @@
 import { defineConfig } from "@playwright/test";
 
-// Port configuration for unified server architecture:
-// - E2E_SERVER_PORT: Backend server port (default: 3402, different from dev's 3400)
-//   Note: dev server uses 3400 + maintenance on 3401, so E2E uses 3402+ to avoid conflicts
-// - E2E_VITE_PORT: Vite dev server port (default: 5174, different from dev's 5555)
-// - E2E_REUSE_DEV: Set to "true" to run against existing dev server on port 3400
-//   (skips starting mock server - tests run against real Claude SDK)
-const reuseDevServer = process.env.E2E_REUSE_DEV === "true";
-// When reusing dev server, use dev's port 3400; otherwise use isolated ports
-const serverPort = Number.parseInt(
-  process.env.E2E_SERVER_PORT || (reuseDevServer ? "3400" : "3402"),
-);
-const vitePort = Number.parseInt(process.env.E2E_VITE_PORT || "5174");
-
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: false, // Run sequentially - we're hitting one server
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: "list",
-  timeout: 15000, // 15s per test
+  timeout: 15000,
   expect: {
-    timeout: 5000, // 5s for assertions
+    timeout: 5000,
   },
+  globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
   use: {
-    // Access through the backend port (unified server)
-    baseURL: `http://localhost:${serverPort}`,
+    // baseURL provided by fixtures.ts (reads port from global-setup)
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    actionTimeout: 5000, // 5s for actions like click
+    actionTimeout: 5000,
   },
-  webServer: reuseDevServer
-    ? [] // When reusing dev server, don't start any servers
-    : [
-        // Start Vite first (backend will proxy to it)
-        {
-          command: `pnpm --filter @claude-anywhere/client dev --port ${vitePort}`,
-          port: vitePort,
-          reuseExistingServer: !process.env.CI,
-        },
-        // Start backend mock server (serves API + proxies to Vite)
-        {
-          command: `PORT=${serverPort} VITE_PORT=${vitePort} LOG_FILE=e2e-server.log pnpm --filter @claude-anywhere/server dev:mock`,
-          port: serverPort,
-          reuseExistingServer: !process.env.CI,
-        },
-      ],
 });

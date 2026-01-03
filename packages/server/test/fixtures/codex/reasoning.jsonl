@@ -1,4 +1,5 @@
-{"type":"system","subtype":"init","session_id":"codex-fixture-003","model":"o3","cwd":"/test"}
-{"type":"assistant","session_id":"codex-fixture-003","message":{"role":"assistant","content":"<thinking>\nLet me analyze this step by step...\n1. First, I need to understand the problem\n2. Then, I'll break it down into smaller parts\n</thinking>"}}
-{"type":"assistant","session_id":"codex-fixture-003","message":{"role":"assistant","content":"Based on my analysis, here's the solution..."}}
-{"type":"result","session_id":"codex-fixture-003","usage":{"input_tokens":150,"output_tokens":200}}
+{"type":"thread.started","thread_id":"codex-fixture-003"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"Let me analyze this step by step...\n1. First, I need to understand the problem\n2. Then, I'll break it down into smaller parts"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"Based on my analysis, here's the solution..."}}
+{"type":"turn.completed","usage":{"input_tokens":150,"output_tokens":200,"cached_input_tokens":100}}

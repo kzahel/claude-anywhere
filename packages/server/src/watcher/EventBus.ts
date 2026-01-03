@@ -7,8 +7,13 @@ import type { SessionStatus, SessionSummary } from "../supervisor/types.js";
 
 export type FileChangeType = "create" | "modify" | "delete";
 
+/** Provider that owns the watched directory */
+export type WatchProvider = "claude" | "gemini" | "codex";
+
 export interface FileChangeEvent {
   type: "file-change";
+  /** Provider that owns this file */
+  provider: WatchProvider;
   path: string;
   relativePath: string;
   changeType: FileChangeType;

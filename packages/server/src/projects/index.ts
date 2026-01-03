@@ -25,3 +25,12 @@ export {
 // Project scanning
 export { ProjectScanner, projectScanner } from "./scanner.js";
 export type { ScannerOptions } from "./scanner.js";
+
+// Codex session scanning
+export {
+  CODEX_DIR,
+  CODEX_SESSIONS_DIR,
+  CodexSessionScanner,
+  codexSessionScanner,
+} from "./codex-scanner.js";
+export type { CodexScannerOptions } from "./codex-scanner.js";

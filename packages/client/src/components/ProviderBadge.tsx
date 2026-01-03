@@ -4,14 +4,12 @@ const PROVIDER_COLORS: Record<ProviderName, string> = {
   claude: "var(--app-claude-orange)",
   codex: "#10a37f", // OpenAI green
   gemini: "#4285f4", // Google blue
-  local: "#8b5cf6", // Purple
 };
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
   claude: "Claude",
   codex: "Codex",
   gemini: "Gemini",
-  local: "Local",
 };
 
 interface ProviderBadgeProps {

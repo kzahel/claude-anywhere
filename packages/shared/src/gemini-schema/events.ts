@@ -1,91 +1,103 @@
 /**
  * Event schemas for Gemini CLI stream-json output.
  *
- * Gemini emits JSON objects with different types:
- * - user: User messages
- * - gemini: Gemini responses
- * - info: Status/metadata info
+ * Gemini CLI emits JSON objects with these types:
+ * - init: Session initialization with model and session_id
+ * - message: User or assistant messages (distinguished by role)
+ * - tool_use: Tool invocation
+ * - tool_result: Tool execution result
+ * - result: Final result with stats
  * - error: Error messages
- * - done: Completion signal
  */
 
 import { z } from "zod";
-import { GeminiContentSchema, GeminiPartSchema } from "./content.js";
 
 /**
- * Thought item (Gemini's chain-of-thought/reasoning).
+ * Stats from the result event.
  */
-export const GeminiThoughtSchema = z.object({
-  subject: z.string().optional(),
-  description: z.string().optional(),
-  thought: z.string().optional(),
+export const GeminiStatsSchema = z.object({
+  total_tokens: z.number().optional(),
+  input_tokens: z.number().optional(),
+  output_tokens: z.number().optional(),
+  cached: z.number().optional(),
+  input: z.number().optional(),
+  duration_ms: z.number().optional(),
+  tool_calls: z.number().optional(),
 });
 
-export type GeminiThought = z.infer<typeof GeminiThoughtSchema>;
+export type GeminiStats = z.infer<typeof GeminiStatsSchema>;
 
 /**
- * Token usage breakdown.
+ * Init event - session start.
  */
-export const GeminiTokensSchema = z.object({
-  promptTokenCount: z.number().optional(),
-  candidatesTokenCount: z.number().optional(),
-  totalTokenCount: z.number().optional(),
-  cachedContentTokenCount: z.number().optional(),
-  thoughtsTokenCount: z.number().optional(),
-});
-
-export type GeminiTokens = z.infer<typeof GeminiTokensSchema>;
-
-/**
- * User message event.
- */
-export const GeminiUserEventSchema = z.object({
-  type: z.literal("user"),
-  content: z.string().optional(),
-  parts: z.array(GeminiPartSchema).optional(),
+export const GeminiInitEventSchema = z.object({
+  type: z.literal("init"),
   timestamp: z.string().optional(),
-});
-
-export type GeminiUserEvent = z.infer<typeof GeminiUserEventSchema>;
-
-/**
- * Gemini response event.
- */
-export const GeminiResponseEventSchema = z.object({
-  type: z.literal("gemini"),
-  content: GeminiContentSchema.optional(),
-  text: z.string().optional(),
-  parts: z.array(GeminiPartSchema).optional(),
-  thoughts: z.array(GeminiThoughtSchema).optional(),
-  tokens: GeminiTokensSchema.optional(),
-  finishReason: z
-    .enum(["STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "OTHER"])
-    .optional(),
-  timestamp: z.string().optional(),
-});
-
-export type GeminiResponseEvent = z.infer<typeof GeminiResponseEventSchema>;
-
-/**
- * Info/status event.
- */
-export const GeminiInfoEventSchema = z.object({
-  type: z.literal("info"),
-  message: z.string().optional(),
-  status: z.string().optional(),
+  session_id: z.string(),
   model: z.string().optional(),
-  session_id: z.string().optional(),
-  cwd: z.string().optional(),
-  timestamp: z.string().optional(),
 });
 
-export type GeminiInfoEvent = z.infer<typeof GeminiInfoEventSchema>;
+export type GeminiInitEvent = z.infer<typeof GeminiInitEventSchema>;
+
+/**
+ * Message event - user or assistant messages.
+ */
+export const GeminiMessageEventSchema = z.object({
+  type: z.literal("message"),
+  timestamp: z.string().optional(),
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  delta: z.boolean().optional(),
+});
+
+export type GeminiMessageEvent = z.infer<typeof GeminiMessageEventSchema>;
+
+/**
+ * Tool use event - tool invocation.
+ */
+export const GeminiToolUseEventSchema = z.object({
+  type: z.literal("tool_use"),
+  timestamp: z.string().optional(),
+  tool_name: z.string(),
+  tool_id: z.string(),
+  parameters: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type GeminiToolUseEvent = z.infer<typeof GeminiToolUseEventSchema>;
+
+/**
+ * Tool result event - tool execution result.
+ */
+export const GeminiToolResultEventSchema = z.object({
+  type: z.literal("tool_result"),
+  timestamp: z.string().optional(),
+  tool_id: z.string(),
+  status: z.enum(["success", "error"]),
+  output: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export type GeminiToolResultEvent = z.infer<typeof GeminiToolResultEventSchema>;
+
+/**
+ * Result event - final result with stats.
+ */
+export const GeminiResultEventSchema = z.object({
+  type: z.literal("result"),
+  timestamp: z.string().optional(),
+  status: z.enum(["success", "error", "cancelled"]),
+  stats: GeminiStatsSchema.optional(),
+  error: z.string().optional(),
+});
+
+export type GeminiResultEvent = z.infer<typeof GeminiResultEventSchema>;
 
 /**
  * Error event.
  */
 export const GeminiErrorEventSchema = z.object({
   type: z.literal("error"),
+  timestamp: z.string().optional(),
   error: z.string().optional(),
   message: z.string().optional(),
   code: z.string().optional(),
@@ -94,40 +106,15 @@ export const GeminiErrorEventSchema = z.object({
 export type GeminiErrorEvent = z.infer<typeof GeminiErrorEventSchema>;
 
 /**
- * Done/completion event.
- */
-export const GeminiDoneEventSchema = z.object({
-  type: z.literal("done"),
-  tokens: GeminiTokensSchema.optional(),
-  duration_ms: z.number().optional(),
-});
-
-export type GeminiDoneEvent = z.infer<typeof GeminiDoneEventSchema>;
-
-/**
- * Tool execution event.
- */
-export const GeminiToolEventSchema = z.object({
-  type: z.literal("tool"),
-  name: z.string(),
-  args: z.record(z.string(), z.unknown()).optional(),
-  result: z.unknown().optional(),
-  status: z.enum(["pending", "running", "completed", "error"]).optional(),
-  timestamp: z.string().optional(),
-});
-
-export type GeminiToolEvent = z.infer<typeof GeminiToolEventSchema>;
-
-/**
  * Union of all Gemini event types.
  */
 export const GeminiEventSchema = z.discriminatedUnion("type", [
-  GeminiUserEventSchema,
-  GeminiResponseEventSchema,
-  GeminiInfoEventSchema,
+  GeminiInitEventSchema,
+  GeminiMessageEventSchema,
+  GeminiToolUseEventSchema,
+  GeminiToolResultEventSchema,
+  GeminiResultEventSchema,
   GeminiErrorEventSchema,
-  GeminiDoneEventSchema,
-  GeminiToolEventSchema,
 ]);
 
 export type GeminiEvent = z.infer<typeof GeminiEventSchema>;

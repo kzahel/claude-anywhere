@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, hostname, tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures.js";
 
 // Set up test files in a temp directory (avoid permission issues with /mockproject)
 const mockProjectPath = join(tmpdir(), "claude-e2e-mockproject");

@@ -2,6 +2,7 @@ export { EventBus } from "./EventBus.js";
 export type {
   FileChangeEvent,
   FileChangeType,
+  WatchProvider,
   SessionStatusEvent,
   SessionCreatedEvent,
   SourceChangeEvent,
