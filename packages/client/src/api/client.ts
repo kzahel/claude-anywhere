@@ -52,6 +52,7 @@ export type { UploadedFile } from "@claude-anywhere/shared";
 const API_BASE = "/api";
 
 export interface AuthStatus {
+  enabled: boolean;
   authenticated: boolean;
   setupRequired: boolean;
 }

@@ -93,7 +93,10 @@ export function createApp(
   if (options.authService) {
     app.route(
       "/api/auth",
-      createAuthRoutes({ authService: options.authService }),
+      createAuthRoutes({
+        authService: options.authService,
+        authEnabled: options.authEnabled,
+      }),
     );
   }
 

@@ -59,9 +59,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const checkAuth = useCallback(async () => {
     try {
       const status = await api.getAuthStatus();
-      setIsAuthenticated(status.authenticated);
-      setIsSetupMode(status.setupRequired);
-      setAuthDisabled(false);
+      // Check if auth is enabled on the server
+      if (status.enabled === false) {
+        setIsAuthenticated(true);
+        setIsSetupMode(false);
+        setAuthDisabled(true);
+      } else {
+        setIsAuthenticated(status.authenticated);
+        setIsSetupMode(status.setupRequired);
+        setAuthDisabled(false);
+      }
     } catch (error) {
       // If we get a network error or the endpoint doesn't exist,
       // assume auth is disabled (for backward compatibility)

@@ -10,6 +10,8 @@ export const SESSION_COOKIE_NAME = "claude-anywhere-session";
 
 export interface AuthRoutesDeps {
   authService: AuthService;
+  /** Whether auth is enabled. If false, status returns enabled: false */
+  authEnabled?: boolean;
 }
 
 interface SetupBody {
@@ -27,18 +29,28 @@ interface ChangePasswordBody {
 
 export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
   const app = new Hono();
-  const { authService } = deps;
+  const { authService, authEnabled = true } = deps;
 
   /**
    * GET /api/auth/status
    * Check authentication status
    */
   app.get("/status", async (c) => {
+    // If auth is disabled, return early with enabled: false
+    if (!authEnabled) {
+      return c.json({
+        enabled: false,
+        authenticated: true,
+        setupRequired: false,
+      });
+    }
+
     const sessionId = getCookie(c, SESSION_COOKIE_NAME);
     const hasAccount = authService.hasAccount();
 
     if (!hasAccount) {
       return c.json({
+        enabled: true,
         authenticated: false,
         setupRequired: true,
       });
@@ -46,6 +58,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
 
     if (!sessionId) {
       return c.json({
+        enabled: true,
         authenticated: false,
         setupRequired: false,
       });
@@ -53,6 +66,7 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
 
     const valid = await authService.validateSession(sessionId);
     return c.json({
+      enabled: true,
       authenticated: valid,
       setupRequired: false,
     });
