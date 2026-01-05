@@ -77,6 +77,7 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
   onPending: (pending: PendingEvent) => void;
   onStreamEnd: () => void;
   reset: () => void;
+  captureHtml: () => string | null;
 } {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pendingRef = useRef<HTMLSpanElement | null>(null);
@@ -254,6 +255,18 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
     });
   }, []);
 
+  /**
+   * Capture the current streaming HTML for persistence.
+   * Returns the container's innerHTML or null if not available.
+   */
+  const captureHtml = useCallback((): string | null => {
+    const container = containerRef.current;
+    if (!container) return null;
+    const html = container.innerHTML;
+    debugLog("event", "Captured HTML", { length: html.length });
+    return html || null;
+  }, []);
+
   return {
     containerRef,
     pendingRef,
@@ -262,5 +275,6 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
     onPending,
     onStreamEnd,
     reset,
+    captureHtml,
   };
 }

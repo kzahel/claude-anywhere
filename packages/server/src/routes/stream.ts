@@ -8,6 +8,7 @@ import {
   type StreamCoordinator,
   createStreamCoordinator,
 } from "../augments/index.js";
+import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
 import { getLogger } from "../logging/logger.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { ProcessEvent } from "../supervisor/types.js";
@@ -308,6 +309,43 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
                     { err, sessionId, toolUseId: editToolUse.toolUseId },
                     "Failed to compute edit augment",
                   );
+                }
+              }
+
+              // Check for final assistant message - render markdown and send augment BEFORE raw message
+              // This ensures client has the complete rendered HTML when the message arrives,
+              // keyed by the message's uuid so it survives component remounts
+              const msg = event.message as Record<string, unknown>;
+              if (msg.type === "assistant" && msg.uuid) {
+                const innerMessage = msg.message as
+                  | { content?: unknown }
+                  | undefined;
+                const content = innerMessage?.content;
+                if (Array.isArray(content)) {
+                  const textBlock = content.find(
+                    (b): b is { type: "text"; text: string } =>
+                      b?.type === "text" &&
+                      typeof b.text === "string" &&
+                      b.text.trim() !== "",
+                  );
+                  if (textBlock) {
+                    try {
+                      const html = await renderMarkdownToHtml(textBlock.text);
+                      await stream.writeSSE({
+                        id: String(eventId++),
+                        event: "markdown-augment",
+                        data: JSON.stringify({
+                          messageId: msg.uuid,
+                          html,
+                        }),
+                      });
+                    } catch (err) {
+                      log.warn(
+                        { err, sessionId, uuid: msg.uuid },
+                        "Failed to render final markdown augment",
+                      );
+                    }
+                  }
                 }
               }
 

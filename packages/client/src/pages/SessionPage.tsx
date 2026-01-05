@@ -99,6 +99,7 @@ function SessionPageContent({
       onPending: streamingMarkdownContext.dispatchPending,
       onStreamEnd: streamingMarkdownContext.dispatchStreamEnd,
       setCurrentMessageId: streamingMarkdownContext.setCurrentMessageId,
+      captureHtml: streamingMarkdownContext.captureStreamingHtml,
     };
   }, [streamingMarkdownContext]);
 

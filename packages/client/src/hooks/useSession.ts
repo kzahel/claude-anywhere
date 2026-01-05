@@ -52,6 +52,8 @@ export interface StreamingMarkdownCallbacks {
   onPending?: (pending: { html: string }) => void;
   onStreamEnd?: () => void;
   setCurrentMessageId?: (messageId: string | null) => void;
+  /** Capture the current streaming HTML (call before clearing streaming state) */
+  captureHtml?: () => string | null;
 }
 
 /** Callbacks for edit augment events (server-computed unified diffs) */
@@ -232,17 +234,14 @@ export function useSession(
 
   // Add a message to the pending queue
   // Generates a tempId that will be sent to the server and echoed back in SSE
-  const addPendingMessage = useCallback(
-    (content: string): string => {
-      const tempId = `temp-${Date.now()}`;
-      setPendingMessages((prev) => [
-        ...prev,
-        { tempId, content, timestamp: new Date().toISOString() },
-      ]);
-      return tempId;
-    },
-    [],
-  );
+  const addPendingMessage = useCallback((content: string): string => {
+    const tempId = `temp-${Date.now()}`;
+    setPendingMessages((prev) => [
+      ...prev,
+      { tempId, content, timestamp: new Date().toISOString() },
+    ]);
+    return tempId;
+  }, []);
 
   // Remove a pending message by tempId (used when server confirms or send fails)
   const removePendingMessage = useCallback((tempId: string) => {
@@ -776,6 +775,25 @@ export function useSession(
             ? (sdkMessage.parentToolUseId as string)
             : undefined;
 
+          // Capture streaming HTML as fallback (if server didn't send final augment)
+          // Server now sends markdown-augment with uuid before assistant message,
+          // so this is only needed as a fallback when streaming succeeded but server augment didn't arrive
+          // DISABLED: Testing server-side approach first
+          // const msgUuid = sdkMessage.uuid as string | undefined;
+          // if (msgUuid && !msgAgentId) {
+          //   const capturedHtml = streamingMarkdownCallbacks?.captureHtml?.();
+          //   if (capturedHtml) {
+          //     setMarkdownAugments((prev) => {
+          //       // Only store if server didn't already send an augment for this message
+          //       if (prev[msgUuid]) return prev;
+          //       return {
+          //         ...prev,
+          //         [msgUuid]: { html: capturedHtml },
+          //       };
+          //     });
+          //   }
+          // }
+
           // Clear streaming refs for this stream
           streamingContentRef.current.clear();
           currentStreamingIdRef.current = null;
@@ -963,20 +981,39 @@ export function useSession(
           applyServerModeUpdate(modeData.permissionMode, modeData.modeVersion);
         }
       } else if (data.eventType === "markdown-augment") {
-        // Handle streaming markdown augment events (server-rendered blocks)
+        // Handle markdown augment events (server-rendered)
         const augmentData = data as {
           eventType: string;
-          blockIndex: number;
+          blockIndex?: number;
           html: string;
-          type: string;
+          type?: string;
           messageId?: string;
         };
-        streamingMarkdownCallbacks?.onAugment?.({
-          blockIndex: augmentData.blockIndex,
-          html: augmentData.html,
-          type: augmentData.type,
-          messageId: augmentData.messageId,
-        });
+
+        // Two types of markdown-augment events:
+        // 1. Final message augment: has messageId (uuid), no blockIndex
+        //    → Store in markdownAugments for completed message rendering
+        // 2. Streaming block augment: has blockIndex and type
+        //    → Dispatch to streaming context for live rendering
+        if (
+          augmentData.messageId &&
+          augmentData.blockIndex === undefined &&
+          augmentData.html
+        ) {
+          // Final message augment - store in markdownAugments
+          setMarkdownAugments((prev) => ({
+            ...prev,
+            [augmentData.messageId as string]: { html: augmentData.html },
+          }));
+        } else if (augmentData.blockIndex !== undefined) {
+          // Streaming block augment - dispatch to context
+          streamingMarkdownCallbacks?.onAugment?.({
+            blockIndex: augmentData.blockIndex,
+            html: augmentData.html,
+            type: augmentData.type ?? "text",
+            messageId: augmentData.messageId,
+          });
+        }
       } else if (data.eventType === "pending") {
         // Handle streaming markdown pending text events
         const pendingData = data as {

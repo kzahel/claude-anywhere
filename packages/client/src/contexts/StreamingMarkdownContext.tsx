@@ -14,6 +14,8 @@ interface StreamingHandlers {
   onAugment: (augment: AugmentEvent) => void;
   onPending: (pending: PendingEvent) => void;
   onStreamEnd: () => void;
+  /** Capture the current streaming HTML (for persisting when stream completes) */
+  captureHtml?: () => string | null;
 }
 
 /**
@@ -48,6 +50,13 @@ interface StreamingMarkdownContextValue {
    * (Used for internal tracking, not for registration)
    */
   setCurrentMessageId: (messageId: string | null) => void;
+
+  /**
+   * Capture the current streaming HTML from the registered handler.
+   * Used to persist the streaming content when the final message arrives.
+   * Returns null if no handler is registered or capture fails.
+   */
+  captureStreamingHtml: () => string | null;
 }
 
 const StreamingMarkdownContext =
@@ -140,12 +149,17 @@ export function StreamingMarkdownProvider({
     currentMessageIdRef.current = null;
   }, []);
 
+  const captureStreamingHtml = useCallback((): string | null => {
+    return handlersRef.current?.captureHtml?.() ?? null;
+  }, []);
+
   const value: StreamingMarkdownContextValue = {
     registerStreamingHandler,
     setCurrentMessageId,
     dispatchAugment,
     dispatchPending,
     dispatchStreamEnd,
+    captureStreamingHtml,
   };
 
   return (

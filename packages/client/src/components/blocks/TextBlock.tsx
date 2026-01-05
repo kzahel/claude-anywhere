@@ -1,23 +1,6 @@
-import {
-  memo,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import type { Components, ExtraProps } from "react-markdown";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { AgentContentContext } from "../../contexts/AgentContentContext";
+import { memo, useCallback, useEffect, useState } from "react";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
-import {
-  isLikelyFilePath,
-  parseLineColumn,
-  splitTextWithFilePaths,
-} from "../../lib/filePathDetection";
-import { FilePathLink } from "../FilePathLink";
 
 interface Props {
   text: string;
@@ -26,46 +9,12 @@ interface Props {
   augmentHtml?: string;
 }
 
-/**
- * Render text with file paths as clickable links.
- */
-function TextWithFilePaths({
-  children,
-  projectId,
-}: { children: string; projectId: string }) {
-  const segments = splitTextWithFilePaths(children);
-
-  return (
-    <>
-      {segments.map((segment, i) => {
-        if (segment.type === "text") {
-          return segment.content;
-        }
-        const { detected } = segment;
-        return (
-          <FilePathLink
-            key={`${detected.startIndex}-${detected.filePath}`}
-            filePath={detected.filePath}
-            projectId={projectId}
-            lineNumber={detected.lineNumber}
-            columnNumber={detected.columnNumber}
-            displayText={detected.match}
-            showFullPath
-          />
-        );
-      })}
-    </>
-  );
-}
-
 export const TextBlock = memo(function TextBlock({
   text,
   isStreaming = false,
   augmentHtml,
 }: Props) {
   const [copied, setCopied] = useState(false);
-  const agentContext = useContext(AgentContentContext);
-  const projectId = agentContext?.projectId;
 
   // Streaming markdown hook for server-rendered content
   const streamingMarkdown = useStreamingMarkdown();
@@ -77,7 +26,8 @@ export const TextBlock = memo(function TextBlock({
   // Register with context when streaming and context is available
   useEffect(() => {
     if (!isStreaming || !streamingContext) {
-      // Reset when not streaming
+      // Reset streaming state when not streaming
+      // (HTML is captured to markdownAugments before component remounts)
       if (!isStreaming) {
         setUseStreamingContent(false);
         streamingMarkdown.reset();
@@ -94,6 +44,7 @@ export const TextBlock = memo(function TextBlock({
       },
       onPending: streamingMarkdown.onPending,
       onStreamEnd: streamingMarkdown.onStreamEnd,
+      captureHtml: streamingMarkdown.captureHtml,
     });
 
     return unregister;
@@ -109,120 +60,6 @@ export const TextBlock = memo(function TextBlock({
     }
   }, [text]);
 
-  // Create custom markdown components that render file paths as links.
-  // Only process text nodes in non-code contexts.
-  // Skip file path detection during streaming to avoid expensive re-processing
-  // on every delta - file paths will be detected once streaming completes.
-  const markdownComponents = useMemo<Components>(() => {
-    if (!projectId || isStreaming) return {};
-
-    // Helper to process children and detect file paths in strings
-    const processChildren = (children: React.ReactNode): React.ReactNode => {
-      if (!children) return children;
-
-      // Process array of children
-      if (Array.isArray(children)) {
-        return children.map((child, index) => {
-          if (typeof child === "string") {
-            return (
-              <TextWithFilePaths key={`text-${index}`} projectId={projectId}>
-                {child}
-              </TextWithFilePaths>
-            );
-          }
-          return child;
-        });
-      }
-
-      // Process single string child
-      if (typeof children === "string") {
-        return (
-          <TextWithFilePaths projectId={projectId}>
-            {children}
-          </TextWithFilePaths>
-        );
-      }
-
-      return children;
-    };
-
-    return {
-      // Process text in paragraphs
-      p: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"p"> & ExtraProps) => (
-        <p {...props}>{processChildren(children)}</p>
-      ),
-      // Process text in list items
-      li: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"li"> & ExtraProps) => (
-        <li {...props}>{processChildren(children)}</li>
-      ),
-      // Process text in table cells
-      td: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"td"> & ExtraProps) => (
-        <td {...props}>{processChildren(children)}</td>
-      ),
-      th: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"th"> & ExtraProps) => (
-        <th {...props}>{processChildren(children)}</th>
-      ),
-      // Process text in blockquotes
-      blockquote: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"blockquote"> & ExtraProps) => (
-        <blockquote {...props}>{processChildren(children)}</blockquote>
-      ),
-      // For inline code, check if the content is a file path and linkify it
-      // This handles cases like: Created `docs/project/file.md`
-      code: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"code"> & ExtraProps) => {
-        // Only process single string children (inline code, not code blocks)
-        // Require a directory component (/) to avoid bare filenames that can't be resolved
-        if (
-          typeof children === "string" &&
-          children.includes("/") &&
-          isLikelyFilePath(children)
-        ) {
-          // Parse out line/column numbers from paths like "file.tsx:42:10"
-          const { path, line, column } = parseLineColumn(children);
-          return (
-            <code {...props}>
-              <FilePathLink
-                filePath={path}
-                projectId={projectId}
-                lineNumber={line}
-                columnNumber={column}
-                displayText={children}
-                showFullPath
-              />
-            </code>
-          );
-        }
-        return <code {...props}>{children}</code>;
-      },
-    };
-  }, [projectId, isStreaming]);
-
-  // Determine if we should show streaming content or fallback to react-markdown
-  // Use streaming content when:
-  // 1. We're streaming (isStreaming is true)
-  // 2. We've received at least one augment (useStreamingContent is true)
-  // 3. The hook is actively streaming (streamingMarkdown.isStreaming is true)
-  // Fall back to react-markdown when:
-  // - Not streaming
-  // - Streaming but no augments received (server might not be sending them)
-  // - Stream ended (isStreaming becomes false)
   const showStreamingContent = isStreaming && useStreamingContent;
 
   return (
@@ -252,13 +89,11 @@ export const TextBlock = memo(function TextBlock({
           />
         </>
       ) : augmentHtml ? (
-        // Pre-rendered HTML from server (for completed messages)
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
         <div dangerouslySetInnerHTML={{ __html: augmentHtml }} />
       ) : (
-        // Fallback to react-markdown (no server augment available)
-        <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {text}
-        </Markdown>
+        // Plain text fallback (no server augment available)
+        <p>{text}</p>
       )}
     </div>
   );
