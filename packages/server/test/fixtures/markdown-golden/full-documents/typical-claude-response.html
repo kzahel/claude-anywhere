@@ -1,0 +1,18 @@
+<p>I'll help you create a function to validate email addresses. Here's a solution:</p>
+<h2>Implementation</h2>
+<pre class="shiki"><code class="language-typescript"><span class="token keyword">function</span> <span class="token function">isValidEmail</span><span class="token punctuation">(</span>email<span class="token punctuation">:</span> <span class="token keyword">string</span><span class="token punctuation">)</span><span class="token punctuation">:</span> <span class="token keyword">boolean</span> <span class="token punctuation">{</span>
+  <span class="token keyword">const</span> emailRegex <span class="token punctuation">=</span> <span class="token string">/^[^\s@]+@[^\s@]+\.[^\s@]+$/</span><span class="token punctuation">;</span>
+  <span class="token keyword">return</span> emailRegex<span class="token punctuation">.</span><span class="token function">test</span><span class="token punctuation">(</span>email<span class="token punctuation">)</span><span class="token punctuation">;</span>
+<span class="token punctuation">}</span></code></pre>
+<h2>How it works</h2>
+<p>The regex pattern checks for:</p>
+<ul>
+<li>One or more characters that aren't spaces or <code>@</code> symbols</li>
+<li>An <code>@</code> symbol</li>
+<li>One or more characters for the domain name</li>
+<li>A <code>.</code> followed by the extension</li>
+</ul>
+<h2>Usage</h2>
+<pre class="shiki"><code class="language-typescript"><span class="token function">isValidEmail</span><span class="token punctuation">(</span><span class="token string">"user@example.com"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>  <span class="token comment">// true</span>
+<span class="token function">isValidEmail</span><span class="token punctuation">(</span><span class="token string">"invalid-email"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>     <span class="token comment">// false</span></code></pre>
+<p>Let me know if you need any modifications!</p>

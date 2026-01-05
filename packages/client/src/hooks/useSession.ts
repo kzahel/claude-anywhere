@@ -35,10 +35,23 @@ export type AgentContentMap = Record<string, AgentContent>;
 
 const THROTTLE_MS = 500;
 
+/** Callbacks for streaming markdown events (augment/pending from SSE) */
+export interface StreamingMarkdownCallbacks {
+  onAugment?: (augment: {
+    blockIndex: number;
+    html: string;
+    type: string;
+  }) => void;
+  onPending?: (pending: { html: string }) => void;
+  onStreamEnd?: () => void;
+  setCurrentMessageId?: (messageId: string | null) => void;
+}
+
 export function useSession(
   projectId: string,
   sessionId: string,
   initialStatus?: { state: "owned"; processId: string },
+  streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
 ) {
   const [session, setSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -640,6 +653,10 @@ export function useSession(
               currentStreamingIdRef.current = message.id as string;
               // Also track if this is a subagent stream
               currentStreamingAgentIdRef.current = streamAgentId ?? null;
+              // Notify streaming markdown context of new message
+              streamingMarkdownCallbacks?.setCurrentMessageId?.(
+                message.id as string,
+              );
             }
             return;
           }
@@ -705,6 +722,8 @@ export function useSession(
             // DON'T clear currentStreamingIdRef here - we need it to remove the
             // streaming placeholder when the final assistant message arrives
             streamingContentRef.current.delete(streamingId);
+            // Notify streaming markdown context that stream has ended
+            streamingMarkdownCallbacks?.onStreamEnd?.();
           }
           return; // Don't process stream_event as a regular message
         }
@@ -913,6 +932,28 @@ export function useSession(
         if (modeData.permissionMode && modeData.modeVersion !== undefined) {
           applyServerModeUpdate(modeData.permissionMode, modeData.modeVersion);
         }
+      } else if (data.eventType === "augment") {
+        // Handle streaming markdown augment events (server-rendered blocks)
+        const augmentData = data as {
+          eventType: string;
+          blockIndex: number;
+          html: string;
+          type: string;
+        };
+        streamingMarkdownCallbacks?.onAugment?.({
+          blockIndex: augmentData.blockIndex,
+          html: augmentData.html,
+          type: augmentData.type,
+        });
+      } else if (data.eventType === "pending") {
+        // Handle streaming markdown pending text events
+        const pendingData = data as {
+          eventType: string;
+          html: string;
+        };
+        streamingMarkdownCallbacks?.onPending?.({
+          html: pendingData.html,
+        });
       }
     },
     [
@@ -920,6 +961,7 @@ export function useSession(
       sessionId,
       updateStreamingMessage,
       throttledUpdateStreamingMessage,
+      streamingMarkdownCallbacks,
     ],
   );
 

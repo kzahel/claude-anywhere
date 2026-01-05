@@ -1,0 +1,1 @@
+This text has **bold formatting** in the middle.

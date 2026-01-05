@@ -2,10 +2,10 @@ import type { ProviderName } from "@yep-anywhere/shared";
 import { MODEL_OPTIONS } from "../hooks/useModelSettings";
 
 const PROVIDER_COLORS: Record<ProviderName, string> = {
-  claude: "var(--app-yep-green)",
-  codex: "#10a37f", // OpenAI green
-  "codex-oss": "#10a37f", // OpenAI green (same as codex)
-  gemini: "#4285f4", // Google blue
+  claude: "var(--provider-claude)", // Claude orange
+  codex: "var(--provider-codex)", // OpenAI green
+  "codex-oss": "var(--provider-codex)", // OpenAI green (same as codex)
+  gemini: "var(--provider-gemini)", // Google blue
 };
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {

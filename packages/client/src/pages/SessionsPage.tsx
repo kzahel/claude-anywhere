@@ -311,6 +311,17 @@ export function SessionsPage() {
     }
   }, [selectedIds, isBulkActionPending, handleClearSelection]);
 
+  // Compute which bulk actions are applicable based on selection
+  const bulkActionState = useMemo(() => {
+    const selectedSessions = sessions.filter((s) => selectedIds.has(s.id));
+    return {
+      canArchive: selectedSessions.some((s) => !s.isArchived),
+      canUnarchive: selectedSessions.some((s) => s.isArchived),
+      canStar: selectedSessions.some((s) => !s.isStarred),
+      canUnstar: selectedSessions.some((s) => s.isStarred),
+    };
+  }, [sessions, selectedIds]);
+
   // Update browser tab title (project name only, no session)
   useDocumentTitle(project?.name);
 
@@ -464,6 +475,10 @@ export function SessionsPage() {
               onUnstar={handleBulkUnstar}
               onClearSelection={handleClearSelection}
               isPending={isBulkActionPending}
+              canArchive={bulkActionState.canArchive}
+              canUnarchive={bulkActionState.canUnarchive}
+              canStar={bulkActionState.canStar}
+              canUnstar={bulkActionState.canUnstar}
             />
           </div>
         </main>

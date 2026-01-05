@@ -1,0 +1,8 @@
+<pre class="shiki"><code class="language-python"><span class="token keyword">def</span> <span class="token function">fibonacci</span><span class="token punctuation">(</span>n<span class="token punctuation">)</span><span class="token punctuation">:</span>
+    <span class="token string">"""Calculate the nth Fibonacci number."""</span>
+    <span class="token keyword">if</span> n <span class="token punctuation">&lt;=</span> <span class="token number">1</span><span class="token punctuation">:</span>
+        <span class="token keyword">return</span> n
+    <span class="token keyword">return</span> <span class="token function">fibonacci</span><span class="token punctuation">(</span>n <span class="token punctuation">-</span> <span class="token number">1</span><span class="token punctuation">)</span> <span class="token punctuation">+</span> <span class="token function">fibonacci</span><span class="token punctuation">(</span>n <span class="token punctuation">-</span> <span class="token number">2</span><span class="token punctuation">)</span>
+
+result <span class="token punctuation">=</span> <span class="token function">fibonacci</span><span class="token punctuation">(</span><span class="token number">10</span><span class="token punctuation">)</span>
+<span class="token function">print</span><span class="token punctuation">(</span><span class="token string">f"Result: {result}"</span><span class="token punctuation">)</span></code></pre>

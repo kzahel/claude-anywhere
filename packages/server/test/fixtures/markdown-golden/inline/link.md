@@ -1,0 +1,1 @@
+Check out [the documentation](https://example.com/docs) for more info.

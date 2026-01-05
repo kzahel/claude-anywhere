@@ -1,8 +1,17 @@
-import { memo, useCallback, useContext, useMemo, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type { Components, ExtraProps } from "react-markdown";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AgentContentContext } from "../../contexts/AgentContentContext";
+import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
+import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
 import {
   isLikelyFilePath,
   parseLineColumn,
@@ -54,6 +63,38 @@ export const TextBlock = memo(function TextBlock({
   const [copied, setCopied] = useState(false);
   const agentContext = useContext(AgentContentContext);
   const projectId = agentContext?.projectId;
+
+  // Streaming markdown hook for server-rendered content
+  const streamingMarkdown = useStreamingMarkdown();
+  const streamingContext = useStreamingMarkdownContext();
+
+  // Track whether we're actively using streaming markdown (received at least one augment)
+  const [useStreamingContent, setUseStreamingContent] = useState(false);
+
+  // Register with context when streaming and context is available
+  useEffect(() => {
+    if (!isStreaming || !streamingContext) {
+      // Reset when not streaming
+      if (!isStreaming) {
+        setUseStreamingContent(false);
+        streamingMarkdown.reset();
+      }
+      return;
+    }
+
+    // Register handlers with the context
+    const unregister = streamingContext.registerStreamingHandler({
+      onAugment: (augment) => {
+        // Mark that we're using streaming content on first augment
+        setUseStreamingContent(true);
+        streamingMarkdown.onAugment(augment);
+      },
+      onPending: streamingMarkdown.onPending,
+      onStreamEnd: streamingMarkdown.onStreamEnd,
+    });
+
+    return unregister;
+  }, [isStreaming, streamingContext, streamingMarkdown]);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -170,6 +211,17 @@ export const TextBlock = memo(function TextBlock({
     };
   }, [projectId, isStreaming]);
 
+  // Determine if we should show streaming content or fallback to react-markdown
+  // Use streaming content when:
+  // 1. We're streaming (isStreaming is true)
+  // 2. We've received at least one augment (useStreamingContent is true)
+  // 3. The hook is actively streaming (streamingMarkdown.isStreaming is true)
+  // Fall back to react-markdown when:
+  // - Not streaming
+  // - Streaming but no augments received (server might not be sending them)
+  // - Stream ended (isStreaming becomes false)
+  const showStreamingContent = isStreaming && useStreamingContent;
+
   return (
     <div
       className={`text-block timeline-item${isStreaming ? " streaming" : ""}`}
@@ -183,9 +235,25 @@ export const TextBlock = memo(function TextBlock({
       >
         {copied ? <CheckIcon /> : <CopyIcon />}
       </button>
-      <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {text}
-      </Markdown>
+
+      {showStreamingContent ? (
+        // Server-rendered streaming content
+        <>
+          <div
+            ref={streamingMarkdown.containerRef}
+            className="streaming-blocks"
+          />
+          <span
+            ref={streamingMarkdown.pendingRef}
+            className="streaming-pending"
+          />
+        </>
+      ) : (
+        // Fallback to react-markdown (historical messages, no augments, or stream ended)
+        <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {text}
+        </Markdown>
+      )}
     </div>
   );
 });

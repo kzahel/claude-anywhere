@@ -3,10 +3,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useRef,
   useState,
 } from "react";
 import { api } from "../api/client";
 import type { AgentContent, AgentContentMap } from "../hooks/useSession";
+import { getMessageId } from "../lib/mergeMessages";
 import type { Message } from "../types";
 
 interface AgentContentContextValue {
@@ -50,6 +52,8 @@ export function AgentContentProvider({
   sessionId,
 }: AgentContentProviderProps) {
   const [loadingAgents, setLoadingAgents] = useState<Set<string>>(new Set());
+  // Track which agents have had their JSONL loaded (separate from SSE content)
+  const loadedAgentsRef = useRef<Set<string>>(new Set());
 
   const loadAgentContent = useCallback(
     async (
@@ -57,10 +61,9 @@ export function AgentContentProvider({
       loadSessionId: string,
       agentId: string,
     ): Promise<AgentContent> => {
-      // Check if already loaded
-      const existing = agentContent[agentId];
-      if (existing && existing.messages.length > 0) {
-        return existing;
+      // Check if JSONL has already been loaded for this agent
+      if (loadedAgentsRef.current.has(agentId)) {
+        return agentContent[agentId] ?? { messages: [], status: "pending" };
       }
 
       // Check if already loading
@@ -68,10 +71,11 @@ export function AgentContentProvider({
         // Wait for existing load to complete
         return new Promise((resolve) => {
           const checkInterval = setInterval(() => {
-            const current = agentContent[agentId];
-            if (current && current.messages.length > 0) {
+            if (loadedAgentsRef.current.has(agentId)) {
               clearInterval(checkInterval);
-              resolve(current);
+              resolve(
+                agentContent[agentId] ?? { messages: [], status: "pending" },
+              );
             }
           }, 100);
           // Timeout after 30 seconds
@@ -92,18 +96,46 @@ export function AgentContentProvider({
           agentId,
         );
 
-        const content: AgentContent = {
+        // Mark as loaded before merging
+        loadedAgentsRef.current.add(agentId);
+
+        // Merge JSONL messages with any existing SSE content
+        // SSE may have captured messages that arrived after page load
+        setAgentContent((prev) => {
+          const existing = prev[agentId];
+          const existingMessages = existing?.messages ?? [];
+          const jsonlMessages = data.messages;
+
+          // Dedupe by message ID - prefer JSONL as canonical, add SSE-only messages
+          const messageMap = new Map<string, Message>();
+          for (const m of jsonlMessages) {
+            messageMap.set(getMessageId(m), m);
+          }
+          // Add any SSE messages not in JSONL (e.g., arrived after JSONL was read)
+          for (const m of existingMessages) {
+            const id = getMessageId(m);
+            if (!messageMap.has(id)) {
+              messageMap.set(id, m);
+            }
+          }
+
+          // Use status from server (inferred from JSONL) unless SSE shows running
+          const status =
+            existing?.status === "running" ? "running" : data.status;
+
+          return {
+            ...prev,
+            [agentId]: {
+              messages: Array.from(messageMap.values()),
+              status,
+            },
+          };
+        });
+
+        return {
           messages: data.messages,
           status: data.status,
         };
-
-        // Merge into agentContent state
-        setAgentContent((prev) => ({
-          ...prev,
-          [agentId]: content,
-        }));
-
-        return content;
       } catch (error) {
         console.error(`Failed to load agent content for ${agentId}:`, error);
         return { messages: [], status: "failed" };

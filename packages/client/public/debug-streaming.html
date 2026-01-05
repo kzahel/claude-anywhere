@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Streaming Markdown Debug</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+    }
+
+    h1 {
+      margin: 0 0 20px 0;
+      font-size: 1.5rem;
+      color: #fff;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      height: calc(100vh - 100px);
+    }
+
+    .panel {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 16px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel h2 {
+      margin: 0 0 12px 0;
+      font-size: 1rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .control-group label {
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    button {
+      background: #0f3460;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.875rem;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #e94560;
+    }
+
+    button:disabled {
+      background: #333;
+      cursor: not-allowed;
+    }
+
+    button.active {
+      background: #e94560;
+    }
+
+    input[type="range"] {
+      width: 120px;
+    }
+
+    select {
+      background: #0f3460;
+      color: #fff;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+
+    textarea {
+      width: 100%;
+      height: 150px;
+      background: #0a0a1a;
+      color: #eee;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 12px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.875rem;
+      resize: vertical;
+      margin-bottom: 12px;
+    }
+
+    .output-container {
+      flex: 1;
+      overflow: auto;
+      background: #0a0a1a;
+      border-radius: 4px;
+      padding: 16px;
+    }
+
+    /* Streaming output styles */
+    #streaming-output {
+      min-height: 100%;
+    }
+
+    #streaming-output .streaming-block {
+      margin-bottom: 12px;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    #streaming-output h1,
+    #streaming-output h2,
+    #streaming-output h3 {
+      color: #fff;
+      margin: 16px 0 8px 0;
+    }
+
+    #streaming-output p {
+      margin: 0 0 12px 0;
+      line-height: 1.6;
+    }
+
+    #streaming-output pre {
+      background: #1e1e1e;
+      padding: 12px;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin: 0 0 12px 0;
+    }
+
+    #streaming-output code {
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.875rem;
+    }
+
+    #streaming-output ul,
+    #streaming-output ol {
+      margin: 0 0 12px 0;
+      padding-left: 24px;
+    }
+
+    #streaming-pending {
+      color: #888;
+      font-style: italic;
+    }
+
+    #streaming-pending::after {
+      content: '|';
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+
+    /* Console log styles */
+    #console-log {
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.75rem;
+      line-height: 1.4;
+    }
+
+    .log-entry {
+      padding: 4px 8px;
+      border-bottom: 1px solid #222;
+    }
+
+    .log-entry.augment {
+      background: rgba(0, 128, 0, 0.1);
+      border-left: 3px solid #4caf50;
+    }
+
+    .log-entry.pending {
+      background: rgba(255, 165, 0, 0.1);
+      border-left: 3px solid #ff9800;
+    }
+
+    .log-entry.event {
+      background: rgba(33, 150, 243, 0.1);
+      border-left: 3px solid #2196f3;
+    }
+
+    .log-entry.error {
+      background: rgba(244, 67, 54, 0.1);
+      border-left: 3px solid #f44336;
+    }
+
+    .log-time {
+      color: #666;
+      margin-right: 8px;
+    }
+
+    .presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .preset-btn {
+      background: #333;
+      padding: 4px 8px;
+      font-size: 0.75rem;
+    }
+
+    .status-bar {
+      display: flex;
+      gap: 16px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #333;
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    .status-item {
+      display: flex;
+      gap: 4px;
+    }
+
+    .status-item .label {
+      color: #666;
+    }
+
+    .status-item .value {
+      color: #4caf50;
+    }
+
+    .status-item .value.streaming {
+      color: #ff9800;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Streaming Markdown Debug Harness</h1>
+
+  <div class="controls">
+    <div class="control-group">
+      <label>Speed (ms/chunk)</label>
+      <input type="range" id="speed" min="1" max="200" value="20">
+      <span id="speed-value">20ms</span>
+    </div>
+
+    <div class="control-group">
+      <label>Chunk Size (chars)</label>
+      <input type="range" id="chunk-size" min="1" max="50" value="5">
+      <span id="chunk-size-value">5</span>
+    </div>
+
+    <button id="stream-btn">Stream</button>
+    <button id="stop-btn" disabled>Stop</button>
+    <button id="reset-btn">Reset</button>
+    <button id="clear-log-btn">Clear Log</button>
+  </div>
+
+  <div class="presets">
+    <span style="color: #666; font-size: 0.75rem; margin-right: 8px;">Presets:</span>
+    <button class="preset-btn" data-preset="simple">Simple paragraph</button>
+    <button class="preset-btn" data-preset="code">Code block (JS)</button>
+    <button class="preset-btn" data-preset="mixed">Mixed content</button>
+    <button class="preset-btn" data-preset="rapid">Rapid small chunks</button>
+    <button class="preset-btn" data-preset="long">Long document</button>
+  </div>
+
+  <textarea id="markdown-input" placeholder="Enter markdown here...">## Hello World
+
+This is a **streaming markdown** test.
+
+```javascript
+function greet(name) {
+  console.log(`Hello, ${name}!`);
+}
+
+greet('World');
+```
+
+### Features
+
+- Fast rendering
+- Real-time updates
+- Syntax highlighting
+
+That's all folks!</textarea>
+
+  <div class="layout">
+    <div class="panel">
+      <h2>Streaming Output</h2>
+      <div class="output-container">
+        <div id="streaming-output"></div>
+        <span id="streaming-pending" class="streaming-pending"></span>
+      </div>
+      <div class="status-bar">
+        <div class="status-item">
+          <span class="label">Status:</span>
+          <span class="value" id="status-streaming">Idle</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Blocks:</span>
+          <span class="value" id="status-blocks">0</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Chars:</span>
+          <span class="value" id="status-chars">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Event Log</h2>
+      <div class="output-container" id="console-log"></div>
+    </div>
+  </div>
+
+  <script>
+    // Presets
+    const PRESETS = {
+      simple: `This is a simple paragraph that will be streamed character by character.`,
+
+      code: `Here's some JavaScript code:
+
+\`\`\`javascript
+function fibonacci(n) {
+  if (n <= 1) return n;
+  return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+// Calculate first 10 numbers
+for (let i = 0; i < 10; i++) {
+  console.log(\`fib(\${i}) = \${fibonacci(i)}\`);
+}
+\`\`\`
+
+Pretty neat, right?`,
+
+      mixed: `# Welcome to the Demo
+
+This is a **bold** statement with *italics* too.
+
+## Code Example
+
+\`\`\`python
+def hello():
+    print("Hello, World!")
+\`\`\`
+
+## Features
+
+1. First item
+2. Second item
+3. Third item
+
+> This is a blockquote
+
+Done!`,
+
+      rapid: `Quick.Fast.Speedy.Rapid.Swift.Nimble.Brisk.Hasty.Fleet.Prompt.`,
+
+      long: `# The Complete Guide to Everything
+
+## Chapter 1: Introduction
+
+Welcome to this comprehensive guide. We'll cover many topics in detail.
+
+### Background
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+
+### Objectives
+
+- Learn the fundamentals
+- Master advanced techniques
+- Apply knowledge in practice
+
+## Chapter 2: Getting Started
+
+First, let's set up our environment:
+
+\`\`\`bash
+npm install
+npm run dev
+\`\`\`
+
+Then configure your settings:
+
+\`\`\`json
+{
+  "debug": true,
+  "verbose": false,
+  "timeout": 5000
+}
+\`\`\`
+
+## Chapter 3: Advanced Topics
+
+This section covers more complex scenarios.
+
+### Performance Optimization
+
+1. Use caching
+2. Minimize re-renders
+3. Lazy load components
+
+### Best Practices
+
+> Always write clean, maintainable code.
+
+## Conclusion
+
+Thanks for reading! Now go build something amazing.`
+    };
+
+    // State
+    let isStreaming = false;
+    let stopRequested = false;
+    let currentBlocks = new Map();
+    let maxBlockIndex = -1;
+    let totalChars = 0;
+
+    // DOM refs
+    const container = document.getElementById('streaming-output');
+    const pendingEl = document.getElementById('streaming-pending');
+    const consoleLog = document.getElementById('console-log');
+    const markdownInput = document.getElementById('markdown-input');
+    const speedSlider = document.getElementById('speed');
+    const chunkSizeSlider = document.getElementById('chunk-size');
+    const speedValue = document.getElementById('speed-value');
+    const chunkSizeValue = document.getElementById('chunk-size-value');
+    const streamBtn = document.getElementById('stream-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const clearLogBtn = document.getElementById('clear-log-btn');
+    const statusStreaming = document.getElementById('status-streaming');
+    const statusBlocks = document.getElementById('status-blocks');
+    const statusChars = document.getElementById('status-chars');
+
+    // Update slider displays
+    speedSlider.addEventListener('input', () => {
+      speedValue.textContent = `${speedSlider.value}ms`;
+    });
+    chunkSizeSlider.addEventListener('input', () => {
+      chunkSizeValue.textContent = chunkSizeSlider.value;
+    });
+
+    // Logging
+    function log(message, type = 'event') {
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      const time = new Date().toISOString().split('T')[1].split('.')[0];
+      entry.innerHTML = `<span class="log-time">${time}</span>${escapeHtml(message)}`;
+      consoleLog.appendChild(entry);
+      consoleLog.scrollTop = consoleLog.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Update status display
+    function updateStatus() {
+      statusStreaming.textContent = isStreaming ? 'Streaming' : 'Idle';
+      statusStreaming.className = `value ${isStreaming ? 'streaming' : ''}`;
+      statusBlocks.textContent = currentBlocks.size;
+      statusChars.textContent = totalChars;
+    }
+
+    // Simple markdown parser (for demo purposes)
+    function parseMarkdownToBlocks(markdown) {
+      const blocks = [];
+      const lines = markdown.split('\n');
+      let currentBlock = null;
+      let inCodeBlock = false;
+      let codeLanguage = '';
+      let codeContent = '';
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // Code block start/end
+        if (line.startsWith('```')) {
+          if (inCodeBlock) {
+            // End code block
+            blocks.push({
+              type: 'code',
+              content: codeContent,
+              language: codeLanguage,
+              html: `<pre><code class="language-${codeLanguage}">${escapeHtml(codeContent)}</code></pre>`
+            });
+            inCodeBlock = false;
+            codeContent = '';
+            codeLanguage = '';
+          } else {
+            // Start code block
+            if (currentBlock) {
+              blocks.push(currentBlock);
+              currentBlock = null;
+            }
+            inCodeBlock = true;
+            codeLanguage = line.slice(3).trim() || 'text';
+          }
+          continue;
+        }
+
+        if (inCodeBlock) {
+          codeContent += (codeContent ? '\n' : '') + line;
+          continue;
+        }
+
+        // Heading
+        const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+        if (headingMatch) {
+          if (currentBlock) {
+            blocks.push(currentBlock);
+            currentBlock = null;
+          }
+          const level = headingMatch[1].length;
+          blocks.push({
+            type: 'heading',
+            level,
+            content: headingMatch[2],
+            html: `<h${level}>${formatInline(headingMatch[2])}</h${level}>`
+          });
+          continue;
+        }
+
+        // List item
+        const listMatch = line.match(/^(\s*)[-*]\s+(.+)$/);
+        const orderedListMatch = line.match(/^(\s*)\d+\.\s+(.+)$/);
+        if (listMatch || orderedListMatch) {
+          const match = listMatch || orderedListMatch;
+          const isOrdered = !!orderedListMatch;
+          if (!currentBlock || currentBlock.type !== 'list' || currentBlock.ordered !== isOrdered) {
+            if (currentBlock) blocks.push(currentBlock);
+            currentBlock = {
+              type: 'list',
+              ordered: isOrdered,
+              items: [],
+              content: ''
+            };
+          }
+          currentBlock.items.push(match[2]);
+          currentBlock.content += (currentBlock.content ? '\n' : '') + line;
+          continue;
+        }
+
+        // Blockquote
+        const quoteMatch = line.match(/^>\s*(.*)$/);
+        if (quoteMatch) {
+          if (!currentBlock || currentBlock.type !== 'blockquote') {
+            if (currentBlock) blocks.push(currentBlock);
+            currentBlock = {
+              type: 'blockquote',
+              content: ''
+            };
+          }
+          currentBlock.content += (currentBlock.content ? '\n' : '') + quoteMatch[1];
+          continue;
+        }
+
+        // Empty line - end current block
+        if (line.trim() === '') {
+          if (currentBlock) {
+            blocks.push(currentBlock);
+            currentBlock = null;
+          }
+          continue;
+        }
+
+        // Paragraph
+        if (!currentBlock || currentBlock.type !== 'paragraph') {
+          if (currentBlock) blocks.push(currentBlock);
+          currentBlock = {
+            type: 'paragraph',
+            content: ''
+          };
+        }
+        currentBlock.content += (currentBlock.content ? ' ' : '') + line;
+      }
+
+      // Don't forget last block
+      if (currentBlock) blocks.push(currentBlock);
+
+      // Generate HTML for each block
+      return blocks.map((block, index) => {
+        if (block.html) return { ...block, index };
+
+        let html;
+        switch (block.type) {
+          case 'paragraph':
+            html = `<p>${formatInline(block.content)}</p>`;
+            break;
+          case 'list':
+            const tag = block.ordered ? 'ol' : 'ul';
+            html = `<${tag}>${block.items.map(item => `<li>${formatInline(item)}</li>`).join('')}</${tag}>`;
+            break;
+          case 'blockquote':
+            html = `<blockquote><p>${formatInline(block.content)}</p></blockquote>`;
+            break;
+          default:
+            html = `<p>${formatInline(block.content)}</p>`;
+        }
+        return { ...block, html, index };
+      });
+    }
+
+    // Format inline markdown (bold, italic, code, links)
+    function formatInline(text) {
+      return escapeHtml(text)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`(.+?)`/g, '<code>$1</code>');
+    }
+
+    // Simulate augment event
+    function onAugment(augment) {
+      const { blockIndex, html, type } = augment;
+
+      log(`AUGMENT: blockIndex=${blockIndex}, type=${type}, html=${html.substring(0, 50)}...`, 'augment');
+
+      // Check if block exists
+      if (currentBlocks.has(blockIndex)) {
+        const existingBlock = currentBlocks.get(blockIndex);
+        existingBlock.innerHTML = html;
+        log(`  -> Updated existing block ${blockIndex}`, 'augment');
+        return;
+      }
+
+      // Create new block
+      const blockElement = document.createElement('div');
+      blockElement.className = 'streaming-block';
+      blockElement.dataset.blockIndex = String(blockIndex);
+      blockElement.innerHTML = html;
+
+      // Insert in correct order
+      if (blockIndex > maxBlockIndex) {
+        container.appendChild(blockElement);
+        maxBlockIndex = blockIndex;
+        log(`  -> Appended block ${blockIndex} to end`, 'augment');
+      } else {
+        let inserted = false;
+        for (let i = 0; i < container.children.length; i++) {
+          const child = container.children[i];
+          const childIndex = parseInt(child.dataset.blockIndex ?? '-1', 10);
+          if (childIndex > blockIndex) {
+            container.insertBefore(blockElement, child);
+            inserted = true;
+            log(`  -> Inserted block ${blockIndex} before block ${childIndex}`, 'augment');
+            break;
+          }
+        }
+        if (!inserted) {
+          container.appendChild(blockElement);
+          log(`  -> Appended block ${blockIndex} (fallback)`, 'augment');
+        }
+      }
+
+      currentBlocks.set(blockIndex, blockElement);
+      updateStatus();
+    }
+
+    // Simulate pending event
+    function onPending(pending) {
+      const { html } = pending;
+      pendingEl.innerHTML = html;
+      if (html) {
+        log(`PENDING: "${html.substring(0, 60)}${html.length > 60 ? '...' : ''}"`, 'pending');
+      }
+    }
+
+    // Reset state
+    function reset() {
+      log('RESET: Clearing all state', 'event');
+      container.innerHTML = '';
+      pendingEl.innerHTML = '';
+      currentBlocks.clear();
+      maxBlockIndex = -1;
+      totalChars = 0;
+      isStreaming = false;
+      stopRequested = false;
+      updateStatus();
+      streamBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+
+    // Stream markdown
+    async function streamMarkdown() {
+      const markdown = markdownInput.value;
+      const speed = parseInt(speedSlider.value);
+      const chunkSize = parseInt(chunkSizeSlider.value);
+
+      if (!markdown.trim()) {
+        log('ERROR: No markdown to stream', 'error');
+        return;
+      }
+
+      reset();
+      isStreaming = true;
+      stopRequested = false;
+      streamBtn.disabled = true;
+      stopBtn.disabled = false;
+      updateStatus();
+
+      log(`Starting stream: speed=${speed}ms, chunkSize=${chunkSize}`, 'event');
+
+      // Parse markdown into blocks
+      const blocks = parseMarkdownToBlocks(markdown);
+      log(`Parsed ${blocks.length} blocks`, 'event');
+
+      // Stream each block
+      for (let blockIdx = 0; blockIdx < blocks.length; blockIdx++) {
+        if (stopRequested) {
+          log('Stream stopped by user', 'event');
+          break;
+        }
+
+        const block = blocks[blockIdx];
+        const rawContent = block.content || '';
+        log(`Starting block ${blockIdx} (${block.type}): "${rawContent.substring(0, 30)}..."`, 'event');
+
+        // Stream the raw content as pending
+        let pendingText = '';
+        for (let i = 0; i < rawContent.length; i += chunkSize) {
+          if (stopRequested) break;
+
+          pendingText = rawContent.substring(0, Math.min(i + chunkSize, rawContent.length));
+          totalChars = pendingText.length;
+          onPending({ html: formatInline(pendingText) });
+          updateStatus();
+
+          await new Promise(resolve => setTimeout(resolve, speed));
+        }
+
+        if (stopRequested) break;
+
+        // Send augment when block is complete
+        onAugment({
+          blockIndex: blockIdx,
+          html: block.html,
+          type: block.type
+        });
+
+        // Clear pending
+        onPending({ html: '' });
+
+        // Small delay between blocks
+        await new Promise(resolve => setTimeout(resolve, speed * 2));
+      }
+
+      // Stream end
+      log('Stream ended', 'event');
+      isStreaming = false;
+      streamBtn.disabled = false;
+      stopBtn.disabled = true;
+      updateStatus();
+    }
+
+    // Event listeners
+    streamBtn.addEventListener('click', streamMarkdown);
+    stopBtn.addEventListener('click', () => {
+      stopRequested = true;
+      log('Stop requested...', 'event');
+    });
+    resetBtn.addEventListener('click', reset);
+    clearLogBtn.addEventListener('click', () => {
+      consoleLog.innerHTML = '';
+      log('Log cleared', 'event');
+    });
+
+    // Preset buttons
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const preset = btn.dataset.preset;
+        if (PRESETS[preset]) {
+          markdownInput.value = PRESETS[preset];
+          log(`Loaded preset: ${preset}`, 'event');
+        }
+      });
+    });
+
+    // Initial log
+    log('Debug harness ready. Enter markdown and click Stream.', 'event');
+  </script>
+</body>
+</html>

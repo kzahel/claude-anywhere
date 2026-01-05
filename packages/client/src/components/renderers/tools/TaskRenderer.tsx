@@ -230,6 +230,34 @@ function TaskInline({
     }
   }, [isExpanded, isRunning, scrollToBottom]);
 
+  // Track if we've initiated loading from the effect
+  const loadInitiatedRef = useRef(false);
+
+  // Load agent content when expanded (for running tasks that auto-expand on mount)
+  // This ensures we load the JSONL content immediately rather than waiting for user click
+  useEffect(() => {
+    if (!isExpanded || !agentId || !context) return;
+    if (loadInitiatedRef.current) return;
+
+    loadInitiatedRef.current = true;
+
+    // Load the agent content from JSONL (will merge with any SSE content)
+    const loadContent = async () => {
+      setIsLoadingContent(true);
+      try {
+        const sessionEl = document.querySelector("[data-session-id]");
+        const projectEl = document.querySelector("[data-project-id]");
+        const projectId = projectEl?.getAttribute("data-project-id") || "";
+        const sessionId = sessionEl?.getAttribute("data-session-id") || "";
+        await context.loadAgentContent(projectId, sessionId, agentId);
+      } finally {
+        setIsLoadingContent(false);
+      }
+    };
+
+    loadContent();
+  }, [isExpanded, agentId, context]);
+
   // Store validation errors for inline warning display
   const [validationErrors, setValidationErrors] = useState<ZodError | null>(
     null,

@@ -69,6 +69,8 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
     es.addEventListener("error", handleEvent("error"));
     es.addEventListener("complete", handleEvent("complete"));
     es.addEventListener("heartbeat", handleEvent("heartbeat"));
+    es.addEventListener("augment", handleEvent("augment"));
+    es.addEventListener("pending", handleEvent("pending"));
 
     es.onerror = (error) => {
       setConnected(false);

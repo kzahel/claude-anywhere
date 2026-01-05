@@ -11,12 +11,19 @@ import { SessionMenu } from "../components/SessionMenu";
 import { StatusIndicator } from "../components/StatusIndicator";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
+import {
+  StreamingMarkdownProvider,
+  useStreamingMarkdownContext,
+} from "../contexts/StreamingMarkdownContext";
 import { useToastContext } from "../contexts/ToastContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import type { DraftControls } from "../hooks/useDraftPersistence";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
-import { useSession } from "../hooks/useSession";
+import {
+  type StreamingMarkdownCallbacks,
+  useSession,
+} from "../hooks/useSession";
 import { useProjectLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { truncateText } from "../lib/text";
@@ -34,12 +41,15 @@ export function SessionPage() {
   }
 
   // Key ensures component remounts on session change, resetting all state
+  // Wrap with StreamingMarkdownProvider for server-rendered markdown streaming
   return (
-    <SessionPageContent
-      key={sessionId}
-      projectId={projectId}
-      sessionId={sessionId}
-    />
+    <StreamingMarkdownProvider>
+      <SessionPageContent
+        key={sessionId}
+        projectId={projectId}
+        sessionId={sessionId}
+      />
+    </StreamingMarkdownProvider>
   );
 }
 
@@ -67,6 +77,23 @@ function SessionPageContent({
   } | null;
   const initialStatus = navState?.initialStatus;
   const initialTitle = navState?.initialTitle;
+
+  // Get streaming markdown context for server-rendered markdown streaming
+  const streamingMarkdownContext = useStreamingMarkdownContext();
+
+  // Memoize the callbacks object to avoid recreating on every render
+  const streamingMarkdownCallbacks = useMemo<
+    StreamingMarkdownCallbacks | undefined
+  >(() => {
+    if (!streamingMarkdownContext) return undefined;
+    return {
+      onAugment: streamingMarkdownContext.dispatchAugment,
+      onPending: streamingMarkdownContext.dispatchPending,
+      onStreamEnd: streamingMarkdownContext.dispatchStreamEnd,
+      setCurrentMessageId: streamingMarkdownContext.setCurrentMessageId,
+    };
+  }, [streamingMarkdownContext]);
+
   const {
     session,
     messages,
@@ -90,7 +117,12 @@ function SessionPageContent({
     isHeld,
     addUserMessage,
     removeOptimisticMessage,
-  } = useSession(projectId, sessionId, initialStatus);
+  } = useSession(
+    projectId,
+    sessionId,
+    initialStatus,
+    streamingMarkdownCallbacks,
+  );
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
   const handleDraftControlsReady = useCallback((controls: DraftControls) => {

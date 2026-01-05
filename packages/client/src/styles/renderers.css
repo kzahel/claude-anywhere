@@ -111,6 +111,144 @@
   }
 }
 
+/* ==========================================================================
+   Server-Rendered Streaming Markdown
+   ========================================================================== */
+
+/* Container for completed server-rendered blocks */
+.streaming-blocks {
+  /* Blocks are inserted as child divs with .streaming-block class */
+}
+
+/* Individual block rendered by server */
+.streaming-block {
+  /* Inherits text-block styles - no additional styling needed */
+}
+
+/* Pending text (incomplete block being streamed) */
+.streaming-pending {
+  opacity: 0.7;
+}
+
+/* Ensure streaming blocks have appropriate paragraph spacing */
+.streaming-blocks p,
+.streaming-block p {
+  margin: 0 0 var(--space-2) 0;
+}
+
+.streaming-blocks p:last-child,
+.streaming-block p:last-child {
+  margin-bottom: 0;
+}
+
+/* Code styling in streaming blocks */
+.streaming-blocks code,
+.streaming-block code,
+.streaming-pending code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-code);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
+/* Pre blocks in streaming */
+.streaming-blocks pre,
+.streaming-block pre {
+  background: var(--bg-code);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.streaming-blocks pre code,
+.streaming-block pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Lists in streaming blocks */
+.streaming-blocks ul,
+.streaming-blocks ol,
+.streaming-block ul,
+.streaming-block ol {
+  margin: var(--space-2) 0;
+  padding-left: 24px;
+}
+
+.streaming-blocks li,
+.streaming-block li {
+  margin: var(--space-1) 0;
+}
+
+/* Links in streaming blocks */
+.streaming-blocks a,
+.streaming-block a,
+.streaming-pending a {
+  color: var(--link-color);
+  text-decoration: none;
+}
+
+.streaming-blocks a:hover,
+.streaming-block a:hover,
+.streaming-pending a:hover {
+  text-decoration: underline;
+}
+
+/* Blockquotes in streaming blocks */
+.streaming-blocks blockquote,
+.streaming-block blockquote {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--border-color);
+  color: var(--text-muted);
+}
+
+/* Headers in streaming blocks */
+.streaming-blocks h1,
+.streaming-blocks h2,
+.streaming-blocks h3,
+.streaming-blocks h4,
+.streaming-blocks h5,
+.streaming-blocks h6,
+.streaming-block h1,
+.streaming-block h2,
+.streaming-block h3,
+.streaming-block h4,
+.streaming-block h5,
+.streaming-block h6 {
+  margin: var(--space-3) 0 var(--space-2) 0;
+  font-weight: 600;
+}
+
+/* Tables in streaming blocks */
+.streaming-blocks table,
+.streaming-block table {
+  border-collapse: collapse;
+  margin: var(--space-2) 0;
+  width: 100%;
+  font-size: var(--font-size-sm);
+}
+
+.streaming-blocks th,
+.streaming-blocks td,
+.streaming-block th,
+.streaming-block td {
+  border: 1px solid var(--border-color);
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+}
+
+.streaming-blocks th,
+.streaming-block th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
 .text-block code {
   font-family: var(--font-mono);
   font-size: 0.9em;

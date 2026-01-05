@@ -11,6 +11,15 @@
   --app-yep-green-dark: #047857;
   --app-claude-ivory: #faf9f5;
   --app-claude-slate: #141413;
+  --app-claude-orange: #d97706;
+
+  /* Provider Colors (theme-agnostic) */
+  --provider-claude: var(--app-claude-orange);
+  --provider-codex: #10a37f;
+  --provider-gemini: #4285f4;
+
+  /* Semantic Colors */
+  --thinking-color: var(--app-claude-orange);
 
   /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
@@ -33,7 +42,7 @@
   --radius-lg: 8px;
 
   /* Spinner */
-  --app-spinner-foreground: var(--app-yep-green);
+  --app-spinner-foreground: var(--thinking-color);
 }
 
 /* ==========================================================================
@@ -54,6 +63,7 @@
 
   /* Text Colors */
   --text-primary: #cccccc;
+  --text-secondary: #b8b8b8;
   --text-muted: #9d9d9d;
   --text-dimmed: #666666;
 
@@ -110,6 +120,7 @@
 
   /* Text Colors - slightly brighter */
   --text-primary: #e0e0e0;
+  --text-secondary: #c0c0c0;
   --text-muted: #a0a0a0;
   --text-dimmed: #707070;
 
@@ -166,6 +177,7 @@
 
   /* Text Colors */
   --text-primary: #1a1a1a;
+  --text-secondary: #3a3a3a;
   --text-muted: #5a5a5a;
   --text-dimmed: #8a8a8a;
 
@@ -221,6 +233,7 @@
   --bg-user-message: #484848;
 
   --text-primary: #e0e0e0;
+  --text-secondary: #c0c0c0;
   --text-muted: #a0a0a0;
   --text-dimmed: #707070;
 
@@ -270,6 +283,7 @@
     --bg-user-message: #e8e7e2;
 
     --text-primary: #1a1a1a;
+    --text-secondary: #3a3a3a;
     --text-muted: #5a5a5a;
     --text-dimmed: #8a8a8a;
 
@@ -1186,7 +1200,7 @@ a.sidebar-nav-item {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--app-yep-green);
+  background: var(--thinking-color);
   animation: pulse 1s ease-in-out infinite;
 }
 
@@ -1208,7 +1222,7 @@ a.sidebar-nav-item {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--app-yep-green);
+  background: var(--thinking-color);
   animation: pulse 1s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -2245,18 +2259,18 @@ a.sidebar-nav-item {
 
 /* Running/Thinking indicator - pulsing to show agent activity */
 .status-badge.status-running {
-  background: var(--status-badge-running-bg);
-  color: var(--status-badge-running-text);
-  animation: pulse-orange 1.5s ease-in-out infinite;
+  background: color-mix(in srgb, var(--thinking-color) 15%, transparent);
+  color: var(--thinking-color);
+  animation: pulse-thinking 1.5s ease-in-out infinite;
 }
 
-@keyframes pulse-orange {
+@keyframes pulse-thinking {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 170, 68, 0.4);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--thinking-color) 40%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 4px rgba(255, 170, 68, 0);
+    box-shadow: 0 0 0 4px transparent;
   }
 }
 
@@ -3681,14 +3695,25 @@ a.sidebar-nav-item {
   cursor: not-allowed;
 }
 
-/* Hide button text on mobile, show icons only */
+/* Stack icon and text vertically on mobile */
 @media (max-width: 768px) {
-  .bulk-action-button span {
-    display: none;
+  .bulk-action-bar__actions {
+    gap: var(--space-1);
   }
 
   .bulk-action-button {
-    padding: var(--space-2);
+    flex-direction: column;
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-1);
+  }
+
+  .bulk-action-button span {
+    font-size: var(--font-size-xs);
+  }
+
+  .bulk-action-button svg {
+    width: 22px;
+    height: 22px;
   }
 
   .session-list-header {
@@ -3734,14 +3759,14 @@ a.sidebar-nav-item {
   color: var(--text-muted);
 }
 
-/* Read sessions - muted for contrast with unread */
+/* Read sessions - slightly dimmer, unread uses bold + primary for distinction */
 .session-list li > a strong {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-weight: 400;
 }
 
 .sidebar-session-list li > a {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-weight: 400;
 }
 
@@ -3968,19 +3993,19 @@ a.sidebar-nav-item {
 }
 
 .provider-option-dot.provider-claude {
-  background: var(--app-yep-green);
+  background: var(--provider-claude);
 }
 
 .provider-option-dot.provider-codex {
-  background: #10a37f; /* OpenAI green */
+  background: var(--provider-codex);
 }
 
 .provider-option-dot.provider-codex-oss {
-  background: #10a37f; /* OpenAI green (same as codex) */
+  background: var(--provider-codex);
 }
 
 .provider-option-dot.provider-gemini {
-  background: #4285f4; /* Google blue */
+  background: var(--provider-gemini);
 }
 
 .provider-option-dot.provider-local {
@@ -4567,8 +4592,8 @@ button.agent-card {
 }
 
 .agent-state-running {
-  background: var(--status-badge-running-bg);
-  color: var(--status-badge-running-text);
+  background: color-mix(in srgb, var(--thinking-color) 15%, transparent);
+  color: var(--thinking-color);
 }
 
 .agent-state-input {
@@ -4842,8 +4867,8 @@ button.agent-card {
 }
 
 .inbox-tier-active .inbox-section-header {
-  border-left-color: var(--warning-color);
-  color: var(--warning-color);
+  border-left-color: var(--thinking-color);
+  color: var(--thinking-color);
 }
 
 .inbox-tier-recent .inbox-section-header {
@@ -5352,10 +5377,10 @@ button.agent-card {
   accent-color: var(--app-yep-green);
 }
 
-/* Read state: muted text color */
+/* Read state: slightly dimmer than unread */
 .session-list-item .session-list-item__title-text,
 .session-list-item .session-list-item__title {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-weight: 400;
 }
 
