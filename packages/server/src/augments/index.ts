@@ -1,9 +1,9 @@
 /**
- * Augments module - Server-side markdown rendering for streaming
+ * Augments module - Server-side rendering for streaming content
  *
- * This module provides components for rendering markdown blocks as they
- * stream in from Claude, enabling progressive HTML rendering with
- * syntax-highlighted code blocks.
+ * This module provides components for:
+ * - Rendering markdown blocks as they stream in from Claude
+ * - Computing edit augments with unified diff and syntax highlighting
  */
 
 // Block detection
@@ -23,3 +23,16 @@ export {
   type StreamCoordinator,
   createStreamCoordinator,
 } from "./stream-coordinator.js";
+
+// Edit augments (unified diff computation and highlighting)
+export {
+  computeEditAugment,
+  type EditInput,
+} from "./edit-augments.js";
+
+// Markdown augments (full text rendering for historical messages)
+export {
+  computeMarkdownAugments,
+  renderMarkdownToHtml,
+  type MarkdownAugment,
+} from "./markdown-augments.js";

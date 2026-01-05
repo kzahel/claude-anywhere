@@ -21,6 +21,8 @@ interface ProviderBadgeProps {
   compact?: boolean;
   /** Model name to display alongside provider (e.g., "opus", "sonnet") */
   model?: string;
+  /** Whether the session is actively thinking/processing */
+  isThinking?: boolean;
   className?: string;
 }
 
@@ -32,6 +34,7 @@ export function ProviderBadge({
   provider,
   compact = false,
   model,
+  isThinking = false,
   className = "",
 }: ProviderBadgeProps) {
   const color = PROVIDER_COLORS[provider];
@@ -79,15 +82,20 @@ export function ProviderBadge({
     );
   }
 
+  // When thinking, dot is always orange with pulse animation
+  const dotClass = isThinking
+    ? "provider-badge-dot-inline thinking"
+    : "provider-badge-dot-inline";
+  const dotStyle = isThinking
+    ? { backgroundColor: "var(--thinking-color)" }
+    : { backgroundColor: color };
+
   return (
     <span
       className={`provider-badge ${className}`}
       style={{ borderColor: color, color }}
     >
-      <span
-        className="provider-badge-dot-inline"
-        style={{ backgroundColor: color }}
-      />
+      <span className={dotClass} style={dotStyle} />
       {label}
       {modelLabel && <span className="provider-badge-model">{modelLabel}</span>}
     </span>

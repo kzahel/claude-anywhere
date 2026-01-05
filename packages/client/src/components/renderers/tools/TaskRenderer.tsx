@@ -140,8 +140,8 @@ function TaskInline({
     !hasTerminalResult &&
     (status === "pending" || liveContent?.status === "running");
 
-  // Start expanded if running, otherwise collapsed for completed tasks
-  const [isExpanded, setIsExpanded] = useState(isRunning);
+  // Always start collapsed - users can expand if they want to see details
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
 
   // Autoscroll refs
@@ -341,9 +341,16 @@ function TaskInline({
         <span className="task-inline-title">{input.description}</span>
         {input.model && <span className="badge task-model">{input.model}</span>}
         {isRunning && (
-          <span className="task-spinner" aria-label="Running">
-            <Spinner />
-          </span>
+          <>
+            <span className="task-spinner" aria-label="Running">
+              <Spinner />
+            </span>
+            {liveContent?.contextUsage && (
+              <span className="task-context-usage">
+                {liveContent.contextUsage.percentage.toFixed(0)}% context
+              </span>
+            )}
+          </>
         )}
         {!isRunning && (
           <span className={`badge ${statusBadge.class}`}>

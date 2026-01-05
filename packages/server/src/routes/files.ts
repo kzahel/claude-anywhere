@@ -7,6 +7,7 @@ import {
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
+import { highlightFile } from "../highlighting/index.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 
 export interface FilesDeps {
@@ -312,10 +313,12 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
    * Get file metadata and content.
    * Query params:
    *   - path: relative path to file (required)
+   *   - highlight: if "true", include syntax-highlighted HTML
    */
   routes.get("/:projectId/files", async (c) => {
     const projectId = c.req.param("projectId");
     const relativePath = c.req.query("path");
+    const highlight = c.req.query("highlight") === "true";
 
     // Validate project ID format
     if (!isUrlProjectId(projectId)) {
@@ -378,6 +381,16 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
       try {
         const content = await readFile(filePath, "utf-8");
         response.content = content;
+
+        // Add syntax highlighting if requested
+        if (highlight) {
+          const result = await highlightFile(content, relativePath);
+          if (result) {
+            response.highlightedHtml = result.html;
+            response.highlightedLanguage = result.language;
+            response.highlightedTruncated = result.truncated;
+          }
+        }
       } catch {
         // If we can't read as text, just omit content
       }

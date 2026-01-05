@@ -86,7 +86,7 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
   const { port, mainServerPort } = options;
   const startTime = Date.now();
 
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://localhost:${port}`);
     const path = url.pathname;
     const method = req.method || "GET";
@@ -142,15 +142,15 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
       } else if (path === "/log/level" && method === "GET") {
         handleGetLogLevel(res);
       } else if (path === "/log/level" && method === "PUT") {
-        handleSetLogLevel(req, res);
+        await handleSetLogLevel(req, res);
       } else if (path === "/proxy/debug" && method === "GET") {
         handleGetProxyDebug(res);
       } else if (path === "/proxy/debug" && method === "PUT") {
-        handleSetProxyDebug(req, res);
+        await handleSetProxyDebug(req, res);
       } else if (path === "/inspector" && method === "GET") {
         handleGetInspector(res);
       } else if (path === "/inspector/open" && method === "POST") {
-        handleOpenInspector(req, res);
+        await handleOpenInspector(req, res);
       } else if (path === "/inspector/close" && method === "POST") {
         handleCloseInspector(res);
       } else if (path === "/reload" && method === "POST") {

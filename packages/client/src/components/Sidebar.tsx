@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { ProcessStateType } from "../hooks/useFileActivity";
 import type { SessionSummary } from "../types";
+import { AgentsNavItem } from "./AgentsNavItem";
 import { SessionListItem } from "./SessionListItem";
 import {
   SidebarIcons,
@@ -62,6 +63,8 @@ interface SidebarProps {
   onResize?: (width: number) => void;
   /** Desktop mode: called when resize ends */
   onResizeEnd?: () => void;
+  /** Whether the new session form has an unsent draft */
+  hasNewSessionDraft?: boolean;
 }
 
 export function Sidebar({
@@ -81,6 +84,7 @@ export function Sidebar({
   onResizeStart,
   onResize,
   onResizeEnd,
+  hasNewSessionDraft,
 }: SidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null);
   const touchStartX = useRef<number | null>(null);
@@ -320,12 +324,13 @@ export function Sidebar({
             icon={SidebarIcons.newSession}
             label="New Session"
             onClick={onNavigate}
+            hasDraft={hasNewSessionDraft}
           />
 
           {/* Project-specific navigation */}
           <SidebarNavSection>
             <SidebarNavItem
-              to={`/projects/${projectId}/inbox`}
+              to={`/inbox?project=${projectId}`}
               icon={SidebarIcons.inbox}
               label="Inbox"
               badge={inboxCount}
@@ -351,12 +356,7 @@ export function Sidebar({
                 label="Projects"
                 onClick={onNavigate}
               />
-              <SidebarNavItem
-                to="/agents"
-                icon={SidebarIcons.agents}
-                label="Agents"
-                onClick={onNavigate}
-              />
+              <AgentsNavItem onClick={onNavigate} />
               <SidebarNavItem
                 to="/settings"
                 icon={SidebarIcons.settings}

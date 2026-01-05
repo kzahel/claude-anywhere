@@ -130,10 +130,7 @@ export interface Message {
 }
 
 // Type aliases for session types
-import type {
-  AppSessionStatus,
-  AppSessionSummary,
-} from "@yep-anywhere/shared";
+import type { AppSessionStatus, AppSessionSummary } from "@yep-anywhere/shared";
 
 export type SessionStatus = AppSessionStatus;
 export type SessionSummary = AppSessionSummary;

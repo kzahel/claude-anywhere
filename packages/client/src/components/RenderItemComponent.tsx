@@ -20,6 +20,12 @@ export const RenderItemComponent = memo(function RenderItemComponent({
 }: Props) {
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      // Don't interfere with text selection (important for mobile long-press)
+      const selection = window.getSelection();
+      if (selection && selection.toString().length > 0) {
+        return;
+      }
+
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         e.stopPropagation();
@@ -33,7 +39,13 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   const renderContent = () => {
     switch (item.type) {
       case "text":
-        return <TextBlock text={item.text} isStreaming={item.isStreaming} />;
+        return (
+          <TextBlock
+            id={item.augmentId}
+            text={item.text}
+            isStreaming={item.isStreaming}
+          />
+        );
 
       case "thinking":
         return (

@@ -3,66 +3,41 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
+  useRef,
   useState,
 } from "react";
-import type { Components, ExtraProps } from "react-markdown";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { createPortal } from "react-dom";
 import { AgentContentContext } from "../../contexts/AgentContentContext";
+import { useMarkdownAugment } from "../../contexts/MarkdownAugmentContext";
 import { useStreamingMarkdownContext } from "../../contexts/StreamingMarkdownContext";
 import { useStreamingMarkdown } from "../../hooks/useStreamingMarkdown";
-import {
-  isLikelyFilePath,
-  parseLineColumn,
-  splitTextWithFilePaths,
-} from "../../lib/filePathDetection";
-import { FilePathLink } from "../FilePathLink";
+import { FileViewer } from "../FileViewer";
 
 interface Props {
+  /** Block ID for looking up pre-rendered augments (format: messageId-blockIndex) */
+  id?: string;
   text: string;
   isStreaming?: boolean;
 }
 
-/**
- * Render text with file paths as clickable links.
- */
-function TextWithFilePaths({
-  children,
-  projectId,
-}: { children: string; projectId: string }) {
-  const segments = splitTextWithFilePaths(children);
-
-  return (
-    <>
-      {segments.map((segment, i) => {
-        if (segment.type === "text") {
-          return segment.content;
-        }
-        const { detected } = segment;
-        return (
-          <FilePathLink
-            key={`${detected.startIndex}-${detected.filePath}`}
-            filePath={detected.filePath}
-            projectId={projectId}
-            lineNumber={detected.lineNumber}
-            columnNumber={detected.columnNumber}
-            displayText={detected.match}
-            showFullPath
-          />
-        );
-      })}
-    </>
-  );
+/** State for the file viewer modal */
+interface FileViewerState {
+  filePath: string;
+  lineNumber?: number;
 }
 
 export const TextBlock = memo(function TextBlock({
+  id,
   text,
   isStreaming = false,
 }: Props) {
   const [copied, setCopied] = useState(false);
+  const [fileViewer, setFileViewer] = useState<FileViewerState | null>(null);
   const agentContext = useContext(AgentContentContext);
   const projectId = agentContext?.projectId;
+
+  // Pre-rendered markdown augment from server (for historical messages)
+  const markdownAugment = useMarkdownAugment(id);
 
   // Streaming markdown hook for server-rendered content
   const streamingMarkdown = useStreamingMarkdown();
@@ -71,14 +46,28 @@ export const TextBlock = memo(function TextBlock({
   // Track whether we're actively using streaming markdown (received at least one augment)
   const [useStreamingContent, setUseStreamingContent] = useState(false);
 
+  // Track whether we've finished streaming (message_stop received)
+  // This prevents resetting content when the final message arrives
+  const streamingFinishedRef = useRef(false);
+
+  // Reset streaming content only when a NEW streaming message starts,
+  // not when the final message replaces the streaming placeholder
+  useEffect(() => {
+    // If we were streaming and isStreaming just became true again,
+    // that means a new stream started - reset the previous content
+    if (isStreaming && useStreamingContent && streamingFinishedRef.current) {
+      setUseStreamingContent(false);
+      streamingMarkdown.reset();
+      streamingFinishedRef.current = false;
+    }
+  }, [isStreaming, useStreamingContent, streamingMarkdown]);
+
   // Register with context when streaming and context is available
   useEffect(() => {
     if (!isStreaming || !streamingContext) {
-      // Reset when not streaming
-      if (!isStreaming) {
-        setUseStreamingContent(false);
-        streamingMarkdown.reset();
-      }
+      // When streaming ends, DON'T reset the content - keep it displayed.
+      // The server-rendered content has syntax highlighting we want to preserve.
+      // Only unregister from the context (handled by cleanup return).
       return;
     }
 
@@ -87,10 +76,16 @@ export const TextBlock = memo(function TextBlock({
       onAugment: (augment) => {
         // Mark that we're using streaming content on first augment
         setUseStreamingContent(true);
+        streamingFinishedRef.current = false;
         streamingMarkdown.onAugment(augment);
       },
       onPending: streamingMarkdown.onPending,
-      onStreamEnd: streamingMarkdown.onStreamEnd,
+      onStreamEnd: () => {
+        // Mark streaming as finished so we don't reset content
+        // when the final message arrives
+        streamingFinishedRef.current = true;
+        streamingMarkdown.onStreamEnd();
+      },
     });
 
     return unregister;
@@ -106,155 +101,145 @@ export const TextBlock = memo(function TextBlock({
     }
   }, [text]);
 
-  // Create custom markdown components that render file paths as links.
-  // Only process text nodes in non-code contexts.
-  // Skip file path detection during streaming to avoid expensive re-processing
-  // on every delta - file paths will be detected once streaming completes.
-  const markdownComponents = useMemo<Components>(() => {
-    if (!projectId || isStreaming) return {};
+  // Handle clicks on server-rendered file links (via event delegation)
+  const handleContentClick = useCallback(
+    (e: React.MouseEvent) => {
+      // Don't interfere with text selection (important for mobile long-press)
+      const selection = window.getSelection();
+      if (selection && selection.toString().length > 0) {
+        return;
+      }
 
-    // Helper to process children and detect file paths in strings
-    const processChildren = (children: React.ReactNode): React.ReactNode => {
-      if (!children) return children;
+      const target = e.target as HTMLElement;
+      const fileLink = target.closest("a.file-link");
+      if (!fileLink || !projectId) return;
 
-      // Process array of children
-      if (Array.isArray(children)) {
-        return children.map((child, index) => {
-          if (typeof child === "string") {
-            return (
-              <TextWithFilePaths key={`text-${index}`} projectId={projectId}>
-                {child}
-              </TextWithFilePaths>
-            );
-          }
-          return child;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const filePath = fileLink.getAttribute("data-file-path");
+      const lineStr = fileLink.getAttribute("data-line");
+
+      if (filePath) {
+        setFileViewer({
+          filePath,
+          lineNumber: lineStr ? Number.parseInt(lineStr, 10) : undefined,
         });
       }
+    },
+    [projectId],
+  );
 
-      // Process single string child
-      if (typeof children === "string") {
-        return (
-          <TextWithFilePaths projectId={projectId}>
-            {children}
-          </TextWithFilePaths>
-        );
+  // Handle middle-click on file links to open in new tab
+  const handleContentAuxClick = useCallback(
+    (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const fileLink = target.closest("a.file-link");
+      if (!fileLink || !projectId) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const filePath = fileLink.getAttribute("data-file-path");
+      if (filePath) {
+        const url = `/projects/${encodeURIComponent(projectId)}/file?path=${encodeURIComponent(filePath)}`;
+        window.open(url, "_blank");
       }
+    },
+    [projectId],
+  );
 
-      return children;
-    };
+  const handleCloseFileViewer = useCallback(() => {
+    setFileViewer(null);
+  }, []);
 
-    return {
-      // Process text in paragraphs
-      p: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"p"> & ExtraProps) => (
-        <p {...props}>{processChildren(children)}</p>
-      ),
-      // Process text in list items
-      li: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"li"> & ExtraProps) => (
-        <li {...props}>{processChildren(children)}</li>
-      ),
-      // Process text in table cells
-      td: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"td"> & ExtraProps) => (
-        <td {...props}>{processChildren(children)}</td>
-      ),
-      th: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"th"> & ExtraProps) => (
-        <th {...props}>{processChildren(children)}</th>
-      ),
-      // Process text in blockquotes
-      blockquote: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"blockquote"> & ExtraProps) => (
-        <blockquote {...props}>{processChildren(children)}</blockquote>
-      ),
-      // For inline code, check if the content is a file path and linkify it
-      // This handles cases like: Created `docs/project/file.md`
-      code: ({
-        children,
-        ...props
-      }: React.ComponentPropsWithoutRef<"code"> & ExtraProps) => {
-        // Only process single string children (inline code, not code blocks)
-        // Require a directory component (/) to avoid bare filenames that can't be resolved
-        if (
-          typeof children === "string" &&
-          children.includes("/") &&
-          isLikelyFilePath(children)
-        ) {
-          // Parse out line/column numbers from paths like "file.tsx:42:10"
-          const { path, line, column } = parseLineColumn(children);
-          return (
-            <code {...props}>
-              <FilePathLink
-                filePath={path}
-                projectId={projectId}
-                lineNumber={line}
-                columnNumber={column}
-                displayText={children}
-                showFullPath
-              />
-            </code>
-          );
-        }
-        return <code {...props}>{children}</code>;
-      },
-    };
-  }, [projectId, isStreaming]);
+  // Determine content rendering mode:
+  // 1. During active streaming: use DOM refs for real-time updates (performance)
+  // 2. After streaming ends OR if context has data: prefer context (survives remounts)
+  // 3. Fallback: plain text
+  //
+  // Key insight: DOM refs are ephemeral (lost on remount), but context persists.
+  // So after streaming ends, always prefer context which has accumulated all blocks.
+  const preferContextAfterStreaming = !isStreaming && markdownAugment?.html;
+  const showStreamingContent =
+    useStreamingContent && !preferContextAfterStreaming;
+  const showMarkdownAugment = !showStreamingContent && markdownAugment?.html;
 
-  // Determine if we should show streaming content or fallback to react-markdown
-  // Use streaming content when:
-  // 1. We're streaming (isStreaming is true)
-  // 2. We've received at least one augment (useStreamingContent is true)
-  // 3. The hook is actively streaming (streamingMarkdown.isStreaming is true)
-  // Fall back to react-markdown when:
-  // - Not streaming
-  // - Streaming but no augments received (server might not be sending them)
-  // - Stream ended (isStreaming becomes false)
-  const showStreamingContent = isStreaming && useStreamingContent;
+  // Debug logging for streaming-to-final transition
+  if (typeof window !== "undefined" && window.__STREAMING_DEBUG__) {
+    console.log("[TextBlock] Render decision:", {
+      id,
+      isStreaming,
+      useStreamingContent,
+      hasMarkdownAugment: !!markdownAugment?.html,
+      augmentHtmlLength: markdownAugment?.html?.length ?? 0,
+      preferContextAfterStreaming: !!preferContextAfterStreaming,
+      showStreamingContent,
+      showMarkdownAugment: !!showMarkdownAugment,
+      willRenderPlainText: !showStreamingContent && !showMarkdownAugment,
+    });
+  }
 
   return (
-    <div
-      className={`text-block timeline-item${isStreaming ? " streaming" : ""}`}
-    >
-      <button
-        type="button"
-        className={`text-block-copy ${copied ? "copied" : ""}`}
-        onClick={handleCopy}
-        title={copied ? "Copied!" : "Copy markdown"}
-        aria-label={copied ? "Copied!" : "Copy markdown"}
+    <>
+      <div
+        className={`text-block timeline-item${isStreaming ? " streaming" : ""}`}
       >
-        {copied ? <CheckIcon /> : <CopyIcon />}
-      </button>
+        <button
+          type="button"
+          className={`text-block-copy ${copied ? "copied" : ""}`}
+          onClick={handleCopy}
+          title={copied ? "Copied!" : "Copy markdown"}
+          aria-label={copied ? "Copied!" : "Copy markdown"}
+        >
+          {copied ? <CheckIcon /> : <CopyIcon />}
+        </button>
 
-      {showStreamingContent ? (
-        // Server-rendered streaming content
-        <>
+        {showStreamingContent ? (
+          // Server-rendered streaming content (received via SSE)
+          <>
+            {/* biome-ignore lint/a11y/useKeyWithClickEvents: file links are anchor tags with href="#" */}
+            <div
+              ref={streamingMarkdown.containerRef}
+              className="streaming-blocks"
+              onClick={handleContentClick}
+              onAuxClick={handleContentAuxClick}
+            />
+            <span
+              ref={streamingMarkdown.pendingRef}
+              className="streaming-pending"
+            />
+          </>
+        ) : showMarkdownAugment ? (
+          // Pre-rendered HTML from server (for historical messages on reload)
+          // Uses same rendering as streaming, so code blocks have identical highlighting
+          // biome-ignore lint/a11y/useKeyWithClickEvents: file links are anchor tags with href="#"
           <div
-            ref={streamingMarkdown.containerRef}
             className="streaming-blocks"
+            onClick={handleContentClick}
+            onAuxClick={handleContentAuxClick}
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted server-rendered content
+            dangerouslySetInnerHTML={{ __html: markdownAugment.html }}
           />
-          <span
-            ref={streamingMarkdown.pendingRef}
-            className="streaming-pending"
-          />
-        </>
-      ) : (
-        // Fallback to react-markdown (historical messages, no augments, or stream ended)
-        <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {text}
-        </Markdown>
-      )}
-    </div>
+        ) : (
+          // No augments available - show plain text
+          <p>{text}</p>
+        )}
+      </div>
+
+      {/* File viewer modal */}
+      {fileViewer &&
+        projectId &&
+        createPortal(
+          <FileViewerModal
+            projectId={projectId}
+            filePath={fileViewer.filePath}
+            lineNumber={fileViewer.lineNumber}
+            onClose={handleCloseFileViewer}
+          />,
+          document.body,
+        )}
+    </>
   );
 });
 
@@ -292,5 +277,70 @@ function CheckIcon() {
     >
       <path d="M3 8.5L6.5 12L13 4" />
     </svg>
+  );
+}
+
+/**
+ * Modal wrapper for FileViewer.
+ */
+function FileViewerModal({
+  projectId,
+  filePath,
+  lineNumber,
+  onClose,
+}: {
+  projectId: string;
+  filePath: string;
+  lineNumber?: number;
+  onClose: () => void;
+}) {
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
+  }, [onClose]);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, []);
+
+  return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape key handled in useEffect, click is for overlay dismiss
+    <div
+      className="file-viewer-modal-overlay"
+      onClick={handleOverlayClick}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: click only stops propagation, keyboard handled globally */}
+      <dialog
+        className="file-viewer-modal"
+        open
+        onClick={(e) => e.stopPropagation()}
+      >
+        <FileViewer
+          projectId={projectId}
+          filePath={filePath}
+          lineNumber={lineNumber}
+          onClose={onClose}
+        />
+      </dialog>
+    </div>
   );
 }

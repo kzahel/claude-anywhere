@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuestionOtherDrafts } from "../hooks/useDrafts";
 import type { InputRequest } from "../types";
 import type { AskUserQuestionInput, Question } from "./renderers/tools/types";
 
 interface Props {
   request: InputRequest;
+  sessionId: string;
   onSubmit: (answers: Record<string, string>) => Promise<void>;
   onDeny: () => Promise<void>;
 }
@@ -12,13 +14,20 @@ interface Props {
  * Panel for answering AskUserQuestion tool calls.
  * Shows one question at a time with tabs to navigate between them.
  */
-export function QuestionAnswerPanel({ request, onSubmit, onDeny }: Props) {
+export function QuestionAnswerPanel({
+  request,
+  sessionId,
+  onSubmit,
+  onDeny,
+}: Props) {
   const input = request.toolInput as AskUserQuestionInput;
   const questions = input?.questions || [];
 
   const [currentTab, setCurrentTab] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [otherTexts, setOtherTexts] = useState<Record<string, string>>({});
+  // Persist "Other" text inputs to localStorage keyed by sessionId
+  const [otherTexts, setOtherText, clearOtherTexts] =
+    useQuestionOtherDrafts(sessionId);
   const [submitting, setSubmitting] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
@@ -41,10 +50,17 @@ export function QuestionAnswerPanel({ request, onSubmit, onDeny }: Props) {
     return true;
   });
 
-  // Focus the "other" input when it's selected
+  // Focus the "other" input when it's selected and scroll it into view
   useEffect(() => {
     if (isOtherSelected && otherInputRef.current) {
       otherInputRef.current.focus();
+      // Scroll input into view after a short delay to allow keyboard to open
+      setTimeout(() => {
+        otherInputRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }, 100);
     }
   }, [isOtherSelected]);
 
@@ -62,12 +78,9 @@ export function QuestionAnswerPanel({ request, onSubmit, onDeny }: Props) {
   const handleOtherTextChange = useCallback(
     (text: string) => {
       if (!currentQuestion) return;
-      setOtherTexts((prev) => ({
-        ...prev,
-        [currentQuestion.question]: text,
-      }));
+      setOtherText(currentQuestion.question, text);
     },
-    [currentQuestion],
+    [currentQuestion, setOtherText],
   );
 
   const advanceToNext = useCallback(() => {
@@ -93,10 +106,20 @@ export function QuestionAnswerPanel({ request, onSubmit, onDeny }: Props) {
     setSubmitting(true);
     try {
       await onSubmit(finalAnswers);
+      // Clear "Other" drafts from localStorage on successful submit
+      clearOtherTexts();
     } finally {
       setSubmitting(false);
     }
-  }, [allAnswered, submitting, questions, answers, otherTexts, onSubmit]);
+  }, [
+    allAnswered,
+    submitting,
+    questions,
+    answers,
+    otherTexts,
+    onSubmit,
+    clearOtherTexts,
+  ]);
 
   const handleDeny = useCallback(async () => {
     setSubmitting(true);

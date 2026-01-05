@@ -1,5 +1,6 @@
 import type { ProcessStateType } from "../hooks/useFileActivity";
 import type { SessionStatus } from "../types";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 type BadgeVariant = "owned" | "external" | "idle";
 type NotificationVariant = "needs-input" | "unread";
@@ -71,7 +72,7 @@ export function SessionStatusBadge({
 
   // Priority 2: Running (agent is thinking) - show pulsing indicator
   if (processState === "running") {
-    return <span className="status-badge status-running">Thinking</span>;
+    return <ThinkingIndicator variant="pill" />;
   }
 
   // Unread content is now handled via CSS class on session list item

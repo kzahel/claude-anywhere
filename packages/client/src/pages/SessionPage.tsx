@@ -8,9 +8,16 @@ import { MessageList } from "../components/MessageList";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { SessionMenu } from "../components/SessionMenu";
-import { StatusIndicator } from "../components/StatusIndicator";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
+import {
+  EditAugmentProvider,
+  useEditAugmentContext,
+} from "../contexts/EditAugmentContext";
+import {
+  MarkdownAugmentProvider,
+  useMarkdownAugmentContext,
+} from "../contexts/MarkdownAugmentContext";
 import {
   StreamingMarkdownProvider,
   useStreamingMarkdownContext,
@@ -20,7 +27,9 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import type { DraftControls } from "../hooks/useDraftPersistence";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
+import { recordSessionVisit } from "../hooks/useRecentSessions";
 import {
+  type EditAugmentCallbacks,
   type StreamingMarkdownCallbacks,
   useSession,
 } from "../hooks/useSession";
@@ -41,14 +50,21 @@ export function SessionPage() {
   }
 
   // Key ensures component remounts on session change, resetting all state
-  // Wrap with StreamingMarkdownProvider for server-rendered markdown streaming
+  // Wrap with providers for server-rendered content:
+  // - StreamingMarkdownProvider: SSE augments during streaming
+  // - MarkdownAugmentProvider: Pre-rendered HTML for historical messages
+  // - EditAugmentProvider: Pre-computed unified diffs
   return (
     <StreamingMarkdownProvider>
-      <SessionPageContent
-        key={sessionId}
-        projectId={projectId}
-        sessionId={sessionId}
-      />
+      <MarkdownAugmentProvider>
+        <EditAugmentProvider>
+          <SessionPageContent
+            key={sessionId}
+            projectId={projectId}
+            sessionId={sessionId}
+          />
+        </EditAugmentProvider>
+      </MarkdownAugmentProvider>
     </StreamingMarkdownProvider>
   );
 }
@@ -81,18 +97,89 @@ function SessionPageContent({
   // Get streaming markdown context for server-rendered markdown streaming
   const streamingMarkdownContext = useStreamingMarkdownContext();
 
+  // Get markdown augment context for pre-rendered HTML on reload
+  const markdownAugmentContext = useMarkdownAugmentContext();
+
+  // Get edit augment context for pre-computed unified diffs
+  const editAugmentContext = useEditAugmentContext();
+
+  // Buffer for accumulating markdown blocks during streaming.
+  // Key: messageId, Value: array of block HTML strings indexed by blockIndex.
+  // On each augment, we store the concatenated HTML in MarkdownAugmentContext
+  // so content survives component remounts during streaming.
+  const streamingBlocksRef = useRef<Map<string, string[]>>(new Map());
+
   // Memoize the callbacks object to avoid recreating on every render
   const streamingMarkdownCallbacks = useMemo<
     StreamingMarkdownCallbacks | undefined
   >(() => {
     if (!streamingMarkdownContext) return undefined;
     return {
-      onAugment: streamingMarkdownContext.dispatchAugment,
+      onAugment: (augment) => {
+        // Dispatch to streaming handler for real-time rendering (via DOM refs)
+        streamingMarkdownContext.dispatchAugment(augment);
+
+        // Debug: Log augment messageId for troubleshooting transition issues
+        if (typeof window !== "undefined" && window.__STREAMING_DEBUG__) {
+          console.log("[SessionPage] onAugment:", {
+            messageId: augment.messageId,
+            blockIndex: augment.blockIndex,
+            htmlLength: augment.html?.length ?? 0,
+            hasMessageId: !!augment.messageId,
+          });
+        }
+
+        // Accumulate blocks for this message and store in context immediately.
+        // This ensures content survives component remounts during streaming.
+        if (augment.messageId) {
+          // Get or create the blocks array for this message
+          const blocks =
+            streamingBlocksRef.current.get(augment.messageId) ?? [];
+          blocks[augment.blockIndex] = augment.html;
+          streamingBlocksRef.current.set(augment.messageId, blocks);
+
+          // Store concatenated HTML at the correct key (messageId-0).
+          // This matches how historical augments are keyed in computeMarkdownAugments().
+          const fullHtml = blocks.filter(Boolean).join("\n");
+          const augmentKey = `${augment.messageId}-0`;
+
+          if (typeof window !== "undefined" && window.__STREAMING_DEBUG__) {
+            console.log("[SessionPage] Storing augment at key:", augmentKey, {
+              fullHtmlLength: fullHtml.length,
+              blockCount: blocks.filter(Boolean).length,
+            });
+          }
+
+          markdownAugmentContext?.setAugment(augmentKey, {
+            html: fullHtml,
+          });
+        } else if (typeof window !== "undefined" && window.__STREAMING_DEBUG__) {
+          console.warn(
+            "[SessionPage] Augment arrived WITHOUT messageId - not stored in context!",
+            augment,
+          );
+        }
+      },
       onPending: streamingMarkdownContext.dispatchPending,
-      onStreamEnd: streamingMarkdownContext.dispatchStreamEnd,
+      onStreamEnd: () => {
+        // Dispatch to streaming handler
+        streamingMarkdownContext.dispatchStreamEnd();
+        // Clear the streaming blocks buffer for the next message
+        streamingBlocksRef.current.clear();
+      },
       setCurrentMessageId: streamingMarkdownContext.setCurrentMessageId,
     };
-  }, [streamingMarkdownContext]);
+  }, [streamingMarkdownContext, markdownAugmentContext]);
+
+  // Memoize edit augment callbacks for SSE events
+  const editAugmentCallbacks = useMemo<EditAugmentCallbacks | undefined>(() => {
+    if (!editAugmentContext) return undefined;
+    return {
+      onEditAugment: (augment) => {
+        editAugmentContext.setAugment(augment.toolUseId, augment);
+      },
+    };
+  }, [editAugmentContext]);
 
   const {
     session,
@@ -100,6 +187,8 @@ function SessionPageContent({
     agentContent,
     setAgentContent,
     toolUseToAgent,
+    editAugments,
+    markdownAugments,
     status,
     processState,
     pendingInputRequest,
@@ -122,6 +211,7 @@ function SessionPageContent({
     sessionId,
     initialStatus,
     streamingMarkdownCallbacks,
+    editAugmentCallbacks,
   );
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
@@ -160,6 +250,37 @@ function SessionPageContent({
     setLocalIsStarred(undefined);
     setLocalHasUnread(undefined);
   }, [sessionId]);
+
+  // Track this session visit for "Recent sessions" feature
+  useEffect(() => {
+    recordSessionVisit(sessionId, projectId);
+  }, [sessionId, projectId]);
+
+  // Store augment contexts in refs to avoid dependency issues
+  const editAugmentContextRef = useRef(editAugmentContext);
+  editAugmentContextRef.current = editAugmentContext;
+  const markdownAugmentContextRef = useRef(markdownAugmentContext);
+  markdownAugmentContextRef.current = markdownAugmentContext;
+
+  // Load edit augments from REST response into context
+  // This runs when editAugments changes (on initial load or refetch)
+  // Note: editAugmentContext is accessed via ref to avoid infinite loops
+  // (calling setAugments changes the context's version, which would retrigger this effect)
+  useEffect(() => {
+    const ctx = editAugmentContextRef.current;
+    if (editAugments && ctx && Object.keys(editAugments).length > 0) {
+      ctx.setAugments(editAugments);
+    }
+  }, [editAugments]);
+
+  // Load markdown augments from REST response into context
+  // Similar pattern to edit augments - pre-rendered HTML for historical messages
+  useEffect(() => {
+    const ctx = markdownAugmentContextRef.current;
+    if (markdownAugments && ctx && Object.keys(markdownAugments).length > 0) {
+      ctx.setAugments(markdownAugments);
+    }
+  }, [markdownAugments]);
 
   // File attachment state
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
@@ -651,12 +772,6 @@ function SessionPageContent({
                 {!loading && isArchived && (
                   <span className="archived-badge">Archived</span>
                 )}
-                {!loading && session?.provider && (
-                  <ProviderBadge
-                    provider={session.provider}
-                    model={session.model}
-                  />
-                )}
                 {!loading && (
                   <SessionMenu
                     sessionId={sessionId}
@@ -672,11 +787,15 @@ function SessionPageContent({
                 )}
               </div>
             </div>
-            <StatusIndicator
-              status={status}
-              connected={connected}
-              processState={processState}
-            />
+            {!loading && session?.provider && (
+              <ProviderBadge
+                provider={session.provider}
+                model={session.model}
+                isThinking={
+                  status.state === "owned" && processState === "running"
+                }
+              />
+            )}
           </div>
         </header>
 
@@ -727,6 +846,7 @@ function SessionPageContent({
               isAskUserQuestion && (
                 <QuestionAnswerPanel
                   request={pendingInputRequest}
+                  sessionId={sessionId}
                   onSubmit={handleQuestionSubmit}
                   onDeny={handleDeny}
                 />
@@ -739,6 +859,7 @@ function SessionPageContent({
                 <>
                   <ToolApprovalPanel
                     request={pendingInputRequest}
+                    sessionId={sessionId}
                     onApprove={handleApprove}
                     onDeny={handleDeny}
                     onApproveAcceptEdits={handleApproveAcceptEdits}

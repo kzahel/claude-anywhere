@@ -10,7 +10,7 @@ declare global {
 function debugLog(
   category: "augment" | "pending" | "event" | "dom",
   message: string,
-  data?: Record<string, unknown>
+  data?: Record<string, unknown>,
 ): void {
   if (typeof window !== "undefined" && window.__STREAMING_DEBUG__) {
     const prefix = {
@@ -44,6 +44,8 @@ export interface AugmentEvent {
   blockIndex: number;
   html: string;
   type: string;
+  /** Message ID for persisting augments to context */
+  messageId?: string;
 }
 
 export interface PendingEvent {
@@ -104,7 +106,10 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
     });
 
     if (!container) {
-      debugLog("augment", "ERROR: containerRef.current is null - refs not attached!");
+      debugLog(
+        "augment",
+        "ERROR: containerRef.current is null - refs not attached!",
+      );
       return;
     }
 
@@ -141,7 +146,10 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
       // This is the newest block, append to end
       container.appendChild(blockElement);
       maxBlockIndexRef.current = blockIndex;
-      debugLog("dom", "Appended block to end", { blockIndex, maxBlockIndex: maxBlockIndexRef.current });
+      debugLog("dom", "Appended block to end", {
+        blockIndex,
+        maxBlockIndex: maxBlockIndexRef.current,
+      });
     } else {
       // Out-of-order block, find where to insert
       let inserted = false;
@@ -155,7 +163,10 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
         if (childIndex > blockIndex) {
           container.insertBefore(blockElement, child);
           inserted = true;
-          debugLog("dom", "Inserted block before", { blockIndex, beforeIndex: childIndex });
+          debugLog("dom", "Inserted block before", {
+            blockIndex,
+            beforeIndex: childIndex,
+          });
           break;
         }
       }
@@ -167,7 +178,9 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
 
     // Track this block
     blocksRef.current.set(blockIndex, blockElement);
-    debugLog("dom", "Block tracking updated", { totalBlocks: blocksRef.current.size });
+    debugLog("dom", "Block tracking updated", {
+      totalBlocks: blocksRef.current.size,
+    });
   }, []);
 
   /**
@@ -183,7 +196,10 @@ export function useStreamingMarkdown(): StreamingMarkdownState & {
     });
 
     if (!pendingElement) {
-      debugLog("pending", "ERROR: pendingRef.current is null - refs not attached!");
+      debugLog(
+        "pending",
+        "ERROR: pendingRef.current is null - refs not attached!",
+      );
       return;
     }
 

@@ -25,6 +25,9 @@ export function useSessions(projectId: string | undefined) {
   const hasInitialLoadRef = useRef(false);
   // Track which project we loaded so we can reset on project change
   const loadedProjectIdRef = useRef<string | undefined>(undefined);
+  // Track sessions in a ref so callbacks can read current state without depending on it
+  const sessionsRef = useRef<SessionSummary[]>([]);
+  sessionsRef.current = sessions;
   // Track process state (running/waiting-input) per session for activity indicators
   const [processStates, setProcessStates] = useState<
     Record<string, ProcessStateType>
@@ -40,10 +43,10 @@ export function useSessions(projectId: string | undefined) {
     }
 
     // Only show loading state on initial load, not on refetches
-    setSessions((prev) => {
-      if (prev.length === 0) setLoading(true);
-      return prev;
-    });
+    // Use sessionsRef to check without depending on sessions state
+    if (sessionsRef.current.length === 0) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const data = await api.getProject(projectId);
@@ -119,17 +122,13 @@ export function useSessions(projectId: string | undefined) {
       const sessionId = match?.[1];
       if (!sessionId) return;
 
-      // Check if this session is in our current list
-      // This handles both internally managed sessions (by sessionId) and ensures
-      // we refetch when any session in this project changes
-      setSessions((prev) => {
-        const sessionExists = prev.some((s) => s.id === sessionId);
-        if (sessionExists) {
-          // Trigger refetch for updates to existing sessions
-          debouncedRefetch();
-        }
-        return prev;
-      });
+      // Check if this session is in our current list using the ref
+      // This avoids calling side effects inside a state updater
+      const sessionExists = sessionsRef.current.some((s) => s.id === sessionId);
+      if (sessionExists) {
+        // Trigger refetch for updates to existing sessions
+        debouncedRefetch();
+      }
     },
     [debouncedRefetch],
   );

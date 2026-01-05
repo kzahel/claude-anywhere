@@ -418,9 +418,7 @@ export class GeminiSessionReader implements ISessionReader {
   /**
    * Extract the model from the first assistant message.
    */
-  private extractModel(
-    messages: GeminiSessionMessage[],
-  ): string | undefined {
+  private extractModel(messages: GeminiSessionMessage[]): string | undefined {
     // Find the first assistant message with a model field
     for (const msg of messages) {
       if (msg.type === "gemini") {

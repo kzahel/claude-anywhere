@@ -999,6 +999,49 @@ details[open] .collapsible__icon {
   color: var(--text-muted);
 }
 
+/* Highlighted diff from shiki */
+.highlighted-diff {
+  font-family: "SF Mono", Monaco, monospace;
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+}
+
+.highlighted-diff pre.shiki {
+  margin: 0;
+  padding: 0.5rem;
+  background: var(--bg-code) !important;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.highlighted-diff code {
+  background: transparent;
+  /* Remove whitespace between line spans */
+  display: flex;
+  flex-direction: column;
+}
+
+.highlighted-diff .line {
+  padding: 0 0.5rem;
+}
+
+/* Diff line background colors */
+.highlighted-diff .line-deleted {
+  background: var(--bg-diff-deleted, rgba(248, 81, 73, 0.15));
+}
+
+.highlighted-diff .line-inserted {
+  background: var(--bg-diff-inserted, rgba(63, 185, 80, 0.15));
+}
+
+.highlighted-diff .line-hunk {
+  display: none;
+}
+
+.highlighted-diff .line-context {
+  background: transparent;
+}
+
 /* Diff view container with truncation */
 .diff-view-container {
   position: relative;
@@ -1770,6 +1813,15 @@ details[open] .collapsible__icon {
   white-space: nowrap;
 }
 
+/* Real-time context usage during streaming */
+.task-context-usage {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ==========================================================================
    WebSearch Tool
    ========================================================================== */
@@ -2505,6 +2557,32 @@ details[open] .collapsible__icon {
   box-shadow: none !important;
 }
 
+/* Server-rendered Shiki highlighting container */
+.file-viewer-code-highlighted .shiki-container {
+  padding: 0.75rem;
+}
+
+.file-viewer-code-highlighted .shiki-container pre.shiki {
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  overflow-x: auto;
+}
+
+.file-viewer-code-highlighted .shiki-container code {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.file-viewer-truncated {
+  padding: 0.5rem 0.75rem;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
 /* Modal code content containers */
 .file-content-modal,
 .diff-modal-content {
@@ -2760,6 +2838,19 @@ pre.code-highlighter-plain code {
 .file-path-link-line {
   color: var(--text-muted);
   text-decoration: none;
+}
+
+/* Server-rendered file links (from markdown augments) */
+.file-link {
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.15s;
+}
+
+.file-link:hover {
+  text-decoration-color: currentColor;
 }
 
 /* ==========================================================================

@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
 import { useRecentProjects } from "../hooks/useRecentProjects";
+import { AgentsNavItem } from "./AgentsNavItem";
 import {
   SidebarIcons,
   SidebarNavItem,
   SidebarNavSection,
 } from "./SidebarNavItem";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 import { YepAnywhereLogo } from "./YepAnywhereLogo";
 
 const SWIPE_THRESHOLD = 50;
@@ -213,17 +215,18 @@ export function NavigationSidebar({
               onClick={onClose}
             />
             <SidebarNavItem
+              to="/recents"
+              icon={SidebarIcons.recents}
+              label="Recents"
+              onClick={onClose}
+            />
+            <SidebarNavItem
               to="/projects"
               icon={SidebarIcons.projects}
               label="Projects"
               onClick={onClose}
             />
-            <SidebarNavItem
-              to="/agents"
-              icon={SidebarIcons.agents}
-              label="Agents"
-              onClick={onClose}
-            />
+            <AgentsNavItem onClick={onClose} />
             <SidebarNavItem
               to="/settings"
               icon={SidebarIcons.settings}
@@ -252,9 +255,7 @@ export function NavigationSidebar({
                       </span>
                       {(project.activeOwnedCount > 0 ||
                         project.activeExternalCount > 0) && (
-                        <span className="sidebar-badge sidebar-badge-running">
-                          <span className="sidebar-thinking-dot" />
-                        </span>
+                        <ThinkingIndicator />
                       )}
                     </Link>
                   </li>

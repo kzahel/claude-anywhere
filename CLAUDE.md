@@ -150,6 +150,23 @@ npx tsx scripts/validate-jsonl.ts /path/to/session.jsonl
 
 Run this after schema changes to verify compatibility with existing session data.
 
+## Validating Tool Results
+
+Validate `tool_use_result` fields from SDK raw logs against ToolResultSchemas:
+
+```bash
+# Validate sdk-raw.jsonl (default location)
+npx tsx scripts/validate-tool-results.ts
+
+# Summary only (no error details)
+npx tsx scripts/validate-tool-results.ts --summary
+
+# Filter by tool name
+npx tsx scripts/validate-tool-results.ts --tool=Edit
+```
+
+The SDK provides structured `tool_use_result` objects alongside tool results. These are logged to `~/.yep-anywhere/logs/sdk-raw.jsonl` when `LOG_SDK_MESSAGES=true` (default). Run this script after adding new tool schemas or when debugging tool result parsing.
+
 ## Type System
 
 Types are defined in `packages/shared/src/claude-sdk-schema/` (Zod schemas as source of truth).

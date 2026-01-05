@@ -20,7 +20,7 @@ describe("SessionStatusBadge", () => {
       />,
     );
 
-    const badge = container.querySelector(".status-badge.status-running");
+    const badge = container.querySelector(".thinking-indicator-pill");
     expect(badge).not.toBeNull();
     expect(badge?.textContent).toBe("Thinking");
   });
@@ -71,7 +71,7 @@ describe("SessionStatusBadge", () => {
     expect(badge).not.toBeNull();
     expect(badge?.textContent).toBe("Approval Needed");
 
-    const thinkingBadge = container.querySelector(".status-running");
+    const thinkingBadge = container.querySelector(".thinking-indicator-pill");
     expect(thinkingBadge).toBeNull();
   });
 
@@ -89,7 +89,7 @@ describe("SessionStatusBadge", () => {
       />,
     );
 
-    const thinkingBadge = container.querySelector(".status-running");
+    const thinkingBadge = container.querySelector(".thinking-indicator-pill");
     expect(thinkingBadge).not.toBeNull();
     expect(thinkingBadge?.textContent).toBe("Thinking");
   });

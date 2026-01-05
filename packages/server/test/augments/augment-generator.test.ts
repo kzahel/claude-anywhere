@@ -302,6 +302,88 @@ describe("AugmentGenerator", () => {
 
       expect(result).toBe("Just plain text here");
     });
+
+    describe("fenced code blocks", () => {
+      it("renders incomplete fenced code block with language", () => {
+        const result = generator.renderPending("```typescript\nconst x = 1;");
+
+        expect(result).toBe(
+          '<pre class="shiki pending-code"><code class="language-typescript">const x = 1;</code></pre>',
+        );
+      });
+
+      it("renders incomplete fenced code block without language", () => {
+        const result = generator.renderPending("```\nsome code here");
+
+        expect(result).toBe(
+          '<pre class="shiki pending-code"><code>some code here</code></pre>',
+        );
+      });
+
+      it("renders multi-line incomplete code block", () => {
+        const result = generator.renderPending(
+          "```javascript\nfunction hello() {\n  console.log('hi');",
+        );
+
+        expect(result).toBe(
+          `<pre class="shiki pending-code"><code class="language-javascript">function hello() {\n  console.log(&#039;hi&#039;);</code></pre>`,
+        );
+      });
+
+      it("renders incomplete code block with just the fence", () => {
+        const result = generator.renderPending("```python\n");
+
+        expect(result).toBe(
+          '<pre class="shiki pending-code"><code class="language-python"></code></pre>',
+        );
+      });
+
+      it("renders incomplete code block with just fence and no newline", () => {
+        const result = generator.renderPending("```js");
+
+        expect(result).toBe(
+          '<pre class="shiki pending-code"><code class="language-js"></code></pre>',
+        );
+      });
+
+      it("renders incomplete tilde fenced code block", () => {
+        const result = generator.renderPending(
+          "~~~ruby\ndef hello\n  puts 'hi'",
+        );
+
+        expect(result).toBe(
+          `<pre class="shiki pending-code"><code class="language-ruby">def hello\n  puts &#039;hi&#039;</code></pre>`,
+        );
+      });
+
+      it("escapes HTML in pending code block", () => {
+        const result = generator.renderPending(
+          "```html\n<script>alert('xss')</script>",
+        );
+
+        expect(result).not.toContain("<script>");
+        expect(result).toContain("&lt;script&gt;");
+        expect(result).toContain('<pre class="shiki pending-code">');
+      });
+
+      it("does not treat closed code block as pending", () => {
+        // If the code block has a closing fence, don't render it as pending code
+        // (This shouldn't happen in practice since BlockDetector would emit it as complete)
+        const result = generator.renderPending("```js\ncode\n```");
+
+        // Should fall through to regular inline formatting (which escapes the backticks)
+        expect(result).not.toContain('<pre class="shiki pending-code">');
+      });
+
+      it("handles longer fence markers", () => {
+        const result = generator.renderPending("````markdown\n```js\ncode");
+
+        expect(result).toContain('<pre class="shiki pending-code">');
+        expect(result).toContain('class="language-markdown"');
+        // The inner fence should be part of the content
+        expect(result).toContain("```js");
+      });
+    });
   });
 
   describe("golden file tests", () => {

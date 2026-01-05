@@ -11,6 +11,8 @@ import { Hono } from "hono";
 export interface StaticServeOptions {
   /** Path to the built client dist directory */
   distPath: string;
+  /** Optional base path prefix to strip from requests (e.g., "/_stable") */
+  basePath?: string;
 }
 
 /**
@@ -21,7 +23,7 @@ export interface StaticServeOptions {
  * - index.html for all other routes (SPA fallback)
  */
 export function createStaticRoutes(options: StaticServeOptions): Hono {
-  const { distPath } = options;
+  const { distPath, basePath } = options;
   const app = new Hono();
 
   // Check if dist directory exists
@@ -42,7 +44,12 @@ export function createStaticRoutes(options: StaticServeOptions): Hono {
 
   // Serve static files
   app.get("*", async (c) => {
-    const reqPath = c.req.path;
+    let reqPath = c.req.path;
+
+    // Strip base path prefix if configured (e.g., "/_stable" -> "")
+    if (basePath && reqPath.startsWith(basePath)) {
+      reqPath = reqPath.slice(basePath.length) || "/";
+    }
 
     // Try to serve the exact file
     const filePath = path.join(distPath, reqPath);

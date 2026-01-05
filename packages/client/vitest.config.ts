@@ -11,5 +11,7 @@ export default defineConfig({
     globals: true,
     exclude: ["e2e/**", "node_modules/**"],
     passWithNoTests: true,
+    maxWorkers: 3,
+    minWorkers: 1,
   },
 });

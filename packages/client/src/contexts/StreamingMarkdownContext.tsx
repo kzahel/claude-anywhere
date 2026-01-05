@@ -77,13 +77,12 @@ export function StreamingMarkdownProvider({
     (handlers: StreamingHandlers): (() => void) => {
       if (
         typeof window !== "undefined" &&
-        (window as unknown as { __STREAMING_DEBUG__?: boolean }).__STREAMING_DEBUG__
+        (window as unknown as { __STREAMING_DEBUG__?: boolean })
+          .__STREAMING_DEBUG__
       ) {
-        console.log(
-          "%c[CONTEXT] Handler registered",
-          "color: #2196F3",
-          { hadPreviousHandler: !!handlersRef.current },
-        );
+        console.log("%c[CONTEXT] Handler registered", "color: #2196F3", {
+          hadPreviousHandler: !!handlersRef.current,
+        });
       }
       handlersRef.current = handlers;
       return () => {
@@ -91,7 +90,8 @@ export function StreamingMarkdownProvider({
         if (handlersRef.current === handlers) {
           if (
             typeof window !== "undefined" &&
-            (window as unknown as { __STREAMING_DEBUG__?: boolean }).__STREAMING_DEBUG__
+            (window as unknown as { __STREAMING_DEBUG__?: boolean })
+              .__STREAMING_DEBUG__
           ) {
             console.log("%c[CONTEXT] Handler unregistered", "color: #FF5722");
           }
@@ -109,16 +109,13 @@ export function StreamingMarkdownProvider({
   const dispatchAugment = useCallback((augment: AugmentEvent) => {
     if (
       typeof window !== "undefined" &&
-      (window as unknown as { __STREAMING_DEBUG__?: boolean }).__STREAMING_DEBUG__
+      (window as unknown as { __STREAMING_DEBUG__?: boolean })
+        .__STREAMING_DEBUG__
     ) {
-      console.log(
-        "%c[CONTEXT] dispatchAugment called",
-        "color: #4CAF50",
-        {
-          hasHandler: !!handlersRef.current,
-          augment: { blockIndex: augment.blockIndex, type: augment.type },
-        },
-      );
+      console.log("%c[CONTEXT] dispatchAugment called", "color: #4CAF50", {
+        hasHandler: !!handlersRef.current,
+        augment: { blockIndex: augment.blockIndex, type: augment.type },
+      });
     }
     handlersRef.current?.onAugment(augment);
   }, []);
@@ -126,16 +123,13 @@ export function StreamingMarkdownProvider({
   const dispatchPending = useCallback((pending: PendingEvent) => {
     if (
       typeof window !== "undefined" &&
-      (window as unknown as { __STREAMING_DEBUG__?: boolean }).__STREAMING_DEBUG__
+      (window as unknown as { __STREAMING_DEBUG__?: boolean })
+        .__STREAMING_DEBUG__
     ) {
-      console.log(
-        "%c[CONTEXT] dispatchPending called",
-        "color: #FF9800",
-        {
-          hasHandler: !!handlersRef.current,
-          htmlLength: pending.html.length,
-        },
-      );
+      console.log("%c[CONTEXT] dispatchPending called", "color: #FF9800", {
+        hasHandler: !!handlersRef.current,
+        htmlLength: pending.html.length,
+      });
     }
     handlersRef.current?.onPending(pending);
   }, []);

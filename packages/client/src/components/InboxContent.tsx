@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { type InboxItem, useInbox } from "../hooks/useInbox";
-import { ActivityIndicator } from "./ActivityIndicator";
+import type { Project } from "../types";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 /**
  * Format relative time from a timestamp to now.
@@ -108,9 +109,7 @@ function InboxSection({ config, items, hideProjectName }: InboxSectionProps) {
                         {badge.label}
                       </span>
                     )}
-                    {config.key === "active" && (
-                      <ActivityIndicator variant="badge" />
-                    )}
+                    {config.key === "active" && <ThinkingIndicator />}
                   </div>
                   <div className="inbox-item-meta">
                     {!hideProjectName && (
@@ -135,20 +134,20 @@ function InboxSection({ config, items, hideProjectName }: InboxSectionProps) {
 export interface InboxContentProps {
   /** Optional projectId to filter inbox to a single project */
   projectId?: string;
-  /** When true, hides project names in items (for project-specific inbox) */
-  hideProjectName?: boolean;
-  /** When true, shows link to global inbox (for project-specific inbox) */
-  showGlobalInboxLink?: boolean;
+  /** List of projects for the filter dropdown */
+  projects?: Project[];
+  /** Callback when project filter changes */
+  onProjectChange?: (projectId: string | undefined) => void;
 }
 
 /**
- * Shared inbox content component used by both global and project-specific inbox pages.
+ * Shared inbox content component.
  * Handles fetching, displaying tiers, refresh button, and empty/loading/error states.
  */
 export function InboxContent({
   projectId,
-  hideProjectName,
-  showGlobalInboxLink,
+  projects,
+  onProjectChange,
 }: InboxContentProps) {
   const {
     needsAttention,
@@ -181,30 +180,30 @@ export function InboxContent({
 
   const isEmpty = totalItems === 0 && !loading;
 
+  const handleProjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    onProjectChange?.(value === "" ? undefined : value);
+  };
+
   return (
     <main className="page-scroll-container">
       <div className="page-content-inner inbox-content">
-        {/* Toolbar with refresh button and optional global inbox link */}
+        {/* Toolbar with project filter and refresh button */}
         <div className="inbox-toolbar">
-          {showGlobalInboxLink && (
-            <Link to="/inbox" className="inbox-global-button">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="2" y1="12" x2="22" y2="12" />
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-              </svg>
-              Global Inbox
-            </Link>
+          {projects && projects.length > 0 && (
+            <select
+              className="inbox-project-filter"
+              value={projectId ?? ""}
+              onChange={handleProjectChange}
+              aria-label="Filter by project"
+            >
+              <option value="">All Projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
           )}
           <button
             type="button"
@@ -269,7 +268,7 @@ export function InboxContent({
                 key={config.key}
                 config={config}
                 items={tierData[config.key] ?? []}
-                hideProjectName={hideProjectName}
+                hideProjectName={!!projectId}
               />
             ))}
           </div>

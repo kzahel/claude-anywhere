@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
+  type EditInput,
+  computeEditAugment,
+} from "../augments/edit-augments.js";
+import {
   type StreamCoordinator,
   createStreamCoordinator,
 } from "../augments/index.js";
@@ -34,6 +38,10 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
       let coordinator: StreamCoordinator | null = null;
       let coordinatorInitPromise: Promise<StreamCoordinator> | null = null;
 
+      // Track current streaming message ID (from message_start events)
+      // Used to key augment events so client can persist them for the final message
+      let currentStreamingMessageId: string | null = null;
+
       const getCoordinator = async (): Promise<StreamCoordinator> => {
         if (coordinator) return coordinator;
         if (!coordinatorInitPromise) {
@@ -64,6 +72,24 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         return null;
       };
 
+      // Helper to extract message ID from message_start stream events
+      // Returns the message ID if this is a message_start event, otherwise null
+      const extractMessageIdFromStart = (
+        message: Record<string, unknown>,
+      ): string | null => {
+        if (message.type !== "stream_event") return null;
+
+        const event = message.event as Record<string, unknown> | undefined;
+        if (!event || event.type !== "message_start") return null;
+
+        const msg = event.message as Record<string, unknown> | undefined;
+        if (msg && typeof msg.id === "string") {
+          return msg.id;
+        }
+
+        return null;
+      };
+
       // Helper to check if a message is a message_stop event (end of response)
       const isMessageStop = (message: Record<string, unknown>): boolean => {
         if (message.type !== "stream_event") return false;
@@ -71,8 +97,56 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         return event?.type === "message_stop";
       };
 
+      // Helper to extract Edit tool_use from assistant messages
+      // Returns the tool_use id and input if found, null otherwise
+      const extractEditToolUse = (
+        message: Record<string, unknown>,
+      ): { toolUseId: string; input: EditInput } | null => {
+        // Must be an assistant message
+        if (message.type !== "assistant") return null;
+
+        // Check for content array with tool_use blocks
+        const content = message.content;
+        if (!Array.isArray(content)) return null;
+
+        // Look for Edit tool_use blocks
+        for (const block of content) {
+          if (
+            typeof block === "object" &&
+            block !== null &&
+            (block as Record<string, unknown>).type === "tool_use" &&
+            (block as Record<string, unknown>).name === "Edit"
+          ) {
+            const toolUseBlock = block as Record<string, unknown>;
+            const input = toolUseBlock.input as Record<string, unknown>;
+
+            // Validate input has required fields
+            if (
+              typeof toolUseBlock.id === "string" &&
+              typeof input?.file_path === "string" &&
+              typeof input?.old_string === "string" &&
+              typeof input?.new_string === "string"
+            ) {
+              return {
+                toolUseId: toolUseBlock.id,
+                input: {
+                  file_path: input.file_path,
+                  old_string: input.old_string,
+                  new_string: input.new_string,
+                },
+              };
+            }
+          }
+        }
+
+        return null;
+      };
+
       // Helper to process text through StreamCoordinator and emit augments
       const processTextChunk = async (text: string): Promise<void> => {
+        // Capture message ID at call time (before async operations)
+        const messageId = currentStreamingMessageId;
+
         try {
           const coord = await getCoordinator();
           const result = await coord.onChunk(text);
@@ -86,6 +160,8 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
                 blockIndex: augment.blockIndex,
                 html: augment.html,
                 type: augment.type,
+                // Include message ID so client can persist augments for final message
+                ...(messageId ? { messageId } : {}),
               }),
             });
           }
@@ -95,7 +171,10 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
             await stream.writeSSE({
               id: String(eventId++),
               event: "pending",
-              data: JSON.stringify({ html: result.pendingHtml }),
+              data: JSON.stringify({
+                html: result.pendingHtml,
+                ...(messageId ? { messageId } : {}),
+              }),
             });
           }
         } catch (err) {
@@ -111,6 +190,9 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
       const flushCoordinator = async (): Promise<void> => {
         if (!coordinator) return;
 
+        // Capture message ID at call time (before async operations)
+        const messageId = currentStreamingMessageId;
+
         try {
           const result = await coordinator.flush();
 
@@ -123,6 +205,8 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
                 blockIndex: augment.blockIndex,
                 html: augment.html,
                 type: augment.type,
+                // Include message ID so client can persist augments for final message
+                ...(messageId ? { messageId } : {}),
               }),
             });
           }
@@ -199,14 +283,48 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         try {
           switch (event.type) {
             case "message": {
-              // Send the message to client first (raw text delivery)
+              // Check for Edit tool_use - compute and send augment BEFORE raw message
+              // This ensures client has rendering data ready when message arrives
+              const editToolUse = extractEditToolUse(
+                event.message as Record<string, unknown>,
+              );
+              if (editToolUse) {
+                try {
+                  const augment = await computeEditAugment(
+                    editToolUse.toolUseId,
+                    editToolUse.input,
+                  );
+                  await stream.writeSSE({
+                    id: String(eventId++),
+                    event: "edit-augment",
+                    data: JSON.stringify(augment),
+                  });
+                } catch (err) {
+                  // Log warning but don't block message delivery
+                  log.warn(
+                    { err, sessionId, toolUseId: editToolUse.toolUseId },
+                    "Failed to compute edit augment",
+                  );
+                }
+              }
+
+              // Send the message to client (raw text delivery)
               await stream.writeSSE({
                 id: String(eventId++),
                 event: "message",
                 data: JSON.stringify(markSubagent(event.message)),
               });
 
-              // Process text deltas through StreamCoordinator for augments
+              // Capture message ID from message_start events
+              // This ID is included in augment events so client can key them for the final message
+              const startMessageId = extractMessageIdFromStart(
+                event.message as Record<string, unknown>,
+              );
+              if (startMessageId) {
+                currentStreamingMessageId = startMessageId;
+              }
+
+              // Process text deltas through StreamCoordinator for markdown augments
               // This runs after raw delivery so it doesn't block streaming
               const textDelta = extractTextDelta(
                 event.message as Record<string, unknown>,
@@ -219,6 +337,8 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
               // Flush coordinator when message stream ends
               if (isMessageStop(event.message as Record<string, unknown>)) {
                 flushCoordinator();
+                // Clear message ID after flush completes (async, but ID is captured in closure)
+                currentStreamingMessageId = null;
               }
               break;
             }

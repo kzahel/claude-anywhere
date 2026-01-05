@@ -6,7 +6,8 @@
  * formatting for pending/incomplete text during streaming.
  */
 
-import { marked } from "marked";
+import { transformFilePathsToHtml } from "@yep-anywhere/shared";
+import { Marked, type MarkedExtension, type Tokens, marked } from "marked";
 import {
   type BundledLanguage,
   type Highlighter,
@@ -153,28 +154,84 @@ function renderPlainCodeBlock(code: string, lang: string): string {
 }
 
 /**
+ * Create a marked extension that transforms file paths into clickable links.
+ * This is applied to text content in the rendered markdown.
+ */
+function createFilePathExtension(): MarkedExtension {
+  return {
+    renderer: {
+      // Override text rendering to detect file paths
+      text(token: Tokens.Text | Tokens.Escape): string {
+        // Transform file paths in text content
+        return transformFilePathsToHtml(token.text, escapeHtml);
+      },
+      // Override codespan (inline code) to detect file paths
+      codespan(token: Tokens.Codespan): string {
+        const code = token.text;
+        // Check if the entire inline code is a file path
+        // Only linkify if it contains a directory separator
+        if (code.includes("/")) {
+          const transformed = transformFilePathsToHtml(code, escapeHtml);
+          // If transformation added a link, wrap in code tags
+          if (transformed.includes("<a ")) {
+            return `<code>${transformed}</code>`;
+          }
+        }
+        return `<code>${escapeHtml(code)}</code>`;
+      },
+    },
+  };
+}
+
+// Create a configured marked instance with file path extension
+const markedWithFilePaths = new Marked(createFilePathExtension());
+
+/**
  * Render a non-code markdown block using marked.
  */
 function renderMarkdownBlock(block: CompletedBlock): string {
-  // Use marked to render the markdown
-  const html = marked.parse(block.content, { async: false }) as string;
+  // Use marked with file path extension to render the markdown
+  const html = markedWithFilePaths.parse(block.content, {
+    async: false,
+  }) as string;
   return html.trim();
 }
 
 /**
  * Render lightweight inline formatting for pending/streaming text.
- * Handles: **bold**, *italic*, `code`, [text](url)
+ * Handles: **bold**, *italic*, `code`, [text](url), file paths, and fenced code blocks.
  */
 function renderInlineFormatting(text: string): string {
-  // Escape HTML first
-  let result = escapeHtml(text);
+  // Check for fenced code block at the start (incomplete, no closing fence)
+  const fenceMatch = text.match(/^(`{3,}|~{3,})(\w*)\n?([\s\S]*)$/);
+  if (fenceMatch) {
+    const [, fence, lang, code] = fenceMatch;
+    // Check if the code block is already closed (has matching closing fence)
+    const closingFencePattern = new RegExp(`^${fence}\\s*$`, "m");
+    if (!closingFencePattern.test(code ?? "")) {
+      // Incomplete code block - render as <pre><code>
+      const escapedCode = escapeHtml(code ?? "");
+      const langClass = lang ? ` class="language-${escapeHtml(lang)}"` : "";
+      return `<pre class="shiki pending-code"><code${langClass}>${escapedCode}</code></pre>`;
+    }
+  }
 
-  // Bold: **text**
-  result = result.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  // Regular inline formatting for non-code-block text
+  // First, transform file paths to HTML (this also escapes the non-link parts)
+  let result = transformFilePathsToHtml(text, escapeHtml);
+
+  // Bold: **text** (use negative lookbehind to avoid matching inside file-link tags)
+  result = result.replace(
+    /(?<!<[^>]*)\*\*([^*]+)\*\*(?![^<]*>)/g,
+    "<strong>$1</strong>",
+  );
 
   // Italic: *text* (but not if it's actually bold marker)
-  // Use negative lookbehind/lookahead to avoid matching inside bold
-  result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
+  // Use negative lookbehind/lookahead to avoid matching inside bold or tags
+  result = result.replace(
+    /(?<!<[^>]*)(?<!\*)\*([^*]+)\*(?!\*)(?![^<]*>)/g,
+    "<em>$1</em>",
+  );
 
   // Inline code: `text`
   result = result.replace(/`([^`]+)`/g, "<code>$1</code>");

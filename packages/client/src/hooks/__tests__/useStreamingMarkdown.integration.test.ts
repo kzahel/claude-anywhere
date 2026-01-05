@@ -68,7 +68,7 @@ describe("useStreamingMarkdown integration", () => {
     for (let i = 0; i < container.children.length; i++) {
       const child = container.children[i] as HTMLElement;
       console.log(
-        `  [${i}] blockIndex=${child.dataset.blockIndex}, innerHTML=${child.innerHTML.substring(0, 50)}...`
+        `  [${i}] blockIndex=${child.dataset.blockIndex}, innerHTML=${child.innerHTML.substring(0, 50)}...`,
       );
     }
     console.log("Pending innerHTML:", pending.innerHTML || "(empty)");
@@ -184,15 +184,15 @@ describe("useStreamingMarkdown integration", () => {
       expect(container.children.length).toBe(2);
       expect(container.children[0]?.innerHTML).toBe("<h1>Welcome</h1>");
       expect(container.children[1]?.innerHTML).toBe(
-        "<p>This is a paragraph with some content.</p>"
+        "<p>This is a paragraph with some content.</p>",
       );
 
       // Verify order by blockIndex attributes
       expect((container.children[0] as HTMLElement).dataset.blockIndex).toBe(
-        "0"
+        "0",
       );
       expect((container.children[1] as HTMLElement).dataset.blockIndex).toBe(
-        "1"
+        "1",
       );
 
       console.log("=== SCENARIO 2 COMPLETE ===\n");
@@ -433,16 +433,16 @@ describe("useStreamingMarkdown integration", () => {
       // Verify correct order
       expect(container.children.length).toBe(4);
       expect((container.children[0] as HTMLElement).dataset.blockIndex).toBe(
-        "0"
+        "0",
       );
       expect((container.children[1] as HTMLElement).dataset.blockIndex).toBe(
-        "1"
+        "1",
       );
       expect((container.children[2] as HTMLElement).dataset.blockIndex).toBe(
-        "2"
+        "2",
       );
       expect((container.children[3] as HTMLElement).dataset.blockIndex).toBe(
-        "3"
+        "3",
       );
 
       console.log("=== SCENARIO 6 COMPLETE ===\n");
@@ -480,7 +480,7 @@ describe("useStreamingMarkdown integration", () => {
 
       expect(container.children.length).toBe(1);
       expect(container.children[0]?.innerHTML).toBe(
-        "<p>Updated content with more text</p>"
+        "<p>Updated content with more text</p>",
       );
 
       console.log("=== SCENARIO 7 COMPLETE ===\n");
