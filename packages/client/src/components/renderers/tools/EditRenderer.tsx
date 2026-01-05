@@ -1,6 +1,6 @@
+import type { EditAugment } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
-import { useEditAugment } from "../../../contexts/EditAugmentContext";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { SchemaWarning } from "../../SchemaWarning";
@@ -147,12 +147,11 @@ function DiffHunk({ hunk }: { hunk: PatchHunk }) {
  */
 function EditToolUse({
   input,
-  toolUseId,
+  augment,
 }: {
   input: EditInput;
-  toolUseId?: string;
+  augment?: EditAugment;
 }) {
-  const augment = useEditAugment(toolUseId);
   const fileName = getFileName(augment?.filePath ?? input.file_path);
   const isPlan = isPlanFile(augment?.filePath ?? input.file_path);
 
@@ -239,15 +238,14 @@ function EditCollapsedPreview({
   input,
   result,
   isError,
-  toolUseId,
+  augment,
 }: {
   input: EditInput;
   result: EditResult | undefined;
   isError: boolean;
-  toolUseId?: string;
+  augment?: EditAugment;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const augment = useEditAugment(toolUseId);
   const { enabled, reportValidationError, isToolIgnored } =
     useSchemaValidationContext();
   const [validationErrors, setValidationErrors] = useState<ZodError | null>(
@@ -574,7 +572,10 @@ export const editRenderer: ToolRenderer<EditInput, EditResult> = {
 
   renderToolUse(input, context) {
     return (
-      <EditToolUse input={input as EditInput} toolUseId={context.toolUseId} />
+      <EditToolUse
+        input={input as EditInput}
+        augment={context.editAugment}
+      />
     );
   },
 
@@ -604,7 +605,7 @@ export const editRenderer: ToolRenderer<EditInput, EditResult> = {
         input={input as EditInput}
         result={result as EditResult | undefined}
         isError={isError}
-        toolUseId={context.toolUseId}
+        augment={context.editAugment}
       />
     );
   },

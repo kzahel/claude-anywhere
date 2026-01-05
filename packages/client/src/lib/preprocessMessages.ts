@@ -1,3 +1,4 @@
+import type { EditAugment, MarkdownAugment } from "@yep-anywhere/shared";
 import type { ContentBlock, Message } from "../types";
 import type {
   RenderItem,
@@ -7,12 +8,26 @@ import type {
 import { getMessageId } from "./mergeMessages";
 
 /**
+ * Augments to embed into RenderItems during preprocessing.
+ * These are pre-computed on the server for completed messages.
+ */
+export interface PreprocessAugments {
+  /** Pre-rendered markdown HTML keyed by message ID */
+  markdown?: Record<string, MarkdownAugment>;
+  /** Pre-computed unified diffs keyed by toolUseId */
+  edit?: Record<string, EditAugment>;
+}
+
+/**
  * Preprocess messages into render items, pairing tool_use with tool_result.
  *
  * This is a pure function - given the same messages, returns the same items.
  * Safe to call on every render (use useMemo).
  */
-export function preprocessMessages(messages: Message[]): RenderItem[] {
+export function preprocessMessages(
+  messages: Message[],
+  augments?: PreprocessAugments,
+): RenderItem[] {
   const items: RenderItem[] = [];
   const pendingToolCalls = new Map<string, number>(); // tool_use_id → index in items
 
@@ -27,7 +42,7 @@ export function preprocessMessages(messages: Message[]): RenderItem[] {
   }
 
   for (const msg of messages) {
-    processMessage(msg, items, pendingToolCalls, orphanedToolIds);
+    processMessage(msg, items, pendingToolCalls, orphanedToolIds, augments);
   }
 
   return items;
@@ -38,6 +53,7 @@ function processMessage(
   items: RenderItem[],
   pendingToolCalls: Map<string, number>,
   orphanedToolIds: Set<string>,
+  augments?: PreprocessAugments,
 ): void {
   const msgId = getMessageId(msg);
 
@@ -52,7 +68,6 @@ function processMessage(
       uuid: msg.uuid,
       id: msg.id,
       _isStreaming: msg._isStreaming,
-      augmentId: `${msgId}-0`,
     });
   }
 
@@ -154,6 +169,8 @@ function processMessage(
           isSubagent: msg.isSubagent,
           // Only show streaming cursor on the last text block
           isStreaming: msg._isStreaming && i === lastTextBlockIndex,
+          // Markdown augments are keyed by message ID (not block index)
+          augmentHtml: augments?.markdown?.[msgId]?.html,
         });
       }
     } else if (block.type === "thinking") {
@@ -181,6 +198,7 @@ function processMessage(
           status: isOrphaned ? "aborted" : "pending",
           sourceMessages: [msg],
           isSubagent: msg.isSubagent,
+          editAugment: augments?.edit?.[block.id],
         };
         pendingToolCalls.set(block.id, items.length);
         items.push(toolCall);
@@ -229,6 +247,7 @@ function attachToolResult(
     status: block.is_error ? "error" : "complete",
     sourceMessages: [...item.sourceMessages, resultMessage],
     isSubagent: item.isSubagent,
+    editAugment: item.editAugment,
   };
 
   items[index] = updatedItem;

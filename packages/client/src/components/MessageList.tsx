@@ -1,3 +1,4 @@
+import type { EditAugment, MarkdownAugment } from "@yep-anywhere/shared";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import type { Message } from "../types";
@@ -53,6 +54,10 @@ interface Props {
   scrollTrigger?: number;
   /** Messages waiting for server confirmation (shown as "Sending...") */
   pendingMessages?: PendingMessage[];
+  /** Pre-rendered markdown HTML from server (keyed by message ID) */
+  markdownAugments?: Record<string, MarkdownAugment>;
+  /** Pre-computed unified diffs from server (keyed by toolUseId) */
+  editAugments?: Record<string, EditAugment>;
 }
 
 export const MessageList = memo(function MessageList({
@@ -61,6 +66,8 @@ export const MessageList = memo(function MessageList({
   isProcessing = false,
   scrollTrigger = 0,
   pendingMessages = [],
+  markdownAugments,
+  editAugments,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -99,7 +106,14 @@ export const MessageList = memo(function MessageList({
   }, []);
 
   // Preprocess messages into render items and group into turns
-  const renderItems = useMemo(() => preprocessMessages(messages), [messages]);
+  const renderItems = useMemo(
+    () =>
+      preprocessMessages(messages, {
+        markdown: markdownAugments,
+        edit: editAugments,
+      }),
+    [messages, markdownAugments, editAugments],
+  );
   const turnGroups = useMemo(
     () => groupItemsIntoTurns(renderItems),
     [renderItems],

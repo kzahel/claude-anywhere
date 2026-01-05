@@ -1,6 +1,7 @@
 import type {
   EditAugment,
   FileContentResponse,
+  MarkdownAugment,
   PendingInputType,
   ProcessStateType,
   ProviderInfo,
@@ -137,6 +138,7 @@ export const api = {
       status: SessionStatus;
       pendingInputRequest?: InputRequest | null;
       editAugments?: Record<string, EditAugment>;
+      markdownAugments?: Record<string, MarkdownAugment>;
     }>(`/projects/${projectId}/sessions/${sessionId}${params}`);
   },
 

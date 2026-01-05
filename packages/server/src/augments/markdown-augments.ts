@@ -96,14 +96,18 @@ export async function renderMarkdownToHtml(markdown: string): Promise<string> {
 }
 
 /**
- * Compute markdown augments for all text blocks in messages.
+ * Compute markdown augments for text content in messages.
  *
- * Extracts text blocks from assistant messages and renders them to HTML.
- * Returns a map from block ID (messageId-blockIndex) to augment.
+ * Extracts the first text block from assistant messages and renders to HTML.
+ * Returns a map from message ID to augment.
+ *
+ * Note: Uses message ID as key (not messageId-blockIndex) because completed
+ * messages have a single text block. The streaming path handles incremental
+ * updates separately with chunk indices.
  *
  * @param messages - Array of messages from session
  * @param getMessageId - Function to get the ID of a message
- * @returns Map of block IDs to markdown augments
+ * @returns Map of message IDs to markdown augments
  */
 export async function computeMarkdownAugments(
   messages: Array<{
@@ -117,7 +121,7 @@ export async function computeMarkdownAugments(
 ): Promise<Record<string, MarkdownAugment>> {
   const augments: Record<string, MarkdownAugment> = {};
 
-  // Process all messages in parallel for each message, but blocks sequentially within
+  // Process all messages in parallel
   const messagePromises = messages.map(async (msg) => {
     // Only process assistant messages
     if (msg.type !== "assistant") return;
@@ -128,18 +132,19 @@ export async function computeMarkdownAugments(
     const content = msg.message?.content ?? msg.content;
     if (!Array.isArray(content)) return;
 
-    // Process each text block
-    for (let i = 0; i < content.length; i++) {
-      const block = content[i] as { type?: string; text?: string } | undefined;
-      if (!block || block.type !== "text" || !block.text?.trim()) continue;
+    // Find the first text block (completed messages have one text block)
+    const textBlock = content.find(
+      (b): b is { type: "text"; text: string } =>
+        b?.type === "text" && typeof b.text === "string" && b.text.trim() !== "",
+    );
 
-      const blockId = `${msgId}-${i}`;
-      try {
-        const html = await renderMarkdownToHtml(block.text);
-        augments[blockId] = { html };
-      } catch {
-        // Skip blocks that fail to render
-      }
+    if (!textBlock) return;
+
+    try {
+      const html = await renderMarkdownToHtml(textBlock.text);
+      augments[msgId] = { html };
+    } catch {
+      // Skip messages that fail to render
     }
   });
 

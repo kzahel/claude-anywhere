@@ -1,3 +1,4 @@
+import type { EditAugment } from "@yep-anywhere/shared";
 import { memo, useMemo, useState } from "react";
 import type { ToolResultData } from "../../types/renderItems";
 import { toolRegistry } from "../renderers/tools";
@@ -10,6 +11,8 @@ interface Props {
   toolInput: unknown;
   toolResult?: ToolResultData;
   status: "pending" | "complete" | "error" | "aborted";
+  /** Pre-computed unified diff for Edit tool (from server) */
+  editAugment?: EditAugment;
 }
 
 export const ToolCallRow = memo(function ToolCallRow({
@@ -18,6 +21,7 @@ export const ToolCallRow = memo(function ToolCallRow({
   toolInput,
   toolResult,
   status,
+  editAugment,
 }: Props) {
   // Check if this tool renders inline (bypasses entire tool-row structure)
   const hasInlineRenderer = toolRegistry.hasInlineRenderer(toolName);
@@ -49,8 +53,9 @@ export const ToolCallRow = memo(function ToolCallRow({
       isStreaming: status === "pending",
       theme: "dark",
       toolUseId: id,
+      editAugment,
     }),
-    [status, id],
+    [status, id, editAugment],
   );
 
   // Get structured result for interactive summary

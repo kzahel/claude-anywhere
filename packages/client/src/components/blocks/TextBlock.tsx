@@ -22,6 +22,8 @@ import { FilePathLink } from "../FilePathLink";
 interface Props {
   text: string;
   isStreaming?: boolean;
+  /** Pre-rendered HTML from server (for completed messages) */
+  augmentHtml?: string;
 }
 
 /**
@@ -59,6 +61,7 @@ function TextWithFilePaths({
 export const TextBlock = memo(function TextBlock({
   text,
   isStreaming = false,
+  augmentHtml,
 }: Props) {
   const [copied, setCopied] = useState(false);
   const agentContext = useContext(AgentContentContext);
@@ -248,8 +251,11 @@ export const TextBlock = memo(function TextBlock({
             className="streaming-pending"
           />
         </>
+      ) : augmentHtml ? (
+        // Pre-rendered HTML from server (for completed messages)
+        <div dangerouslySetInnerHTML={{ __html: augmentHtml }} />
       ) : (
-        // Fallback to react-markdown (historical messages, no augments, or stream ended)
+        // Fallback to react-markdown (no server augment available)
         <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
           {text}
         </Markdown>

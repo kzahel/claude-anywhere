@@ -39,7 +39,13 @@ export const RenderItemComponent = memo(function RenderItemComponent({
   const renderContent = () => {
     switch (item.type) {
       case "text":
-        return <TextBlock text={item.text} isStreaming={item.isStreaming} />;
+        return (
+          <TextBlock
+            text={item.text}
+            isStreaming={item.isStreaming}
+            augmentHtml={item.augmentHtml}
+          />
+        );
 
       case "thinking":
         return (
@@ -59,6 +65,7 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             toolInput={item.toolInput}
             toolResult={item.toolResult}
             status={item.status}
+            editAugment={item.editAugment}
           />
         );
 

@@ -1,4 +1,4 @@
-import type { EditAugment } from "@yep-anywhere/shared";
+import type { EditAugment, MarkdownAugment } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import {
@@ -121,6 +121,10 @@ export function useSession(
     {},
   );
 
+  // Markdown augments loaded from REST response (keyed by message ID)
+  const [markdownAugments, setMarkdownAugments] = useState<
+    Record<string, MarkdownAugment>
+  >({});
 
   // Permission mode state: localMode is UI-selected, serverMode is confirmed by server
   const [localMode, setLocalMode] = useState<PermissionMode>("default");
@@ -293,6 +297,10 @@ export function useSession(
         // Store edit augments from REST response (pre-computed unified diffs)
         if (data.editAugments) {
           setEditAugments(data.editAugments);
+        }
+        // Store markdown augments from REST response (pre-rendered HTML)
+        if (data.markdownAugments) {
+          setMarkdownAugments(data.markdownAugments);
         }
       })
       .catch(setError)
@@ -1037,6 +1045,7 @@ export function useSession(
     setAgentContent, // Setter for merging lazy-loaded agent content
     toolUseToAgent, // Mapping from Task tool_use_id → agentId (for rendering during streaming)
     editAugments, // Pre-computed unified diffs from REST response (keyed by toolUseId)
+    markdownAugments, // Pre-rendered markdown HTML from REST response (keyed by blockId)
     status,
     processState,
     isHeld: processState === "hold", // Derived from process state

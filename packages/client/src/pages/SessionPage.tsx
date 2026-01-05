@@ -121,6 +121,8 @@ function SessionPageContent({
     agentContent,
     setAgentContent,
     toolUseToAgent,
+    editAugments,
+    markdownAugments,
     status,
     processState,
     pendingInputRequest,
@@ -744,6 +746,8 @@ function SessionPageContent({
                 }
                 scrollTrigger={scrollTrigger}
                 pendingMessages={pendingMessages}
+                markdownAugments={markdownAugments}
+                editAugments={editAugments}
               />
             </AgentContentProvider>
           )}
