@@ -1,3 +1,4 @@
+import type { EditAugment } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import {
@@ -28,6 +29,11 @@ export type ProcessState = "idle" | "running" | "waiting-input" | "hold";
 export interface AgentContent {
   messages: Message[];
   status: "pending" | "running" | "completed" | "failed";
+  /** Real-time context usage from message_start events */
+  contextUsage?: {
+    inputTokens: number;
+    percentage: number;
+  };
 }
 
 /** Map of agentId → agent content */
@@ -41,10 +47,16 @@ export interface StreamingMarkdownCallbacks {
     blockIndex: number;
     html: string;
     type: string;
+    messageId?: string; // For persisting augments to context
   }) => void;
   onPending?: (pending: { html: string }) => void;
   onStreamEnd?: () => void;
   setCurrentMessageId?: (messageId: string | null) => void;
+}
+
+/** Callbacks for edit augment events (server-computed unified diffs) */
+export interface EditAugmentCallbacks {
+  onEditAugment?: (augment: EditAugment) => void;
 }
 
 export function useSession(
@@ -52,6 +64,7 @@ export function useSession(
   sessionId: string,
   initialStatus?: { state: "owned"; processId: string },
   streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
+  editAugmentCallbacks?: EditAugmentCallbacks,
 ) {
   const [session, setSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -90,6 +103,13 @@ export function useSession(
   const [lastSSEActivityAt, setLastSSEActivityAt] = useState<string | null>(
     null,
   );
+
+  // Edit augments loaded from REST response (keyed by toolUseId)
+  // SSE events are handled via callbacks, but REST responses need state
+  const [editAugments, setEditAugments] = useState<Record<string, EditAugment>>(
+    {},
+  );
+
 
   // Permission mode state: localMode is UI-selected, serverMode is confirmed by server
   const [localMode, setLocalMode] = useState<PermissionMode>("default");
@@ -282,6 +302,10 @@ export function useSession(
         // This fixes race condition where SSE connection is delayed but tool approval is pending
         if (data.pendingInputRequest) {
           setPendingInputRequest(data.pendingInputRequest);
+        }
+        // Store edit augments from REST response (pre-computed unified diffs)
+        if (data.editAugments) {
+          setEditAugments(data.editAugments);
         }
       })
       .catch(setError)
@@ -657,6 +681,30 @@ export function useSession(
               streamingMarkdownCallbacks?.setCurrentMessageId?.(
                 message.id as string,
               );
+
+              // Extract context usage for subagent progress tracking
+              if (streamAgentId) {
+                const usage = message.usage as
+                  | { input_tokens?: number }
+                  | undefined;
+                if (usage?.input_tokens) {
+                  const inputTokens = usage.input_tokens;
+                  const percentage = (inputTokens / 200000) * 100;
+                  setAgentContent((prev) => {
+                    const existing = prev[streamAgentId] ?? {
+                      messages: [],
+                      status: "running",
+                    };
+                    return {
+                      ...prev,
+                      [streamAgentId]: {
+                        ...existing,
+                        contextUsage: { inputTokens, percentage },
+                      },
+                    };
+                  });
+                }
+              }
             }
             return;
           }
@@ -939,11 +987,13 @@ export function useSession(
           blockIndex: number;
           html: string;
           type: string;
+          messageId?: string;
         };
         streamingMarkdownCallbacks?.onAugment?.({
           blockIndex: augmentData.blockIndex,
           html: augmentData.html,
           type: augmentData.type,
+          messageId: augmentData.messageId,
         });
       } else if (data.eventType === "pending") {
         // Handle streaming markdown pending text events
@@ -954,6 +1004,23 @@ export function useSession(
         streamingMarkdownCallbacks?.onPending?.({
           html: pendingData.html,
         });
+      } else if (data.eventType === "edit-augment") {
+        // Handle edit augment events (server-computed unified diffs)
+        const editAugmentData = data as {
+          eventType: string;
+          toolUseId: string;
+          type: "edit";
+          structuredPatch: EditAugment["structuredPatch"];
+          diffHtml: string;
+          filePath: string;
+        };
+        editAugmentCallbacks?.onEditAugment?.({
+          toolUseId: editAugmentData.toolUseId,
+          type: editAugmentData.type,
+          structuredPatch: editAugmentData.structuredPatch,
+          diffHtml: editAugmentData.diffHtml,
+          filePath: editAugmentData.filePath,
+        });
       }
     },
     [
@@ -962,6 +1029,7 @@ export function useSession(
       updateStreamingMessage,
       throttledUpdateStreamingMessage,
       streamingMarkdownCallbacks,
+      editAugmentCallbacks,
     ],
   );
 
@@ -994,6 +1062,7 @@ export function useSession(
     agentContent, // Subagent messages keyed by agentId (for Task tool)
     setAgentContent, // Setter for merging lazy-loaded agent content
     toolUseToAgent, // Mapping from Task tool_use_id → agentId (for rendering during streaming)
+    editAugments, // Pre-computed unified diffs from REST response (keyed by toolUseId)
     status,
     processState,
     isHeld: processState === "hold", // Derived from process state

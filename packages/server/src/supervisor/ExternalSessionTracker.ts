@@ -5,6 +5,7 @@ import {
   asDirProjectId,
 } from "@yep-anywhere/shared";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { BatchProcessor } from "../watcher/BatchProcessor.js";
 import type {
   BusEvent,
   EventBus,
@@ -63,6 +64,8 @@ export class ExternalSessionTracker {
     sessionId: string,
     projectId: UrlProjectId,
   ) => Promise<SessionSummary | null>;
+  /** Batches session parsing to prevent OOM from concurrent file reads */
+  private sessionParser: BatchProcessor<SessionSummary | null>;
 
   constructor(options: ExternalSessionTrackerOptions) {
     this.eventBus = options.eventBus;
@@ -71,6 +74,33 @@ export class ExternalSessionTracker {
     this.decayMs = options.decayMs ?? 30000;
     this.abortGraceMs = options.abortGraceMs ?? DEFAULT_ABORT_GRACE_MS;
     this.getSessionSummary = options.getSessionSummary;
+
+    // Initialize batch processor for session parsing
+    // Limits concurrent JSONL parsing to prevent OOM during bulk file operations
+    this.sessionParser = new BatchProcessor<SessionSummary | null>({
+      concurrency: 5,
+      batchMs: 300,
+      onResult: (sessionId, summary) => {
+        if (summary) {
+          // Update status to external
+          summary.status = { state: "external" };
+
+          const event: SessionCreatedEvent = {
+            type: "session-created",
+            session: summary,
+            timestamp: new Date().toISOString(),
+          };
+          this.eventBus.emit(event);
+        }
+      },
+      onError: (sessionId, error) => {
+        // Log but don't fail - session may not be readable yet
+        console.warn(
+          `[ExternalSessionTracker] Failed to read session ${sessionId}:`,
+          error.message,
+        );
+      },
+    });
 
     // Subscribe to bus events
     this.unsubscribe = options.eventBus.subscribe((event: BusEvent) => {
@@ -169,6 +199,9 @@ export class ExternalSessionTracker {
       this.unsubscribe = null;
     }
 
+    // Clear batch processor
+    this.sessionParser.dispose();
+
     // Clear all timeouts
     for (const info of this.externalSessions.values()) {
       clearTimeout(info.timeoutId);
@@ -259,52 +292,24 @@ export class ExternalSessionTracker {
       };
       this.externalSessions.set(sessionId, info);
 
-      // Emit session created event if we can get the summary
-      this.emitSessionCreated(sessionId, dirProjectId);
+      // Queue session parsing - batched to prevent OOM from bulk file operations
+      if (this.getSessionSummary) {
+        const getSessionSummary = this.getSessionSummary;
+        this.sessionParser.enqueue(sessionId, async () => {
+          const project =
+            await this.scanner.getProjectBySessionDirSuffix(dirProjectId);
+          if (!project) {
+            console.warn(
+              `[ExternalSessionTracker] Cannot emit session-created - project not found: ${dirProjectId}`,
+            );
+            return null;
+          }
+          return getSessionSummary(sessionId, project.id as UrlProjectId);
+        });
+      }
 
       // Emit status change event
       this.emitStatusChange(sessionId, dirProjectId, { state: "external" });
-    }
-  }
-
-  private async emitSessionCreated(
-    sessionId: string,
-    dirProjectId: DirProjectId,
-  ): Promise<void> {
-    if (!this.getSessionSummary) return;
-
-    // Convert directory format to URL format for events
-    const project =
-      await this.scanner.getProjectBySessionDirSuffix(dirProjectId);
-    if (!project) {
-      console.warn(
-        `[ExternalSessionTracker] Cannot emit session-created - project not found: ${dirProjectId}`,
-      );
-      return;
-    }
-
-    try {
-      const summary = await this.getSessionSummary(
-        sessionId,
-        project.id as UrlProjectId,
-      );
-      if (summary) {
-        // Update status to external
-        summary.status = { state: "external" };
-
-        const event: SessionCreatedEvent = {
-          type: "session-created",
-          session: summary,
-          timestamp: new Date().toISOString(),
-        };
-        this.eventBus.emit(event);
-      }
-    } catch (error) {
-      // Log but don't fail - session may not be readable yet
-      console.warn(
-        `[ExternalSessionTracker] Failed to read session ${sessionId}:`,
-        error,
-      );
     }
   }
 

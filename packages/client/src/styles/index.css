@@ -100,6 +100,21 @@
   --status-badge-running-text: #ffaa44;
   --status-badge-input-bg: #1a2a4a;
   --status-badge-input-text: #66aaff;
+
+  /* Shiki Syntax Highlighting (GitHub Dark inspired) */
+  --shiki-foreground: #e1e4e8;
+  --shiki-background: transparent;
+  --shiki-token-constant: #79b8ff;
+  --shiki-token-string: #9ecbff;
+  --shiki-token-comment: #6a737d;
+  --shiki-token-keyword: #f97583;
+  --shiki-token-parameter: #ffab70;
+  --shiki-token-function: #b392f0;
+  --shiki-token-string-expression: #85e89d;
+  --shiki-token-punctuation: #e1e4e8;
+  --shiki-token-link: #79b8ff;
+  --shiki-token-deleted: #f97583;
+  --shiki-token-inserted: #85e89d;
 }
 
 /* ==========================================================================
@@ -157,6 +172,21 @@
   --status-badge-running-text: #ffbb55;
   --status-badge-input-bg: #2a3a5a;
   --status-badge-input-text: #77bbff;
+
+  /* Shiki Syntax Highlighting (GitHub Dark inspired) */
+  --shiki-foreground: #e1e4e8;
+  --shiki-background: transparent;
+  --shiki-token-constant: #79b8ff;
+  --shiki-token-string: #9ecbff;
+  --shiki-token-comment: #6a737d;
+  --shiki-token-keyword: #f97583;
+  --shiki-token-parameter: #ffab70;
+  --shiki-token-function: #b392f0;
+  --shiki-token-string-expression: #85e89d;
+  --shiki-token-punctuation: #e1e4e8;
+  --shiki-token-link: #79b8ff;
+  --shiki-token-deleted: #f97583;
+  --shiki-token-inserted: #85e89d;
 }
 
 /* ==========================================================================
@@ -214,6 +244,21 @@
   --status-badge-running-text: #c6613f;
   --status-badge-input-bg: #dbeafe;
   --status-badge-input-text: #2563eb;
+
+  /* Shiki Syntax Highlighting (GitHub Light inspired) */
+  --shiki-foreground: #24292e;
+  --shiki-background: transparent;
+  --shiki-token-constant: #005cc5;
+  --shiki-token-string: #032f62;
+  --shiki-token-comment: #6a737d;
+  --shiki-token-keyword: #d73a49;
+  --shiki-token-parameter: #e36209;
+  --shiki-token-function: #6f42c1;
+  --shiki-token-string-expression: #22863a;
+  --shiki-token-punctuation: #24292e;
+  --shiki-token-link: #005cc5;
+  --shiki-token-deleted: #d73a49;
+  --shiki-token-inserted: #22863a;
 }
 
 /* ==========================================================================
@@ -266,6 +311,21 @@
   --status-badge-running-text: #ffbb55;
   --status-badge-input-bg: #2a3a5a;
   --status-badge-input-text: #77bbff;
+
+  /* Shiki Syntax Highlighting (GitHub Dark inspired) */
+  --shiki-foreground: #e1e4e8;
+  --shiki-background: transparent;
+  --shiki-token-constant: #79b8ff;
+  --shiki-token-string: #9ecbff;
+  --shiki-token-comment: #6a737d;
+  --shiki-token-keyword: #f97583;
+  --shiki-token-parameter: #ffab70;
+  --shiki-token-function: #b392f0;
+  --shiki-token-string-expression: #85e89d;
+  --shiki-token-punctuation: #e1e4e8;
+  --shiki-token-link: #79b8ff;
+  --shiki-token-deleted: #f97583;
+  --shiki-token-inserted: #85e89d;
 }
 
 /* Auto theme: light mode override */
@@ -316,6 +376,21 @@
     --status-badge-running-text: #c6613f;
     --status-badge-input-bg: #dbeafe;
     --status-badge-input-text: #2563eb;
+
+    /* Shiki Syntax Highlighting (GitHub Light inspired) */
+    --shiki-foreground: #24292e;
+    --shiki-background: transparent;
+    --shiki-token-constant: #005cc5;
+    --shiki-token-string: #032f62;
+    --shiki-token-comment: #6a737d;
+    --shiki-token-keyword: #d73a49;
+    --shiki-token-parameter: #e36209;
+    --shiki-token-function: #6f42c1;
+    --shiki-token-string-expression: #22863a;
+    --shiki-token-punctuation: #24292e;
+    --shiki-token-link: #005cc5;
+    --shiki-token-deleted: #d73a49;
+    --shiki-token-inserted: #22863a;
   }
 }
 
@@ -985,7 +1060,6 @@ a.sidebar-nav-item {
   font-size: var(--font-size-sm);
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: background 0.15s;
   text-align: left;
 }
 
@@ -1190,55 +1264,57 @@ a.sidebar-nav-item {
   color: var(--link-color);
 }
 
-.sidebar-badge-running {
-  display: flex;
-  align-items: center;
-  padding: 0.25rem;
-}
-
-.sidebar-thinking-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--thinking-color);
-  animation: pulse 1s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
 /* ==========================================================================
-   Unified Activity Indicator - Pulsing dot for active/running state
+   Unified Thinking Indicator - Pulsing dot for thinking/running state
+   Use ThinkingIndicator component for all "thinking", "running", "processing" states
    ========================================================================== */
 
-.activity-dot {
+/* The pulsing dot */
+.thinking-indicator-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--thinking-color);
-  animation: pulse 1s ease-in-out infinite;
+  animation: thinking-pulse 1.5s ease-in-out infinite;
   flex-shrink: 0;
 }
 
 /* Container for standalone dot */
-.activity-indicator {
+.thinking-indicator {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-/* Badge container variant (wraps dot with padding) */
-.activity-badge {
-  display: flex;
+/* Pill variant - dot + text label */
+.thinking-indicator-pill {
+  display: inline-flex;
   align-items: center;
-  padding: 0.25rem;
+  gap: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--thinking-color) 15%, transparent);
+  color: var(--thinking-color);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.thinking-indicator-label {
+  line-height: 1;
+}
+
+/* Unified pulse animation for thinking/running state */
+@keyframes thinking-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .sidebar-empty {
@@ -2200,8 +2276,8 @@ a.sidebar-nav-item {
   background: var(--success-color);
 }
 .status-dot.status-owned.process-running {
-  background: var(--timeline-dot-working);
-  animation: pulse 1.5s ease-in-out infinite;
+  background: var(--thinking-color);
+  animation: thinking-pulse 1.5s ease-in-out infinite;
 }
 .status-dot.status-owned.process-waiting-input {
   background: var(--warning-color);
@@ -2212,7 +2288,7 @@ a.sidebar-nav-item {
 
 .status-dot.disconnected {
   background: var(--error-color);
-  animation: pulse 1s ease-in-out infinite;
+  animation: thinking-pulse 1s ease-in-out infinite;
 }
 
 /* External session warning banner */
@@ -2257,23 +2333,6 @@ a.sidebar-nav-item {
   color: var(--status-badge-external-text);
 }
 
-/* Running/Thinking indicator - pulsing to show agent activity */
-.status-badge.status-running {
-  background: color-mix(in srgb, var(--thinking-color) 15%, transparent);
-  color: var(--thinking-color);
-  animation: pulse-thinking 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-thinking {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--thinking-color) 40%, transparent);
-  }
-  50% {
-    box-shadow: 0 0 0 4px transparent;
-  }
-}
-
 /* Notification badges - higher priority than status badges */
 .status-badge.notification-needs-input {
   background: var(--status-badge-input-bg);
@@ -2293,28 +2352,18 @@ a.sidebar-nav-item {
 
 /* Processing Indicator - shown at bottom of message list */
 .processing-indicator {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-2) 0;
+  position: relative;
+  padding-top: 2px; /* Match text-block padding */
   padding-left: 24px; /* Align with assistant turn padding */
+  margin: 4px 0; /* Match timeline-item margin */
 }
 
 .processing-dot-container {
-  position: relative;
+  position: absolute;
+  left: 12px; /* Align center with timeline dots: 6px dots at left:-11px from 24px = 13px, center at 16px. 8px dot center at 16px = left edge at 12px */
+  top: 0; /* Align dot center with text */
   width: 8px;
   height: 8px;
-  margin-left: -16px; /* Align with timeline dots */
-  margin-top: 4px;
-}
-
-.processing-dot {
-  display: block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--timeline-dot-working);
-  animation: pulse 1.5s ease-in-out infinite;
 }
 
 .processing-text {
@@ -2683,6 +2732,10 @@ a.sidebar-nav-item {
   background: var(--bg-secondary);
   border: 1px solid var(--primary-color);
   border-radius: var(--radius-md);
+  /* Mobile: limit height and enable scrolling when keyboard is open */
+  max-height: 50vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .question-panel-empty {
@@ -4048,6 +4101,10 @@ a.sidebar-nav-item {
   border-radius: 50%;
 }
 
+.provider-badge-dot-inline.thinking {
+  animation: thinking-pulse 1.5s ease-in-out infinite;
+}
+
 .provider-badge-model {
   margin-left: 2px;
   opacity: 0.7;
@@ -4530,22 +4587,14 @@ a.sidebar-nav-item {
   gap: var(--space-2);
 }
 
-button.agent-card {
+.agent-card {
   display: block;
   width: 100%;
   text-align: left;
-  font: inherit;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: var(--space-3);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.agent-card:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-input);
 }
 
 .agent-card-terminated {
@@ -4555,9 +4604,8 @@ button.agent-card {
 
 .agent-card-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .agent-card-title {
@@ -4581,6 +4629,7 @@ button.agent-card {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .agent-state-badge {
@@ -4589,11 +4638,6 @@ button.agent-card {
   border-radius: var(--radius-sm);
   font-weight: 500;
   white-space: nowrap;
-}
-
-.agent-state-running {
-  background: color-mix(in srgb, var(--thinking-color) 15%, transparent);
-  color: var(--thinking-color);
 }
 
 .agent-state-input {
@@ -4650,23 +4694,15 @@ button.agent-card {
 .agent-card-meta {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
-  flex-shrink: 0;
 }
 
 .agent-card-uptime {
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
-}
-
-.agent-card-chevron {
-  color: var(--text-muted);
-  transition: transform 0.15s;
-}
-
-.agent-card-chevron.expanded {
-  transform: rotate(180deg);
+  flex-shrink: 0;
 }
 
 .agent-card-details {
@@ -4749,28 +4785,27 @@ button.agent-card {
   margin-bottom: var(--space-4);
 }
 
-.inbox-global-button {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.inbox-project-filter {
   padding: var(--space-2) var(--space-3);
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  color: var(--text-muted);
+  color: var(--text-primary);
   font-size: var(--font-size-sm);
-  text-decoration: none;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  min-width: 150px;
+  max-width: 250px;
 }
 
-.inbox-global-button:hover {
+.inbox-project-filter:hover {
   background: var(--bg-hover);
-  color: var(--text-primary);
   border-color: var(--text-muted);
 }
 
-.inbox-global-button svg {
-  flex-shrink: 0;
+.inbox-project-filter:focus {
+  outline: none;
+  border-color: var(--text-link);
 }
 
 .inbox-refresh-button {

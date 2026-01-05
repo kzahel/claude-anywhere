@@ -114,8 +114,9 @@ export const FileViewer = memo(function FileViewer({
     setLoading(true);
     setError(null);
 
+    // Request highlighting for code files
     api
-      .getFile(projectId, filePath)
+      .getFile(projectId, filePath, true)
       .then((data) => {
         if (!cancelled) {
           setFileData(data);
@@ -227,7 +228,28 @@ export const FileViewer = memo(function FileViewer({
         );
       }
 
-      // Code/text with syntax highlighting
+      // Server-rendered syntax highlighting (preferred)
+      if (fileData.highlightedHtml) {
+        return (
+          <div
+            className="file-viewer-code file-viewer-code-highlighted"
+            data-language={fileData.highlightedLanguage ?? language}
+          >
+            <div
+              className="shiki-container"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+              dangerouslySetInnerHTML={{ __html: fileData.highlightedHtml }}
+            />
+            {fileData.highlightedTruncated && (
+              <div className="file-viewer-truncated">
+                File truncated for highlighting (showing first 2000 lines)
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Fallback: client-side syntax highlighting
       return (
         <div className="file-viewer-code" data-language={language}>
           <CodeHighlighter

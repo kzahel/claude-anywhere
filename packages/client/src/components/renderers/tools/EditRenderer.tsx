@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
+import { useEditAugment } from "../../../contexts/EditAugmentContext";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import { validateToolResult } from "../../../lib/validateToolResult";
 import { CodeHighlighter } from "../../CodeHighlighter";
@@ -93,6 +94,45 @@ function DiffLines({ lines }: { lines: string[] }) {
 }
 
 /**
+ * Render pre-highlighted diff HTML from shiki.
+ * Used when diffHtml is available from the augment.
+ */
+function HighlightedDiff({
+  diffHtml,
+  truncateLines,
+}: {
+  diffHtml: string;
+  truncateLines?: number;
+}) {
+  // If truncation is needed, we need to limit the visible lines
+  // The HTML is wrapped in <pre class="shiki"><code>...</code></pre>
+  // Each line is a <span class="line">...</span>
+  const htmlToRender = useMemo(() => {
+    if (!truncateLines) return diffHtml;
+
+    // Parse and truncate by counting line spans
+    // Simple approach: find closing </code> and count lines before it
+    const lines = diffHtml.split('<span class="line">');
+    if (lines.length <= truncateLines + 1) return diffHtml;
+
+    // Rebuild with only truncateLines worth of lines
+    const truncated = lines
+      .slice(0, truncateLines + 1)
+      .join('<span class="line">');
+    // Close any open tags
+    return `${truncated}</code></pre>`;
+  }, [diffHtml, truncateLines]);
+
+  return (
+    <div
+      className="highlighted-diff"
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: shiki output is safe
+      dangerouslySetInnerHTML={{ __html: htmlToRender }}
+    />
+  );
+}
+
+/**
  * Render a single diff hunk (without @@ header for cleaner display)
  */
 function DiffHunk({ hunk }: { hunk: PatchHunk }) {
@@ -121,19 +161,48 @@ function DiffHunk({ hunk }: { hunk: PatchHunk }) {
 /**
  * Edit tool use - shows file path and diff preview
  */
-function EditToolUse({ input }: { input: EditInput }) {
-  const fileName = getFileName(input.file_path);
-  const isPlan = isPlanFile(input.file_path);
+function EditToolUse({
+  input,
+  toolUseId,
+}: {
+  input: EditInput;
+  toolUseId?: string;
+}) {
+  const augment = useEditAugment(toolUseId);
+  const fileName = getFileName(augment?.filePath ?? input.file_path);
+  const isPlan = isPlanFile(augment?.filePath ?? input.file_path);
 
-  const diffLines = useMemo(
-    () => createDiffLines(input.old_string, input.new_string),
-    [input.old_string, input.new_string],
-  );
+  const diffLines = useMemo(() => {
+    // Prefer augment's structuredPatch if available (has proper context lines)
+    if (augment?.structuredPatch && augment.structuredPatch.length > 0) {
+      return augment.structuredPatch.flatMap((hunk) => hunk.lines);
+    }
+    return createDiffLines(input.old_string, input.new_string);
+  }, [augment?.structuredPatch, input.old_string, input.new_string]);
 
-  const changeSummary = useMemo(
-    () => computeChangeSummaryFromStrings(input.old_string, input.new_string),
-    [input.old_string, input.new_string],
-  );
+  const changeSummary = useMemo(() => {
+    // Prefer augment's structuredPatch for computing summary
+    if (augment?.structuredPatch && augment.structuredPatch.length > 0) {
+      const additions = augment.structuredPatch
+        .flatMap((h) => h.lines)
+        .filter((l) => l.startsWith("+")).length;
+      const deletions = augment.structuredPatch
+        .flatMap((h) => h.lines)
+        .filter((l) => l.startsWith("-")).length;
+
+      if (additions > 0 && deletions > 0) {
+        return `Modified ${additions + deletions} lines`;
+      }
+      if (additions > 0) {
+        return `Added ${additions} line${additions !== 1 ? "s" : ""}`;
+      }
+      if (deletions > 0) {
+        return `Removed ${deletions} line${deletions !== 1 ? "s" : ""}`;
+      }
+      return null;
+    }
+    return computeChangeSummaryFromStrings(input.old_string, input.new_string);
+  }, [augment?.structuredPatch, input.old_string, input.new_string]);
 
   const isTruncated = diffLines.length > MAX_VISIBLE_LINES;
 
@@ -148,7 +217,14 @@ function EditToolUse({ input }: { input: EditInput }) {
       )}
       <div className={`diff-view-container ${isTruncated ? "truncated" : ""}`}>
         <div className="diff-view">
-          <DiffLines lines={diffLines} />
+          {augment?.diffHtml ? (
+            <HighlightedDiff
+              diffHtml={augment.diffHtml}
+              truncateLines={isTruncated ? MAX_VISIBLE_LINES : undefined}
+            />
+          ) : (
+            <DiffLines lines={diffLines} />
+          )}
         </div>
         {isTruncated && <div className="diff-fade-overlay" />}
       </div>
@@ -157,11 +233,26 @@ function EditToolUse({ input }: { input: EditInput }) {
 }
 
 /**
- * Modal content for viewing complete diff (from result with structuredPatch)
+ * Modal content for viewing complete diff
  */
-function DiffModalContent({ result }: { result: EditResult }) {
-  // Combine all hunks into a single diff string for syntax highlighting
-  const diffText = result.structuredPatch
+function DiffModalContent({
+  diffHtml,
+  structuredPatch,
+}: {
+  diffHtml?: string;
+  structuredPatch: PatchHunk[];
+}) {
+  // Prefer pre-highlighted HTML from server
+  if (diffHtml) {
+    return (
+      <div className="diff-modal-content">
+        <HighlightedDiff diffHtml={diffHtml} />
+      </div>
+    );
+  }
+
+  // Fallback: combine all hunks and highlight client-side
+  const diffText = structuredPatch
     .map((hunk) => hunk.lines.join("\n"))
     .join("\n");
 
@@ -194,12 +285,15 @@ function EditCollapsedPreview({
   input,
   result,
   isError,
+  toolUseId,
 }: {
   input: EditInput;
   result: EditResult | undefined;
   isError: boolean;
+  toolUseId?: string;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const augment = useEditAugment(toolUseId);
   const { enabled, reportValidationError, isToolIgnored } =
     useSchemaValidationContext();
   const [validationErrors, setValidationErrors] = useState<ZodError | null>(
@@ -235,21 +329,25 @@ function EditCollapsedPreview({
     setIsModalOpen(false);
   }, []);
 
-  // Use result data if available, otherwise fall back to input
-  const filePath = result?.filePath ?? input.file_path;
+  // Use result data if available, then augment, then fall back to input
+  const filePath = result?.filePath ?? augment?.filePath ?? input.file_path;
   const fileName = getFileName(filePath);
   const isPlan = isPlanFile(filePath);
 
-  // Get diff lines - prefer structuredPatch from result, fall back to input
+  // Get diff lines - prefer structuredPatch from result, then augment, fall back to input
   const diffLines = useMemo(() => {
     if (result?.structuredPatch && result.structuredPatch.length > 0) {
       return result.structuredPatch.flatMap((hunk) => hunk.lines);
+    }
+    // Use augment's structuredPatch for pending edits (has proper context lines)
+    if (augment?.structuredPatch && augment.structuredPatch.length > 0) {
+      return augment.structuredPatch.flatMap((hunk) => hunk.lines);
     }
     return createDiffLines(
       result?.oldString ?? input.old_string,
       result?.newString ?? input.new_string,
     );
-  }, [result, input]);
+  }, [result, augment, input]);
 
   const isTruncated = diffLines.length > MAX_VISIBLE_LINES;
   const displayLines = isTruncated
@@ -257,11 +355,13 @@ function EditCollapsedPreview({
     : diffLines;
 
   const changeSummary = useMemo(() => {
-    if (result?.structuredPatch && result.structuredPatch.length > 0) {
-      const additions = result.structuredPatch
+    // Prefer result's structuredPatch, then augment's, then fall back to string-based computation
+    const structuredPatch = result?.structuredPatch ?? augment?.structuredPatch;
+    if (structuredPatch && structuredPatch.length > 0) {
+      const additions = structuredPatch
         .flatMap((h) => h.lines)
         .filter((l) => l.startsWith("+")).length;
-      const deletions = result.structuredPatch
+      const deletions = structuredPatch
         .flatMap((h) => h.lines)
         .filter((l) => l.startsWith("-")).length;
 
@@ -280,7 +380,7 @@ function EditCollapsedPreview({
       result?.oldString ?? input.old_string,
       result?.newString ?? input.new_string,
     );
-  }, [result, input]);
+  }, [result, augment, input]);
 
   if (isError) {
     // Extract error message - can be a string or object with content
@@ -326,7 +426,14 @@ function EditCollapsedPreview({
           className={`diff-view-container ${isTruncated ? "truncated" : ""}`}
         >
           <div className="diff-view">
-            <DiffLines lines={displayLines} />
+            {augment?.diffHtml ? (
+              <HighlightedDiff
+                diffHtml={augment.diffHtml}
+                truncateLines={isTruncated ? MAX_VISIBLE_LINES : undefined}
+              />
+            ) : (
+              <DiffLines lines={displayLines} />
+            )}
           </div>
           {isTruncated && <div className="diff-fade-overlay" />}
         </div>
@@ -344,7 +451,15 @@ function EditCollapsedPreview({
           onClose={handleClose}
         >
           {result?.structuredPatch && result.structuredPatch.length > 0 ? (
-            <DiffModalContent result={result} />
+            <DiffModalContent
+              diffHtml={augment?.diffHtml}
+              structuredPatch={result.structuredPatch}
+            />
+          ) : augment?.structuredPatch && augment.structuredPatch.length > 0 ? (
+            <DiffModalContent
+              diffHtml={augment.diffHtml}
+              structuredPatch={augment.structuredPatch}
+            />
           ) : (
             <DiffInputModalContent input={input} />
           )}
@@ -529,7 +644,7 @@ function EditToolResult({
           }
           onClose={() => setShowModal(false)}
         >
-          <DiffModalContent result={result} />
+          <DiffModalContent structuredPatch={result.structuredPatch} />
         </Modal>
       )}
     </>
@@ -539,8 +654,10 @@ function EditToolResult({
 export const editRenderer: ToolRenderer<EditInput, EditResult> = {
   tool: "Edit",
 
-  renderToolUse(input, _context) {
-    return <EditToolUse input={input as EditInput} />;
+  renderToolUse(input, context) {
+    return (
+      <EditToolUse input={input as EditInput} toolUseId={context.toolUseId} />
+    );
   },
 
   renderToolResult(result, isError, _context, input) {
@@ -563,12 +680,13 @@ export const editRenderer: ToolRenderer<EditInput, EditResult> = {
     return r?.filePath ? getFileName(r.filePath) : "file";
   },
 
-  renderCollapsedPreview(input, result, isError, _context) {
+  renderCollapsedPreview(input, result, isError, context) {
     return (
       <EditCollapsedPreview
         input={input as EditInput}
         result={result as EditResult | undefined}
         isError={isError}
+        toolUseId={context.toolUseId}
       />
     );
   },

@@ -1,4 +1,5 @@
 import {
+  type EditAugment,
   type ModelOption,
   type ProviderName,
   type ThinkingOption,
@@ -7,6 +8,14 @@ import {
   thinkingOptionToTokens,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
+import {
+  type EditInput,
+  computeEditAugment,
+} from "../augments/edit-augments.js";
+import {
+  type MarkdownAugment,
+  computeMarkdownAugments,
+} from "../augments/markdown-augments.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
@@ -121,6 +130,57 @@ function sdkMessagesToClientMessages(sdkMessages: SDKMessage[]): Message[] {
     }
   }
   return messages;
+}
+
+/**
+ * Extract Edit tool_use blocks from messages for augment computation.
+ * Looks at assistant messages and finds tool_use blocks with name === "Edit".
+ */
+function extractEditToolUses(
+  messages: Message[],
+): Array<{ toolUseId: string; input: EditInput }> {
+  const results: Array<{ toolUseId: string; input: EditInput }> = [];
+
+  for (const msg of messages) {
+    // Only assistant messages have tool_use blocks
+    if (msg.type !== "assistant") continue;
+
+    // Content is in msg.message.content (nested structure from SDK)
+    const content = msg.message?.content;
+    if (!Array.isArray(content)) continue;
+
+    for (const block of content) {
+      if (
+        block.type === "tool_use" &&
+        block.name === "Edit" &&
+        block.id &&
+        block.input
+      ) {
+        const input = block.input as {
+          file_path?: string;
+          old_string?: string;
+          new_string?: string;
+        };
+        // Validate required fields for Edit
+        if (
+          input.file_path &&
+          typeof input.old_string === "string" &&
+          typeof input.new_string === "string"
+        ) {
+          results.push({
+            toolUseId: block.id,
+            input: {
+              file_path: input.file_path,
+              old_string: input.old_string,
+              new_string: input.new_string,
+            },
+          });
+        }
+      }
+    }
+  }
+
+  return results;
 }
 
 export function createSessionsRoutes(deps: SessionsDeps): Hono {
@@ -317,6 +377,7 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           messages: processMessages,
           status,
           pendingInputRequest,
+          editAugments: {},
         });
       }
       return c.json({ error: "Session not found" }, 404);
@@ -331,6 +392,35 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     const hasUnread = deps.notificationService
       ? deps.notificationService.hasUnread(sessionId, session.updatedAt)
       : undefined;
+
+    // Compute edit augments for all Edit tool_use blocks
+    const editToolUses = extractEditToolUses(session.messages);
+    const editAugments: Record<string, EditAugment> = {};
+
+    // Compute augments in parallel
+    const augmentPromises = editToolUses.map(async ({ toolUseId, input }) => {
+      try {
+        const augment = await computeEditAugment(toolUseId, input);
+        return { toolUseId, augment };
+      } catch {
+        // Skip augments that fail to compute (e.g., highlighting errors)
+        return null;
+      }
+    });
+
+    const augmentResults = await Promise.all(augmentPromises);
+    for (const result of augmentResults) {
+      if (result) {
+        editAugments[result.toolUseId] = result.augment;
+      }
+    }
+
+    // Compute markdown augments for all text blocks
+    // Uses same rendering as streaming path for consistency
+    const getMessageId = (msg: { uuid?: string; id?: string }): string =>
+      msg.uuid ?? msg.id ?? "";
+    const markdownAugments: Record<string, MarkdownAugment> =
+      await computeMarkdownAugments(session.messages, getMessageId);
 
     return c.json({
       session: {
@@ -347,6 +437,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       messages: session.messages,
       status,
       pendingInputRequest,
+      editAugments,
+      markdownAugments,
     });
   });
 

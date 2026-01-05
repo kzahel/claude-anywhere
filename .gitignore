@@ -44,3 +44,6 @@ docs/tasks/schema-report.json
 
 # Text files in repo root
 /*.txt
+
+
+packages/client/dist-stable

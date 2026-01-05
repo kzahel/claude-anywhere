@@ -727,6 +727,7 @@ function SessionPageContent({
               isAskUserQuestion && (
                 <QuestionAnswerPanel
                   request={pendingInputRequest}
+                  sessionId={actualSessionId}
                   onSubmit={handleQuestionSubmit}
                   onDeny={handleDeny}
                 />
@@ -739,6 +740,7 @@ function SessionPageContent({
                 <>
                   <ToolApprovalPanel
                     request={pendingInputRequest}
+                    sessionId={actualSessionId}
                     onApprove={handleApprove}
                     onDeny={handleDeny}
                     onApproveAcceptEdits={handleApproveAcceptEdits}

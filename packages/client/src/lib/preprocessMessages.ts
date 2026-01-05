@@ -41,6 +41,21 @@ function processMessage(
 ): void {
   const msgId = getMessageId(msg);
 
+  // Debug logging for streaming transition issues
+  if (
+    typeof window !== "undefined" &&
+    window.__STREAMING_DEBUG__ &&
+    msg.type === "assistant"
+  ) {
+    console.log("[preprocessMessages] Processing assistant message:", {
+      msgId,
+      uuid: msg.uuid,
+      id: msg.id,
+      _isStreaming: msg._isStreaming,
+      augmentId: `${msgId}-0`,
+    });
+  }
+
   // Get content from nested message object (SDK structure) first, fall back to top-level
   // Phase 4c: prefer message.content over top-level content
   const content =

@@ -17,6 +17,8 @@ export {
   BashOutputResultSchema,
   TaskOutputResultSchema,
   KillShellResultSchema,
+  EnterPlanModeResultSchema,
+  ExitPlanModeResultSchema,
 } from "./ToolResultSchemas.js";
 
 export const ToolUseResultSchema = z.union([

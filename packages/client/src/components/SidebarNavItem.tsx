@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 /**
  * Common SVG icons used in sidebar navigation.
@@ -114,6 +115,22 @@ export const SidebarIcons = {
       />
     </svg>
   ),
+  recents: (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  ),
 };
 
 export interface SidebarNavItemProps {
@@ -129,6 +146,10 @@ export interface SidebarNavItemProps {
   onClick?: () => void;
   /** Title tooltip */
   title?: string;
+  /** Whether this item has an unsent draft */
+  hasDraft?: boolean;
+  /** Show pulsing activity indicator (e.g., for active agents) */
+  hasActivityIndicator?: boolean;
 }
 
 /**
@@ -142,6 +163,8 @@ export function SidebarNavItem({
   badge,
   onClick,
   title,
+  hasDraft,
+  hasActivityIndicator,
 }: SidebarNavItemProps) {
   const location = useLocation();
   const isActive = location.pathname === to;
@@ -155,6 +178,8 @@ export function SidebarNavItem({
     >
       {icon}
       <span className="sidebar-nav-text">{label}</span>
+      {hasDraft && <span className="session-draft-badge">(draft)</span>}
+      {hasActivityIndicator && <ThinkingIndicator />}
       {badge !== undefined && badge > 0 && (
         <span className="sidebar-nav-badge">{badge}</span>
       )}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Outlet, useOutletContext, useParams } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar";
-import { useDrafts } from "../hooks/useDrafts";
+import { useDrafts, useNewSessionDraft } from "../hooks/useDrafts";
 import type { ProcessStateType } from "../hooks/useFileActivity";
 import { useInbox } from "../hooks/useInbox";
 import { useSessions } from "../hooks/useSessions";
@@ -66,6 +66,7 @@ export function ProjectLayout() {
   // Track which sessions have draft messages
   const sessionIds = useMemo(() => sessions.map((s) => s.id), [sessions]);
   const sessionDrafts = useDrafts(sessionIds);
+  const hasNewSessionDraft = useNewSessionDraft(projectId);
 
   // Inbox counts - lifted here so it survives sidebar mount/unmount transitions
   const { totalNeedsAttention } = useInbox({ projectId });
@@ -124,6 +125,7 @@ export function ProjectLayout() {
             onResizeStart={() => setIsResizing(true)}
             onResize={setSidebarWidth}
             onResizeEnd={() => setIsResizing(false)}
+            hasNewSessionDraft={hasNewSessionDraft}
           />
         </aside>
       )}
@@ -140,6 +142,7 @@ export function ProjectLayout() {
           onNavigate={() => setSidebarOpen(false)}
           sessionDrafts={sessionDrafts}
           inboxCount={inboxCount}
+          hasNewSessionDraft={hasNewSessionDraft}
         />
       )}
 

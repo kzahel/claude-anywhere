@@ -211,6 +211,19 @@ async function startServer() {
   });
   app.route("/api", uploadRoutes);
 
+  // Serve stable (emergency) UI from /_stable/ path if available
+  // This bypasses HMR and serves pre-built assets directly
+  if (config.serveFrontend && fs.existsSync(config.stableDistPath)) {
+    const stableRoutes = createStaticRoutes({
+      distPath: config.stableDistPath,
+      basePath: "/_stable",
+    });
+    app.route("/_stable", stableRoutes);
+    console.log(
+      `[Frontend] Stable UI available at /_stable/ from ${config.stableDistPath}`,
+    );
+  }
+
   // Add frontend proxy as the final catch-all (AFTER all API routes including uploads)
   if (frontendProxy) {
     const proxy = frontendProxy;

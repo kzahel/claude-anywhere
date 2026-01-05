@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from "react";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 const PROCESSING_PHRASES = [
   "Thinking...",
@@ -67,7 +68,7 @@ export const ProcessingIndicator = memo(function ProcessingIndicator({
   return (
     <div className="processing-indicator">
       <div className="processing-dot-container">
-        <span className="processing-dot" />
+        <ThinkingIndicator />
       </div>
       <span className="processing-text">
         {displayedText}

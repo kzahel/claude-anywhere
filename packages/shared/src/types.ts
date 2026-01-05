@@ -145,4 +145,54 @@ export interface FileContentResponse {
   content?: string;
   /** URL to fetch raw file content */
   rawUrl: string;
+  /** Syntax-highlighted HTML (when highlight=true and language is supported) */
+  highlightedHtml?: string;
+  /** Language used for highlighting */
+  highlightedLanguage?: string;
+  /** Whether the file was truncated for highlighting */
+  highlightedTruncated?: boolean;
+}
+
+/**
+ * A hunk from a unified diff patch.
+ * Contains line numbers and the actual diff lines with prefixes.
+ */
+export interface PatchHunk {
+  /** Starting line number in the old file */
+  oldStart: number;
+  /** Number of lines from old file in this hunk */
+  oldLines: number;
+  /** Starting line number in the new file */
+  newStart: number;
+  /** Number of lines in new file in this hunk */
+  newLines: number;
+  /** Diff lines prefixed with ' ' (context), '-' (removed), or '+' (added) */
+  lines: string[];
+}
+
+/**
+ * Server-computed augment for Edit tool_use blocks.
+ * Provides pre-computed structuredPatch and highlighted diff HTML
+ * so the client can render consistent unified diffs.
+ */
+export interface EditAugment {
+  /** The tool_use ID this augment is for */
+  toolUseId: string;
+  /** Augment type discriminator */
+  type: "edit";
+  /** Computed unified diff with context lines */
+  structuredPatch: PatchHunk[];
+  /** Syntax-highlighted diff HTML (shiki, CSS variables theme) */
+  diffHtml: string;
+  /** The file path being edited */
+  filePath: string;
+}
+
+/**
+ * Pre-rendered markdown augment for text blocks.
+ * Contains HTML with syntax highlighting from server.
+ */
+export interface MarkdownAugment {
+  /** Pre-rendered HTML with shiki syntax highlighting */
+  html: string;
 }

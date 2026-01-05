@@ -6,6 +6,16 @@ export {
   getFilename,
 } from "./ideMetadata.js";
 
+// File path detection (shared between server and client)
+export type { DetectedFilePath, TextSegment } from "./filePathDetection.js";
+export {
+  isLikelyFilePath,
+  parseLineColumn,
+  detectFilePaths,
+  splitTextWithFilePaths,
+  transformFilePathsToHtml,
+} from "./filePathDetection.js";
+
 export type {
   ProviderName,
   ProviderInfo,
@@ -16,6 +26,9 @@ export type {
   ThinkingOption,
   FileMetadata,
   FileContentResponse,
+  PatchHunk,
+  EditAugment,
+  MarkdownAugment,
 } from "./types.js";
 export {
   thinkingOptionToTokens,

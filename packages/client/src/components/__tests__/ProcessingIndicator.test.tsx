@@ -24,7 +24,8 @@ describe("ProcessingIndicator", () => {
     expect(cursor).not.toBeNull();
     expect(cursor?.textContent).toBe("|");
 
-    const dot = document.querySelector(".processing-dot");
+    // ThinkingIndicator uses .thinking-indicator-dot class
+    const dot = document.querySelector(".thinking-indicator-dot");
     expect(dot).not.toBeNull();
   });
 

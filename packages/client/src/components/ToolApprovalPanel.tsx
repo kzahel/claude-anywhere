@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useToolApprovalFeedbackDraft } from "../hooks/useDrafts";
 import type { InputRequest } from "../types";
 import { getToolSummary } from "./tools/summaries";
 
@@ -11,6 +12,7 @@ const isExitPlanMode = (toolName: string | undefined) =>
 
 interface Props {
   request: InputRequest;
+  sessionId: string;
   onApprove: () => Promise<void>;
   onDeny: () => Promise<void>;
   onApproveAcceptEdits?: () => Promise<void>;
@@ -23,6 +25,7 @@ interface Props {
 
 export function ToolApprovalPanel({
   request,
+  sessionId,
   onApprove,
   onDeny,
   onApproveAcceptEdits,
@@ -31,8 +34,10 @@ export function ToolApprovalPanel({
   onCollapsedChange,
 }: Props) {
   const [submitting, setSubmitting] = useState(false);
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [feedback, setFeedback] = useState("");
+  // Show feedback panel if there's already draft text from localStorage
+  const [feedback, setFeedback, clearFeedback] =
+    useToolApprovalFeedbackDraft(sessionId);
+  const [showFeedback, setShowFeedback] = useState(() => feedback.length > 0);
   const feedbackInputRef = useRef<HTMLInputElement>(null);
 
   const isEditTool = request.toolName && EDIT_TOOLS.includes(request.toolName);
@@ -70,12 +75,13 @@ export function ToolApprovalPanel({
     setSubmitting(true);
     try {
       await onDenyWithFeedback(feedback.trim());
+      // Clear feedback draft from localStorage on successful submit
+      clearFeedback();
+      setShowFeedback(false);
     } finally {
       setSubmitting(false);
-      setFeedback("");
-      setShowFeedback(false);
     }
-  }, [onDenyWithFeedback, feedback]);
+  }, [onDenyWithFeedback, feedback, clearFeedback]);
 
   // Focus feedback input when shown
   useEffect(() => {
@@ -94,7 +100,7 @@ export function ToolApprovalPanel({
         if (e.key === "Escape") {
           e.preventDefault();
           setShowFeedback(false);
-          setFeedback("");
+          clearFeedback();
         } else if (e.key === "Enter" && feedback.trim()) {
           e.preventDefault();
           handleDenyWithFeedback();
@@ -156,6 +162,7 @@ export function ToolApprovalPanel({
     submitting,
     showFeedback,
     feedback,
+    clearFeedback,
     isEditTool,
     onApproveAcceptEdits,
     request.toolName,

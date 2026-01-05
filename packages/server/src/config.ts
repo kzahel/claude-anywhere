@@ -57,6 +57,8 @@ export interface Config {
   vitePort: number;
   /** Path to built client dist directory */
   clientDistPath: string;
+  /** Path to stable (emergency) client dist directory */
+  stableDistPath: string;
   /** Maximum upload file size in bytes. 0 = unlimited (default: 100MB) */
   maxUploadSizeBytes: number;
   /** Maximum queue size for pending requests. 0 = unlimited (default: 100) */
@@ -128,6 +130,10 @@ export function loadConfig(): Config {
     clientDistPath:
       process.env.CLIENT_DIST_PATH ??
       path.resolve(import.meta.dirname, "../../client/dist"),
+    // Stable (emergency) UI build with /_stable/ base path
+    stableDistPath:
+      process.env.STABLE_DIST_PATH ??
+      path.resolve(import.meta.dirname, "../../client/dist-stable"),
     // Default 100MB max upload size
     maxUploadSizeBytes:
       parseIntOrDefault(process.env.MAX_UPLOAD_SIZE_MB, 100) * 1024 * 1024,

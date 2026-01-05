@@ -84,6 +84,9 @@ export type ReadResultValidated = z.infer<typeof ReadResultSchema>;
 /**
  * Edit tool result schema
  * Matches the EditResult and PatchHunk interfaces
+ *
+ * Note: The SDK provides `type` field ("create" for new files, "edit" for modifications)
+ * and `originalFile` can be null for new file creation.
  */
 const PatchHunkSchema = z.object({
   oldStart: z.number().optional(),
@@ -94,10 +97,11 @@ const PatchHunkSchema = z.object({
 });
 
 export const EditResultSchema = z.object({
+  type: z.enum(["create", "edit", "update"]).optional(),
   filePath: z.string().optional(),
   oldString: z.string().optional(),
   newString: z.string().optional(),
-  originalFile: z.string().optional(),
+  originalFile: z.string().nullable().optional(),
   replaceAll: z.boolean().optional(),
   userModified: z.boolean().optional(),
   structuredPatch: z.array(PatchHunkSchema).optional(),
@@ -171,24 +175,26 @@ export type TodoWriteResultValidated = z.infer<typeof TodoWriteResultSchema>;
 
 /**
  * WebSearch tool result schema
- * Matches the WebSearchResult interface
+ *
+ * The SDK returns results as an array containing:
+ * - Objects with { tool_use_id, content: [{ title, url }, ...] }
+ * - Plain strings (summary text extracted from search)
  */
-export const WebSearchResultSchema = z.object({
-  query: z.string().optional(),
-  results: z
+const WebSearchResultItemSchema = z.object({
+  tool_use_id: z.string().optional(),
+  content: z
     .array(
       z.object({
-        content: z
-          .array(
-            z.object({
-              title: z.string().optional(),
-              url: z.string().optional(),
-            }),
-          )
-          .optional(),
+        title: z.string().optional(),
+        url: z.string().optional(),
       }),
     )
     .optional(),
+});
+
+export const WebSearchResultSchema = z.object({
+  query: z.string().optional(),
+  results: z.array(z.union([WebSearchResultItemSchema, z.string()])).optional(),
   durationSeconds: z.number().optional(),
 });
 
@@ -282,3 +288,27 @@ export const KillShellResultSchema = z.object({
 });
 
 export type KillShellResultValidated = z.infer<typeof KillShellResultSchema>;
+
+/**
+ * EnterPlanMode tool result schema
+ */
+export const EnterPlanModeResultSchema = z.object({
+  message: z.string().optional(),
+});
+
+export type EnterPlanModeResultValidated = z.infer<
+  typeof EnterPlanModeResultSchema
+>;
+
+/**
+ * ExitPlanMode tool result schema
+ * Contains the plan content when exiting plan mode
+ */
+export const ExitPlanModeResultSchema = z.object({
+  message: z.string().optional(),
+  plan: z.string().optional(),
+});
+
+export type ExitPlanModeResultValidated = z.infer<
+  typeof ExitPlanModeResultSchema
+>;

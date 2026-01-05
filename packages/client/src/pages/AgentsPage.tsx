@@ -1,6 +1,6 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
+import { ThinkingIndicator } from "../components/ThinkingIndicator";
 import { type ProcessInfo, useProcesses } from "../hooks/useProcesses";
 import { useNavigationLayout } from "../layouts";
 
@@ -41,7 +41,7 @@ function getStateLabel(state: string): string {
     case "idle":
       return "Idle";
     case "terminated":
-      return "Terminated";
+      return "Stopped";
     default:
       return state;
   }
@@ -105,17 +105,13 @@ interface ProcessCardProps {
 }
 
 function ProcessCard({ process, isTerminated = false }: ProcessCardProps) {
-  const [expanded, setExpanded] = useState(false);
-
   // Extract project name from path (last directory)
   const projectName =
     process.projectPath.split("/").pop() ?? process.projectPath;
 
   return (
-    <button
-      type="button"
+    <div
       className={`agent-card ${isTerminated ? "agent-card-terminated" : ""}`}
-      onClick={() => setExpanded(!expanded)}
     >
       <div className="agent-card-header">
         <div className="agent-card-title">
@@ -127,90 +123,82 @@ function ProcessCard({ process, isTerminated = false }: ProcessCardProps) {
           >
             {getProviderLabel(process.provider)}
           </span>
-          <span
-            className={`agent-state-badge ${getStateBadgeClass(process.state)}`}
-          >
-            {getStateLabel(process.state)}
-          </span>
+          {process.state === "running" ? (
+            <ThinkingIndicator variant="pill" label="Running" />
+          ) : (
+            <span
+              className={`agent-state-badge ${getStateBadgeClass(process.state)}`}
+            >
+              {getStateLabel(process.state)}
+            </span>
+          )}
         </div>
-        <div className="agent-card-project">{projectName}</div>
         <div className="agent-card-meta">
+          <span className="agent-card-project">{projectName}</span>
           {!isTerminated && (
             <span className="agent-card-uptime">
               {formatUptime(process.startedAt)}
             </span>
           )}
-          <svg
-            className={`agent-card-chevron ${expanded ? "expanded" : ""}`}
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden="true"
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
         </div>
       </div>
 
-      {expanded && (
-        <div className="agent-card-details">
-          <div className="agent-detail-row">
-            <span className="agent-detail-label">Session ID</span>
-            <span className="agent-detail-value agent-detail-mono">
-              {process.sessionId}
-            </span>
-          </div>
-          <div className="agent-detail-row">
-            <span className="agent-detail-label">Project Path</span>
-            <span className="agent-detail-value agent-detail-mono">
-              {process.projectPath}
-            </span>
-          </div>
-          {process.permissionMode && (
-            <div className="agent-detail-row">
-              <span className="agent-detail-label">Permission Mode</span>
-              <span className="agent-detail-value">
-                {process.permissionMode}
-              </span>
-            </div>
-          )}
-          {process.queueDepth > 0 && (
-            <div className="agent-detail-row">
-              <span className="agent-detail-label">Messages Queued</span>
-              <span className="agent-detail-value">{process.queueDepth}</span>
-            </div>
-          )}
-          {process.terminationReason && (
-            <div className="agent-detail-row">
-              <span className="agent-detail-label">Termination Reason</span>
-              <span className="agent-detail-value">
-                {process.terminationReason}
-              </span>
-            </div>
-          )}
-          <div className="agent-card-actions">
-            <Link
-              to={`/projects/${process.projectId}/sessions/${process.sessionId}`}
-              className="agent-view-session-link"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {process.sessionTitle || "View Session"} →
-            </Link>
-          </div>
+      <div className="agent-card-details">
+        <div className="agent-detail-row">
+          <span className="agent-detail-label">Session ID</span>
+          <span className="agent-detail-value agent-detail-mono">
+            {process.sessionId}
+          </span>
         </div>
-      )}
-    </button>
+        <div className="agent-detail-row">
+          <span className="agent-detail-label">Project Path</span>
+          <span className="agent-detail-value agent-detail-mono">
+            {process.projectPath}
+          </span>
+        </div>
+        {process.permissionMode && (
+          <div className="agent-detail-row">
+            <span className="agent-detail-label">Permission Mode</span>
+            <span className="agent-detail-value">{process.permissionMode}</span>
+          </div>
+        )}
+        {process.queueDepth > 0 && (
+          <div className="agent-detail-row">
+            <span className="agent-detail-label">Messages Queued</span>
+            <span className="agent-detail-value">{process.queueDepth}</span>
+          </div>
+        )}
+        {process.terminationReason && (
+          <div className="agent-detail-row">
+            <span className="agent-detail-label">Stop Reason</span>
+            <span className="agent-detail-value">
+              {process.terminationReason}
+            </span>
+          </div>
+        )}
+        <div className="agent-card-actions">
+          <Link
+            to={`/projects/${process.projectId}/sessions/${process.sessionId}`}
+            className="agent-view-session-link"
+          >
+            {process.sessionTitle || "View Session"} →
+          </Link>
+        </div>
+      </div>
+    </div>
   );
 }
 
 export function AgentsPage() {
-  const { processes, terminatedProcesses, loading, error, activeCount } =
-    useProcesses();
+  const { processes, terminatedProcesses, loading, error } = useProcesses();
 
   const { openSidebar, isWideScreen } = useNavigationLayout();
+
+  // Split processes into active (running/waiting-input) and idle
+  const activeProcesses = processes.filter(
+    (p) => p.state === "running" || p.state === "waiting-input",
+  );
+  const idleProcesses = processes.filter((p) => p.state === "idle");
 
   return (
     <div
@@ -236,26 +224,36 @@ export function AgentsPage() {
             {!loading && !error && (
               <>
                 <section className="agents-section">
-                  <h2>
-                    Active Agents
-                    {activeCount > 0 && (
-                      <span className="agents-count-badge">{activeCount}</span>
-                    )}
-                  </h2>
-                  {processes.length === 0 ? (
+                  <h2>Active</h2>
+                  {activeProcesses.length === 0 ? (
                     <p className="agents-empty">No active agents</p>
                   ) : (
                     <div className="agents-list">
-                      {processes.map((process) => (
+                      {activeProcesses.map((process) => (
                         <ProcessCard key={process.id} process={process} />
                       ))}
                     </div>
                   )}
                 </section>
 
-                {terminatedProcesses.length > 0 && (
-                  <section className="agents-section">
-                    <h2>Recently Terminated</h2>
+                <section className="agents-section">
+                  <h2>Idle</h2>
+                  {idleProcesses.length === 0 ? (
+                    <p className="agents-empty">No idle agents</p>
+                  ) : (
+                    <div className="agents-list">
+                      {idleProcesses.map((process) => (
+                        <ProcessCard key={process.id} process={process} />
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="agents-section">
+                  <h2>Stopped</h2>
+                  {terminatedProcesses.length === 0 ? (
+                    <p className="agents-empty">No stopped agents</p>
+                  ) : (
                     <div className="agents-list">
                       {terminatedProcesses.map((process) => (
                         <ProcessCard
@@ -265,8 +263,8 @@ export function AgentsPage() {
                         />
                       ))}
                     </div>
-                  </section>
-                )}
+                  )}
+                </section>
               </>
             )}
           </div>

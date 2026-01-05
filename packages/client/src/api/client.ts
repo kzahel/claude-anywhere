@@ -1,4 +1,5 @@
 import type {
+  EditAugment,
   FileContentResponse,
   PendingInputType,
   ProcessStateType,
@@ -135,6 +136,7 @@ export const api = {
       messages: Message[];
       status: SessionStatus;
       pendingInputRequest?: InputRequest | null;
+      editAugments?: Record<string, EditAugment>;
     }>(`/projects/${projectId}/sessions/${sessionId}${params}`);
   },
 
@@ -329,10 +331,13 @@ export const api = {
     }),
 
   // File API
-  getFile: (projectId: string, path: string) =>
-    fetchJSON<FileContentResponse>(
-      `/projects/${projectId}/files?path=${encodeURIComponent(path)}`,
-    ),
+  getFile: (projectId: string, path: string, highlight = false) => {
+    const params = new URLSearchParams({ path });
+    if (highlight) params.set("highlight", "true");
+    return fetchJSON<FileContentResponse>(
+      `/projects/${projectId}/files?${params.toString()}`,
+    );
+  },
 
   getFileRawUrl: (projectId: string, path: string, download = false) => {
     const params = new URLSearchParams({ path });

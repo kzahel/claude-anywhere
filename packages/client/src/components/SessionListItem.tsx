@@ -3,11 +3,10 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { ProcessStateType } from "../hooks/useFileActivity";
 import { type SessionSummary, getSessionDisplayTitle } from "../types";
-import { ActivityIndicator } from "./ActivityIndicator";
 import { ContextUsageIndicator } from "./ContextUsageIndicator";
-import { ProviderBadge } from "./ProviderBadge";
 import { SessionMenu } from "./SessionMenu";
 import { SessionStatusBadge } from "./StatusBadge";
+import { ThinkingIndicator } from "./ThinkingIndicator";
 
 interface SessionListItemProps {
   session: SessionSummary;
@@ -31,7 +30,6 @@ interface SessionListItemProps {
  * Shared session list item component used by both Sidebar (compact) and SessionsPage (card).
  *
  * Features:
- * - Provider stripe badge (left border)
  * - Star indicator, title, draft badge
  * - SessionMenu (star, archive, rename actions)
  * - Inline rename editing with optimistic updates
@@ -199,9 +197,7 @@ export function SessionListItem({
     // Priority 2: Running (thinking)
     const effectiveProcessState = processState ?? session.processState;
     if (effectiveProcessState === "running") {
-      return (
-        <ActivityIndicator variant="badge" className="session-badge-running" />
-      );
+      return <ThinkingIndicator />;
     }
 
     return null;
@@ -256,11 +252,6 @@ export function SessionListItem({
 
   return (
     <li className={liClasses}>
-      {/* Provider stripe on left edge */}
-      {session.provider && (
-        <ProviderBadge provider={session.provider} compact />
-      )}
-
       {/* Checkbox for multi-select (only shown when onSelect is provided) */}
       {onSelect && (
         <input
