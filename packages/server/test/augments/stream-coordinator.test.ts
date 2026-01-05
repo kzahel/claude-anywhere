@@ -71,16 +71,23 @@ describe("StreamCoordinator", () => {
       expect(result3.pendingHtml).toBe("");
     });
 
-    it("code block augment only on closing fence", async () => {
+    it("code block emits streaming augments before closing fence", async () => {
       const result1 = await coordinator.onChunk("```javascript\n");
-      expect(result1.augments).toHaveLength(0);
+      expect(result1.augments).toHaveLength(1);
+      expect(result1.augments[0]?.type).toBe("code");
+      expect(result1.augments[0]?.blockIndex).toBe(0);
+      expect(result1.pendingHtml).toBe(""); // No pending when streaming code block
 
       const result2 = await coordinator.onChunk("const x = 1;\n");
-      expect(result2.augments).toHaveLength(0);
+      expect(result2.augments).toHaveLength(1);
+      expect(result2.augments[0]?.type).toBe("code");
+      expect(result2.augments[0]?.blockIndex).toBe(0); // Same block index
+      expect(result2.augments[0]?.html).toContain("const");
 
       const result3 = await coordinator.onChunk("```\n");
       expect(result3.augments).toHaveLength(1);
       expect(result3.augments[0]?.type).toBe("code");
+      expect(result3.augments[0]?.blockIndex).toBe(0); // Still same block index
     });
   });
 
@@ -311,10 +318,17 @@ describe("StreamCoordinator", () => {
       const flushResult = await coordinator.flush();
       allAugments.push(...flushResult.augments);
 
-      expect(allAugments.length).toBe(3);
-      expect(allAugments[0]?.type).toBe("paragraph");
-      expect(allAugments[1]?.type).toBe("code");
-      expect(allAugments[2]?.type).toBe("paragraph");
+      // With streaming code blocks, we get multiple augments for the code block
+      // as content streams in. Check for correct block types by unique block indices.
+      const blocksByIndex = new Map<number, (typeof allAugments)[0]>();
+      for (const aug of allAugments) {
+        blocksByIndex.set(aug.blockIndex, aug);
+      }
+
+      expect(blocksByIndex.size).toBe(3); // 3 unique blocks
+      expect(blocksByIndex.get(0)?.type).toBe("paragraph");
+      expect(blocksByIndex.get(1)?.type).toBe("code");
+      expect(blocksByIndex.get(2)?.type).toBe("paragraph");
     });
   });
 
@@ -344,6 +358,115 @@ describe("StreamCoordinator", () => {
 
       expect(result.augments).toHaveLength(1);
       expect(result.augments[0]?.html).toContain("<pre");
+    });
+  });
+
+  describe("streaming code blocks (optimistic rendering)", () => {
+    it("emits augment immediately when code fence opens", async () => {
+      const result = await coordinator.onChunk("```typescript\n");
+
+      expect(result.augments).toHaveLength(1);
+      expect(result.augments[0]?.type).toBe("code");
+      expect(result.augments[0]?.blockIndex).toBe(0);
+      expect(result.augments[0]?.html).toContain("<pre");
+    });
+
+    it("has empty pendingHtml when streaming code block", async () => {
+      const result = await coordinator.onChunk("```js\nconst x = 1;");
+
+      expect(result.pendingHtml).toBe("");
+      expect(result.augments).toHaveLength(1);
+    });
+
+    it("updates same blockIndex as code content streams in", async () => {
+      await coordinator.onChunk("```python\n");
+      const result2 = await coordinator.onChunk("def hello():\n");
+      const result3 = await coordinator.onChunk("    print('hi')\n");
+
+      expect(result2.augments[0]?.blockIndex).toBe(0);
+      expect(result3.augments[0]?.blockIndex).toBe(0);
+
+      // Content should accumulate
+      expect(result3.augments[0]?.html).toContain("print");
+    });
+
+    it("increments blockIndex correctly after code block completes", async () => {
+      // Streaming code block
+      await coordinator.onChunk("```js\ncode\n```\n");
+
+      // Next block should be index 1
+      const result = await coordinator.onChunk("# Next Heading\n");
+      expect(result.augments[0]?.blockIndex).toBe(1);
+    });
+
+    it("handles paragraph before streaming code block", async () => {
+      const result1 = await coordinator.onChunk("Some text\n\n");
+      expect(result1.augments).toHaveLength(1);
+      expect(result1.augments[0]?.type).toBe("paragraph");
+      expect(result1.augments[0]?.blockIndex).toBe(0);
+
+      const result2 = await coordinator.onChunk("```typescript\nconst x = 1;");
+      expect(result2.augments).toHaveLength(1);
+      expect(result2.augments[0]?.type).toBe("code");
+      expect(result2.augments[0]?.blockIndex).toBe(1);
+    });
+
+    it("renders code without language hint", async () => {
+      const result = await coordinator.onChunk("```\nplain code");
+
+      expect(result.augments).toHaveLength(1);
+      expect(result.augments[0]?.type).toBe("code");
+      expect(result.augments[0]?.html).toContain("plain code");
+    });
+
+    it("applies syntax highlighting to streaming code", async () => {
+      const result = await coordinator.onChunk("```javascript\nconst x = 1;");
+
+      expect(result.augments).toHaveLength(1);
+      // Shiki should add spans for syntax highlighting
+      expect(result.augments[0]?.html).toContain("shiki");
+    });
+
+    it("handles char-by-char streaming of code block", async () => {
+      const codeBlock = "```typescript\nconst x: number = 1;\n```\n";
+      const augmentsByChunk: number[] = [];
+
+      for (const char of codeBlock) {
+        const result = await coordinator.onChunk(char);
+        augmentsByChunk.push(result.augments.length);
+      }
+
+      // Should have streaming augments while in code block, then final completion
+      const totalAugments = augmentsByChunk.reduce((a, b) => a + b, 0);
+      expect(totalAugments).toBeGreaterThan(1); // Multiple updates during streaming
+    });
+
+    it("transitions from streaming to completed correctly", async () => {
+      // Start streaming code block
+      const result1 = await coordinator.onChunk("```js\ncode");
+      expect(result1.augments[0]?.blockIndex).toBe(0);
+
+      // Complete the code block
+      const result2 = await coordinator.onChunk("\n```\n");
+      expect(result2.augments[0]?.blockIndex).toBe(0); // Same index
+
+      // New block should get next index
+      const result3 = await coordinator.onChunk("Next para\n\n");
+      expect(result3.augments[0]?.blockIndex).toBe(1);
+    });
+
+    it("handles multiple code blocks with correct indices", async () => {
+      // First code block (streaming then complete)
+      await coordinator.onChunk("```js\ncode1\n```\n");
+
+      // Second code block (streaming)
+      const result = await coordinator.onChunk("```python\ncode2");
+      expect(result.augments[0]?.blockIndex).toBe(1);
+
+      // Complete second and add third
+      await coordinator.onChunk("\n```\n");
+      const result3 = await coordinator.onChunk("```rust\ncode3");
+      expect(result3.augments[0]?.blockIndex).toBe(2);
     });
   });
 });

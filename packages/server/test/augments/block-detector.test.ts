@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BlockDetector,
   type CompletedBlock,
+  type StreamingCodeBlock,
 } from "../../src/augments/block-detector.js";
 
 describe("BlockDetector", () => {
@@ -754,6 +755,124 @@ code
       expect(blocks).toHaveLength(1);
       // Just "-" is not a list item, it's paragraph
       expect(blocks[0]).toMatchObject({ type: "paragraph" });
+    });
+  });
+
+  describe("streaming code blocks", () => {
+    it("returns null when not in a code block", () => {
+      const detector = new BlockDetector();
+      detector.feed("Hello world");
+
+      expect(detector.getStreamingCodeBlock()).toBeNull();
+    });
+
+    it("returns null for paragraph state", () => {
+      const detector = new BlockDetector();
+      detector.feed("Some paragraph text\nmore text");
+
+      expect(detector.getStreamingCodeBlock()).toBeNull();
+    });
+
+    it("returns streaming code block when in code state", () => {
+      const detector = new BlockDetector();
+      detector.feed("```typescript\n");
+
+      const streaming = detector.getStreamingCodeBlock();
+      expect(streaming).not.toBeNull();
+      expect(streaming).toMatchObject({
+        content: "```typescript\n",
+        lang: "typescript",
+        startOffset: 0,
+      });
+    });
+
+    it("returns streaming code block with accumulated content", () => {
+      const detector = new BlockDetector();
+      detector.feed("```js\nconst x = 1;\nconst y = 2;");
+
+      const streaming = detector.getStreamingCodeBlock();
+      expect(streaming).not.toBeNull();
+      expect(streaming).toMatchObject({
+        content: "```js\nconst x = 1;\nconst y = 2;",
+        lang: "js",
+        startOffset: 0,
+      });
+    });
+
+    it("returns null after code block completes", () => {
+      const detector = new BlockDetector();
+      detector.feed("```js\ncode\n```\n");
+
+      expect(detector.getStreamingCodeBlock()).toBeNull();
+    });
+
+    it("handles code block without language", () => {
+      const detector = new BlockDetector();
+      detector.feed("```\nsome code");
+
+      const streaming = detector.getStreamingCodeBlock();
+      expect(streaming).not.toBeNull();
+      expect(streaming?.lang).toBeUndefined();
+      expect(streaming?.content).toBe("```\nsome code");
+    });
+
+    it("handles tilde code fence", () => {
+      const detector = new BlockDetector();
+      detector.feed("~~~python\nprint('hi')");
+
+      const streaming = detector.getStreamingCodeBlock();
+      expect(streaming).not.toBeNull();
+      expect(streaming).toMatchObject({
+        lang: "python",
+        content: "~~~python\nprint('hi')",
+      });
+    });
+
+    it("updates content as more chunks arrive", () => {
+      const detector = new BlockDetector();
+
+      detector.feed("```ts\n");
+      let streaming = detector.getStreamingCodeBlock();
+      expect(streaming?.content).toBe("```ts\n");
+
+      detector.feed("const x = 1;");
+      streaming = detector.getStreamingCodeBlock();
+      expect(streaming?.content).toBe("```ts\nconst x = 1;");
+
+      detector.feed("\nconst y = 2;");
+      streaming = detector.getStreamingCodeBlock();
+      expect(streaming?.content).toBe("```ts\nconst x = 1;\nconst y = 2;");
+    });
+
+    it("tracks correct startOffset after preceding blocks", () => {
+      const detector = new BlockDetector();
+
+      // First, a paragraph
+      detector.feed("Hello\n\n");
+      // Now a code block
+      detector.feed("```js\ncode");
+
+      const streaming = detector.getStreamingCodeBlock();
+      expect(streaming).not.toBeNull();
+      expect(streaming?.startOffset).toBe(7); // "Hello\n\n" is 7 chars (0-indexed), code starts at 7
+    });
+
+    it("char-by-char streaming code block matches whole string", () => {
+      const input = "```typescript\nconst x = 1;\nconst y = 2;";
+
+      // Feed whole string
+      const wholeDetector = new BlockDetector();
+      wholeDetector.feed(input);
+      const wholeStreaming = wholeDetector.getStreamingCodeBlock();
+
+      // Feed char by char
+      const charDetector = new BlockDetector();
+      for (const char of input) {
+        charDetector.feed(char);
+      }
+      const charStreaming = charDetector.getStreamingCodeBlock();
+
+      expect(charStreaming).toEqual(wholeStreaming);
     });
   });
 });

@@ -15,6 +15,12 @@ export interface CompletedBlock {
   endOffset: number;
 }
 
+export interface StreamingCodeBlock {
+  content: string;
+  lang?: string;
+  startOffset: number;
+}
+
 type BlockState =
   | { kind: "none" }
   | { kind: "paragraph"; startOffset: number }
@@ -78,6 +84,23 @@ export class BlockDetector {
    */
   get pending(): string {
     return this.buffer;
+  }
+
+  /**
+   * Get the current streaming code block if we're in a code block state.
+   * Returns null if not currently inside a code block.
+   * This enables optimistic rendering of code blocks before the closing fence.
+   */
+  getStreamingCodeBlock(): StreamingCodeBlock | null {
+    if (this.state.kind !== "code") {
+      return null;
+    }
+
+    return {
+      content: this.buffer,
+      lang: this.state.lang || undefined,
+      startOffset: this.state.startOffset,
+    };
   }
 
   private processBuffer(): CompletedBlock[] {

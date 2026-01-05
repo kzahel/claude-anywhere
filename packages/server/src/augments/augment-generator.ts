@@ -13,7 +13,10 @@ import {
   bundledLanguages,
   createHighlighter,
 } from "shiki";
-import type { CompletedBlock } from "./block-detector.js";
+import type {
+  CompletedBlock,
+  StreamingCodeBlock,
+} from "./block-detector.js";
 
 export interface Augment {
   blockIndex: number;
@@ -29,6 +32,10 @@ export interface AugmentGeneratorConfig {
 export interface AugmentGenerator {
   processBlock(block: CompletedBlock, blockIndex: number): Promise<Augment>;
   renderPending(pending: string): string; // Lightweight inline formatting for trailing text
+  renderStreamingCodeBlock(
+    block: StreamingCodeBlock,
+    blockIndex: number,
+  ): Promise<Augment>; // Render incomplete code block optimistically
 }
 
 /**
@@ -79,6 +86,23 @@ export async function createAugmentGenerator(
     renderPending(pending: string): string {
       return renderInlineFormatting(pending);
     },
+
+    async renderStreamingCodeBlock(
+      block: StreamingCodeBlock,
+      blockIndex: number,
+    ): Promise<Augment> {
+      const code = extractStreamingCodeContent(block.content);
+      const lang = block.lang ?? "";
+
+      const html = await renderCodeWithHighlighter(
+        code,
+        lang,
+        highlighter,
+        loadedLanguages,
+        theme,
+      );
+      return { blockIndex, html, type: "code" };
+    },
   };
 }
 
@@ -90,7 +114,6 @@ function extractCodeContent(content: string): string {
   if (lines.length < 2) return "";
 
   // Remove first line (opening fence) and last line (closing fence if present)
-  const firstLine = lines[0] ?? "";
   const hasClosingFence =
     lines.length > 1 &&
     /^(`{3,}|~{3,})$/.test((lines[lines.length - 1] ?? "").trim());
@@ -101,17 +124,26 @@ function extractCodeContent(content: string): string {
 }
 
 /**
- * Render a code block with syntax highlighting.
+ * Extract code content from a streaming code block (no closing fence).
  */
-async function renderCodeBlock(
-  block: CompletedBlock,
+function extractStreamingCodeContent(content: string): string {
+  const lines = content.split("\n");
+  if (lines.length < 2) return "";
+
+  // Remove first line (opening fence), keep everything else
+  return lines.slice(1).join("\n");
+}
+
+/**
+ * Render code with syntax highlighting (shared by completed and streaming code blocks).
+ */
+async function renderCodeWithHighlighter(
+  code: string,
+  lang: string,
   highlighter: Highlighter,
   loadedLanguages: Set<string>,
   theme: string,
 ): Promise<string> {
-  const code = extractCodeContent(block.content);
-  const lang = block.lang ?? "";
-
   // Check if language is loaded and valid
   const isValidLang = lang && lang in bundledLanguages;
 
@@ -141,6 +173,20 @@ async function renderCodeBlock(
 
   // Unknown or empty language - render as plain code block
   return renderPlainCodeBlock(code, lang);
+}
+
+/**
+ * Render a code block with syntax highlighting.
+ */
+async function renderCodeBlock(
+  block: CompletedBlock,
+  highlighter: Highlighter,
+  loadedLanguages: Set<string>,
+  theme: string,
+): Promise<string> {
+  const code = extractCodeContent(block.content);
+  const lang = block.lang ?? "";
+  return renderCodeWithHighlighter(code, lang, highlighter, loadedLanguages, theme);
 }
 
 /**

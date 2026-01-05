@@ -86,6 +86,23 @@ export async function createStreamCoordinator(
         blockIndex++;
       }
 
+      // Check if we're in a streaming code block
+      const streamingCodeBlock = detector.getStreamingCodeBlock();
+      if (streamingCodeBlock) {
+        // Render the streaming code block optimistically at the next block index
+        const streamingAugment = await generator.renderStreamingCodeBlock(
+          streamingCodeBlock,
+          blockIndex,
+        );
+        augments.push(streamingAugment);
+        // Don't render pending as inline text - it's being rendered as a code block
+        return {
+          raw: chunk,
+          augments,
+          pendingHtml: "",
+        };
+      }
+
       // Render pending text with inline formatting
       const pendingHtml = generator.renderPending(detector.pending);
 

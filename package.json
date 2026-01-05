@@ -9,6 +9,7 @@
     "dev-tailscale": "tailscale serve --bg 3400 && pnpm dev",
     "start": "NODE_ENV=production node packages/server/dist/index.js",
     "build": "pnpm -r build",
+    "build:stable": "pnpm --filter client build:stable",
     "typecheck": "pnpm --filter shared build && pnpm -r exec tsc --noEmit",
     "test": "pnpm -r test",
     "test:e2e:ui": "pnpm --filter client test:e2e",
