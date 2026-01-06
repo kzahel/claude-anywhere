@@ -895,12 +895,6 @@ export function useSession(
           // Clear pending request when state changes away from waiting-input
           setPendingInputRequest(null);
         }
-        // When subprocess goes idle, treat the session as idle from a UX perspective
-        // (hides status indicator, changes placeholder to "Send a message to resume...")
-        // even though the subprocess may still be alive in the warm pool
-        if (statusData.state === "idle") {
-          setStatus({ state: "idle" });
-        }
       } else if (data.eventType === "complete") {
         setProcessState("idle");
         setStatus({ state: "idle" });

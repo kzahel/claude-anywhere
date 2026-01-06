@@ -1045,6 +1045,9 @@ details[open] .collapsible__icon {
   flex-direction: column;
   /* Collapse whitespace text nodes (from \n between spans) */
   font-size: 0;
+  /* Expand to fit content so all lines get same width */
+  width: max-content;
+  min-width: 100%;
 }
 
 .highlighted-diff .line {

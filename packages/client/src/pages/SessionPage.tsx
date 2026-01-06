@@ -803,10 +803,10 @@ function SessionPageContent({
               <MessageInput
                 onSend={handleSend}
                 placeholder={
-                  status.state === "idle"
-                    ? "Send a message to resume..."
-                    : status.state === "external"
-                      ? "External session - send at your own risk..."
+                  status.state === "external"
+                    ? "External session - send at your own risk..."
+                    : processState === "idle"
+                      ? "Send a message to resume..."
                       : "Queue a message..."
                 }
                 mode={permissionMode}

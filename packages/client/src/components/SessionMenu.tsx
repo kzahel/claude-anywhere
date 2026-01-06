@@ -51,7 +51,7 @@ export function SessionMenu({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close menu when clicking outside
+  // Close menu when clicking outside or scrolling (mobile)
   useEffect(() => {
     if (!isOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -64,8 +64,17 @@ export function SessionMenu({
         triggerRef.current?.blur();
       }
     };
+    const handleScroll = () => {
+      setIsOpen(false);
+      setDropdownPosition(null);
+      triggerRef.current?.blur();
+    };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("scroll", handleScroll, true);
+    };
   }, [isOpen]);
 
   const handleToggleOpen = () => {
