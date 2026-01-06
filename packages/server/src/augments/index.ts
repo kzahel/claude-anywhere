@@ -29,3 +29,10 @@ export {
   computeEditAugment,
   type EditInput,
 } from "./edit-augments.js";
+
+// Write augments (syntax highlighting for written files)
+export {
+  computeWriteAugment,
+  type WriteInput,
+  type WriteAugmentResult,
+} from "./write-augments.js";

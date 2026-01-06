@@ -40,7 +40,8 @@ function convertHunks(
     oldLines: hunk.oldLines,
     newStart: hunk.newStart,
     newLines: hunk.newLines,
-    lines: hunk.lines,
+    // Filter out "\ No newline at end of file" - not useful for UI display
+    lines: hunk.lines.filter((line) => line !== "\\ No newline at end of file"),
   }));
 }
 

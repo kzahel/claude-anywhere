@@ -15,6 +15,10 @@ import {
   augmentTextBlocks,
   renderMarkdownToHtml,
 } from "../augments/markdown-augments.js";
+import {
+  type WriteInput,
+  computeWriteAugment,
+} from "../augments/write-augments.js";
 import type { SessionMetadataService } from "../metadata/index.js";
 import type { NotificationService } from "../notifications/index.js";
 import type { CodexSessionScanner } from "../projects/codex-scanner.js";
@@ -212,6 +216,61 @@ interface EditInputWithAugment {
     lines: string[];
   }>;
   _diffHtml?: string;
+}
+
+/** Write tool_use input with embedded augment data */
+interface WriteInputWithAugment extends WriteInput {
+  _highlightedContentHtml?: string;
+  _highlightedLanguage?: string;
+  _highlightedTruncated?: boolean;
+}
+
+/**
+ * Embed Write augment data directly into tool_use inputs.
+ * Adds _highlightedContentHtml to Write tool_use input blocks.
+ */
+async function augmentWriteInputs(messages: Message[]): Promise<void> {
+  const promises: Promise<void>[] = [];
+
+  for (const msg of messages) {
+    // Only assistant messages have tool_use blocks
+    if (msg.type !== "assistant") continue;
+
+    // Content is in msg.message.content (nested structure from SDK)
+    const content = msg.message?.content;
+    if (!Array.isArray(content)) continue;
+
+    for (const block of content) {
+      if (block.type === "tool_use" && block.name === "Write" && block.input) {
+        const input = block.input as WriteInputWithAugment;
+        // Validate required fields and hasn't been augmented yet
+        if (
+          typeof input.file_path === "string" &&
+          typeof input.content === "string" &&
+          !input._highlightedContentHtml
+        ) {
+          promises.push(
+            computeWriteAugment({
+              file_path: input.file_path,
+              content: input.content,
+            })
+              .then((augment) => {
+                if (augment) {
+                  input._highlightedContentHtml = augment.highlightedHtml;
+                  input._highlightedLanguage = augment.language;
+                  input._highlightedTruncated = augment.truncated;
+                }
+              })
+              .catch(() => {
+                // Ignore augment computation errors
+              }),
+          );
+        }
+      }
+    }
+  }
+
+  await Promise.all(promises);
 }
 
 /**
@@ -487,6 +546,10 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Embed Edit augment data directly into tool_use inputs
     // This adds _structuredPatch and _diffHtml to the input
     await augmentEditInputs(session.messages);
+
+    // Embed Write augment data directly into tool_use inputs
+    // This adds _highlightedContentHtml to the input
+    await augmentWriteInputs(session.messages);
 
     // Embed rendered HTML directly into text blocks
     // This adds _html to text content blocks

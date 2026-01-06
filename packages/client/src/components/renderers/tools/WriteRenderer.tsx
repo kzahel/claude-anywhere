@@ -9,6 +9,13 @@ import type { ToolRenderer, WriteInput, WriteResult } from "./types";
 const MAX_LINES_COLLAPSED = 30;
 const PREVIEW_LINES = 3;
 
+/** Extended input type with embedded augment data from server */
+interface WriteInputWithAugment extends WriteInput {
+  _highlightedContentHtml?: string;
+  _highlightedLanguage?: string;
+  _highlightedTruncated?: boolean;
+}
+
 /**
  * Extract filename from path
  */
@@ -35,11 +42,34 @@ function WriteToolUse({ input }: { input: WriteInput }) {
  */
 function WriteModalContent({
   file,
+  input,
 }: {
   file: WriteResult["file"];
+  input?: WriteInputWithAugment;
 }) {
   const lines = file.content.split("\n");
 
+  // Use highlighted HTML if available from input augment
+  if (input?._highlightedContentHtml) {
+    return (
+      <div className="file-content-modal">
+        <div className="file-viewer-code file-viewer-code-highlighted">
+          <div
+            className="shiki-container"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+            dangerouslySetInnerHTML={{ __html: input._highlightedContentHtml }}
+          />
+          {input._highlightedTruncated && (
+            <div className="file-viewer-truncated">
+              Content truncated for highlighting (showing first 2000 lines)
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback: plain text with line numbers
   return (
     <div className="file-content-modal">
       <div className="file-content-with-lines">
@@ -58,13 +88,16 @@ function WriteModalContent({
 
 /**
  * Write tool result - shows written content with line numbers
+ * Uses highlighted HTML from input augment when available.
  */
 function WriteToolResult({
   result,
   isError,
+  input,
 }: {
   result: WriteResult;
   isError: boolean;
+  input?: WriteInputWithAugment;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { enabled, reportValidationError, isToolIgnored } =
@@ -112,10 +145,38 @@ function WriteToolResult({
   const { file } = result;
   const lines = file.content.split("\n");
   const needsCollapse = lines.length > MAX_LINES_COLLAPSED;
+  const fileName = getFileName(file.filePath);
+
+  // Use highlighted HTML if available from input augment
+  if (input?._highlightedContentHtml) {
+    return (
+      <div className="write-result">
+        <div className="file-header">
+          <span className="file-path">{fileName}</span>
+          <span className="file-range">{file.numLines} lines written</span>
+          {showValidationWarning && validationErrors && (
+            <SchemaWarning toolName="Write" errors={validationErrors} />
+          )}
+        </div>
+        <div className="file-viewer-code file-viewer-code-highlighted">
+          <div
+            className="shiki-container"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+            dangerouslySetInnerHTML={{ __html: input._highlightedContentHtml }}
+          />
+          {input._highlightedTruncated && (
+            <div className="file-viewer-truncated">
+              Content truncated for highlighting (showing first 2000 lines)
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback: plain text with line numbers and expand/collapse
   const displayLines =
     needsCollapse && !isExpanded ? lines.slice(0, MAX_LINES_COLLAPSED) : lines;
-
-  const fileName = getFileName(file.filePath);
 
   return (
     <div className="write-result">
@@ -160,7 +221,7 @@ function WriteCollapsedPreview({
   result,
   isError,
 }: {
-  input: WriteInput;
+  input: WriteInputWithAugment;
   result: WriteResult | undefined;
   isError: boolean;
 }) {
@@ -267,6 +328,7 @@ function WriteCollapsedPreview({
                 totalLines: lineCount,
               }
             }
+            input={input}
           />
         </Modal>
       )}
@@ -281,8 +343,14 @@ export const writeRenderer: ToolRenderer<WriteInput, WriteResult> = {
     return <WriteToolUse input={input as WriteInput} />;
   },
 
-  renderToolResult(result, isError, _context) {
-    return <WriteToolResult result={result as WriteResult} isError={isError} />;
+  renderToolResult(result, isError, _context, input) {
+    return (
+      <WriteToolResult
+        result={result as WriteResult}
+        isError={isError}
+        input={input as WriteInputWithAugment | undefined}
+      />
+    );
   },
 
   getUseSummary(input) {
@@ -305,7 +373,7 @@ export const writeRenderer: ToolRenderer<WriteInput, WriteResult> = {
   renderCollapsedPreview(input, result, isError, _context) {
     return (
       <WriteCollapsedPreview
-        input={input as WriteInput}
+        input={input as WriteInputWithAugment}
         result={result as WriteResult | undefined}
         isError={isError}
       />

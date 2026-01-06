@@ -9,6 +9,10 @@ import {
   createStreamCoordinator,
 } from "../augments/index.js";
 import { renderMarkdownToHtml } from "../augments/markdown-augments.js";
+import {
+  type WriteInput,
+  computeWriteAugment,
+} from "../augments/write-augments.js";
 import { getLogger } from "../logging/logger.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { ProcessEvent } from "../supervisor/types.js";
@@ -35,6 +39,13 @@ interface EditInputWithAugment extends EditInput {
     lines: string[];
   }>;
   _diffHtml?: string;
+}
+
+/** Write tool_use input with embedded augment data */
+interface WriteInputWithAugment extends WriteInput {
+  _highlightedContentHtml?: string;
+  _highlightedLanguage?: string;
+  _highlightedTruncated?: boolean;
 }
 
 export interface StreamDeps {
@@ -231,6 +242,59 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         }
       };
 
+      // Helper to embed Write augment data directly into tool_use inputs
+      // Adds _highlightedContentHtml to Write tool_use input blocks
+      const augmentWriteInputs = async (
+        message: Record<string, unknown>,
+      ): Promise<void> => {
+        // Must be an assistant message
+        if (message.type !== "assistant") return;
+
+        // SDK messages have content nested at message.message.content
+        const innerMessage = message.message as
+          | Record<string, unknown>
+          | undefined;
+        const content = innerMessage?.content ?? message.content;
+        if (!Array.isArray(content)) return;
+
+        // Look for Write tool_use blocks and augment them
+        for (const block of content) {
+          if (
+            typeof block === "object" &&
+            block !== null &&
+            (block as Record<string, unknown>).type === "tool_use" &&
+            (block as Record<string, unknown>).name === "Write"
+          ) {
+            const toolUseBlock = block as Record<string, unknown>;
+            const input = toolUseBlock.input as WriteInputWithAugment;
+
+            // Validate input has required fields and hasn't been augmented yet
+            if (
+              typeof input?.file_path === "string" &&
+              typeof input?.content === "string" &&
+              !input._highlightedContentHtml
+            ) {
+              try {
+                const augment = await computeWriteAugment({
+                  file_path: input.file_path,
+                  content: input.content,
+                });
+                if (augment) {
+                  input._highlightedContentHtml = augment.highlightedHtml;
+                  input._highlightedLanguage = augment.language;
+                  input._highlightedTruncated = augment.truncated;
+                }
+              } catch (err) {
+                log.warn(
+                  { err, sessionId, toolUseId: toolUseBlock.id },
+                  "Failed to compute write augment",
+                );
+              }
+            }
+          }
+        }
+      };
+
       // Helper to process text through StreamCoordinator and emit augments
       const processTextChunk = async (text: string): Promise<void> => {
         // Capture message ID at call time (before async operations)
@@ -375,6 +439,12 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
               // Embed Edit augment data directly into tool_use inputs
               // This adds _structuredPatch and _diffHtml to the input before sending
               await augmentEditInputs(event.message as Record<string, unknown>);
+
+              // Embed Write augment data directly into tool_use inputs
+              // This adds _highlightedContentHtml to the input before sending
+              await augmentWriteInputs(
+                event.message as Record<string, unknown>,
+              );
 
               // Check for final assistant message - render markdown and send augment BEFORE raw message
               // This ensures client has the complete rendered HTML when the message arrives,
