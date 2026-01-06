@@ -17,6 +17,7 @@ interface ReadResultWithAugment extends ReadResult {
   _highlightedContentHtml?: string;
   _highlightedLanguage?: string;
   _highlightedTruncated?: boolean;
+  _renderedMarkdownHtml?: string;
 }
 
 /**
@@ -51,17 +52,58 @@ function FileModalContent({
   file,
   highlightedHtml,
   highlightedTruncated,
+  renderedMarkdownHtml,
 }: {
   file: TextFile;
   highlightedHtml?: string;
   highlightedTruncated?: boolean;
+  renderedMarkdownHtml?: string;
 }) {
+  const [showPreview, setShowPreview] = useState(false);
   const lines = file.content.split("\n");
+  const hasMarkdownPreview = !!renderedMarkdownHtml;
+
+  // Toggle button for markdown files
+  const toggleButton = hasMarkdownPreview && (
+    <div className="markdown-view-toggle">
+      <button
+        type="button"
+        className={`toggle-btn ${!showPreview ? "active" : ""}`}
+        onClick={() => setShowPreview(false)}
+      >
+        Source
+      </button>
+      <button
+        type="button"
+        className={`toggle-btn ${showPreview ? "active" : ""}`}
+        onClick={() => setShowPreview(true)}
+      >
+        Preview
+      </button>
+    </div>
+  );
+
+  // Show rendered markdown preview
+  if (showPreview && renderedMarkdownHtml) {
+    return (
+      <div className="file-content-modal">
+        {toggleButton}
+        <div className="markdown-preview">
+          <div
+            className="markdown-rendered"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered HTML
+            dangerouslySetInnerHTML={{ __html: renderedMarkdownHtml }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   // Use highlighted HTML if available
   if (highlightedHtml) {
     return (
       <div className="file-content-modal">
+        {toggleButton}
         <div className="file-viewer-code file-viewer-code-highlighted">
           <div
             className="shiki-container"
@@ -81,6 +123,7 @@ function FileModalContent({
   // Fallback: plain text with line numbers
   return (
     <div className="file-content-modal">
+      {toggleButton}
       <div className="file-content-with-lines">
         <div className="line-numbers">
           {lines.map((_, i) => (
@@ -123,10 +166,12 @@ function TextFileResult({
   file,
   highlightedHtml,
   highlightedTruncated,
+  renderedMarkdownHtml,
 }: {
   file: TextFile;
   highlightedHtml?: string;
   highlightedTruncated?: boolean;
+  renderedMarkdownHtml?: string;
 }) {
   const [showModal, setShowModal] = useState(false);
   const fileName = getFileName(file.filePath);
@@ -159,6 +204,7 @@ function TextFileResult({
             file={file}
             highlightedHtml={highlightedHtml}
             highlightedTruncated={highlightedTruncated}
+            renderedMarkdownHtml={renderedMarkdownHtml}
           />
         </Modal>
       )}
@@ -255,6 +301,7 @@ function ReadToolResult({
         file={result.file as TextFile}
         highlightedHtml={result._highlightedContentHtml}
         highlightedTruncated={result._highlightedTruncated}
+        renderedMarkdownHtml={result._renderedMarkdownHtml}
       />
     </>
   );
@@ -365,6 +412,7 @@ function ReadInteractiveSummary({
             file={file}
             highlightedHtml={result._highlightedContentHtml}
             highlightedTruncated={result._highlightedTruncated}
+            renderedMarkdownHtml={result._renderedMarkdownHtml}
           />
         </Modal>
       )}

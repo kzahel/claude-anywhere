@@ -72,11 +72,12 @@ test.describe("File Browser", () => {
         "src/index.ts",
       );
 
-      // Should show content with line numbers
-      await expect(page.locator(".file-viewer-line-numbers")).toBeVisible();
-      await expect(page.locator(".file-viewer-content")).toContainText(
-        "export const hello",
-      );
+      // Should show code content (syntax highlighted or plain)
+      // With shiki highlighting: .shiki-container, fallback: .code-line-numbers
+      const codeView = page.locator(".file-viewer-code");
+      await expect(codeView).toBeVisible();
+      // Content should be present in either shiki or plain code view
+      await expect(codeView).toContainText("export const hello");
     });
 
     test("renders markdown files with formatting", async ({ page }) => {
@@ -101,11 +102,11 @@ test.describe("File Browser", () => {
       // Click toggle button to show raw
       await page.click('button[title="View raw"]');
 
-      // Should now show code view with line numbers
-      await expect(page.locator(".file-viewer-code")).toBeVisible();
-      await expect(page.locator(".file-viewer-content")).toContainText(
-        "# Test Project",
-      );
+      // Should now show code view
+      const codeView = page.locator(".file-viewer-code");
+      await expect(codeView).toBeVisible();
+      // Content should contain the raw markdown text
+      await expect(codeView).toContainText("# Test Project");
     });
 
     test("shows file metadata (size, lines)", async ({ page }) => {

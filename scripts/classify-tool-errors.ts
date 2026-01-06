@@ -12,8 +12,8 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 interface ToolError {
   toolName: string;
@@ -484,7 +484,7 @@ async function main() {
 
   // Print summary
   console.log(`\n${"=".repeat(60)}`);
-  console.log(`Tool Error Classification Summary`);
+  console.log("Tool Error Classification Summary");
   console.log(`${"=".repeat(60)}\n`);
   console.log(`Total errors found: ${allErrors.length}\n`);
 
@@ -534,7 +534,7 @@ async function main() {
 
   // Print classification recommendations
   console.log(`\n${"=".repeat(60)}`);
-  console.log(`Rendering Recommendations`);
+  console.log("Rendering Recommendations");
   console.log(`${"=".repeat(60)}\n`);
 
   const userRejections =
@@ -548,7 +548,7 @@ async function main() {
   console.log(
     `System errors: ${systemErrors} (${((systemErrors / allErrors.length) * 100).toFixed(1)}%)`,
   );
-  console.log(`\nSuggested UI treatment:`);
+  console.log("\nSuggested UI treatment:");
   console.log(`  • user_rejection: "Declined" badge, muted gray styling`);
   console.log(
     `  • user_rejection_with_reason: "Declined" badge + show reason, muted styling`,
@@ -558,7 +558,7 @@ async function main() {
   );
   console.log(`  • file_error: "File error" badge, amber styling`);
   console.log(`  • validation_error: "Invalid" badge, amber styling`);
-  console.log(`  • timeout/network_error: Specific badge, amber styling`);
+  console.log("  • timeout/network_error: Specific badge, amber styling");
   console.log(`  • unknown: "Error" badge, amber styling (not red)`);
 }
 

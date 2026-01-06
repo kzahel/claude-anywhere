@@ -43,6 +43,7 @@ interface ReadResultWithAugment {
   _highlightedContentHtml?: string;
   _highlightedLanguage?: string;
   _highlightedTruncated?: boolean;
+  _renderedMarkdownHtml?: string;
 }
 
 /** Edit tool_use input with embedded augment data */
@@ -222,6 +223,10 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
                 readResult._highlightedContentHtml = augment.highlightedHtml;
                 readResult._highlightedLanguage = augment.language;
                 readResult._highlightedTruncated = augment.truncated;
+                if (augment.renderedMarkdownHtml) {
+                  readResult._renderedMarkdownHtml =
+                    augment.renderedMarkdownHtml;
+                }
               }
             } catch (err) {
               log.warn({ err, sessionId }, "Failed to compute read augment");

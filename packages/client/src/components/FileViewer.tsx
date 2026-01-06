@@ -4,6 +4,10 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "../api/client";
 
+/** Client-side markdown disabled by default. Set VITE_DISABLE_CLIENT_MARKDOWN=false to enable */
+const DISABLE_CLIENT_MARKDOWN =
+  import.meta.env.VITE_DISABLE_CLIENT_MARKDOWN !== "false";
+
 interface FileViewerProps {
   projectId: string;
   filePath: string;
@@ -218,8 +222,8 @@ export const FileViewer = memo(function FileViewer({
 
     // Text files
     if (content !== undefined) {
-      // Markdown rendering (toggleable)
-      if (isMarkdown && renderMarkdown) {
+      // Markdown rendering (toggleable, but disabled if DISABLE_CLIENT_MARKDOWN)
+      if (isMarkdown && renderMarkdown && !DISABLE_CLIENT_MARKDOWN) {
         return (
           <div className="file-viewer-markdown">
             <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>

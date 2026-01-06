@@ -269,7 +269,9 @@ describe("Cross-provider scenarios", () => {
         (m) =>
           m.type === "assistant" &&
           Array.isArray(m.message?.content) &&
-          m.message.content.some((b: any) => b.type === "tool_use"),
+          m.message.content.some(
+            (b: { type: string }) => b.type === "tool_use",
+          ),
       );
       expect(toolUseMsg).toBeDefined();
     },

@@ -23,9 +23,9 @@ import {
 } from "./maintenance/index.js";
 import { SessionMetadataService } from "./metadata/index.js";
 import { NotificationService } from "./notifications/index.js";
-import { RecentsService } from "./recents/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
 import { PushService, loadVapidKeys } from "./push/index.js";
+import { RecentsService } from "./recents/index.js";
 import { createUploadRoutes } from "./routes/upload.js";
 import { detectClaudeCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";

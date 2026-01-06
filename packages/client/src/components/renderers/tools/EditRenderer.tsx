@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
 import {
@@ -60,8 +60,9 @@ function computeChangeSummary(structuredPatch: PatchHunk[]): string | null {
 
 /**
  * Render diff lines (shared between pending preview and result fallback)
+ * Memoized to prevent scroll reset when parent re-renders.
  */
-function DiffLines({ lines }: { lines: string[] }) {
+const DiffLines = memo(function DiffLines({ lines }: { lines: string[] }) {
   return (
     <div className="diff-hunk">
       <pre className="diff-content">
@@ -84,13 +85,14 @@ function DiffLines({ lines }: { lines: string[] }) {
       </pre>
     </div>
   );
-}
+});
 
 /**
  * Render pre-highlighted diff HTML from shiki.
  * Used when diffHtml is available from the augment.
+ * Memoized to prevent scroll reset when parent re-renders.
  */
-function HighlightedDiff({
+const HighlightedDiff = memo(function HighlightedDiff({
   diffHtml,
   truncateLines,
 }: {
@@ -114,7 +116,7 @@ function HighlightedDiff({
     if (!lastMatch) return diffHtml;
 
     // Find the closing </span> for this line
-    const startPos = lastMatch.index! + lastMatch[0].length;
+    const startPos = (lastMatch.index ?? 0) + lastMatch[0].length;
     const closeSpanPos = diffHtml.indexOf("</span>", startPos);
     if (closeSpanPos === -1) return diffHtml;
 
@@ -129,12 +131,13 @@ function HighlightedDiff({
       dangerouslySetInnerHTML={{ __html: htmlToRender }}
     />
   );
-}
+});
 
 /**
  * Render a single diff hunk (without @@ header for cleaner display)
+ * Memoized to prevent scroll reset when parent re-renders.
  */
-function DiffHunk({ hunk }: { hunk: PatchHunk }) {
+const DiffHunk = memo(function DiffHunk({ hunk }: { hunk: PatchHunk }) {
   return (
     <div className="diff-hunk">
       <pre className="diff-content">
@@ -155,7 +158,7 @@ function DiffHunk({ hunk }: { hunk: PatchHunk }) {
       </pre>
     </div>
   );
-}
+});
 
 /**
  * Edit tool use - shows file path and diff preview

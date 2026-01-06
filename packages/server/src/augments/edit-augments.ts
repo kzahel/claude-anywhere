@@ -70,9 +70,9 @@ function patchToUnifiedText(hunks: PatchHunk[]): string {
 function extractShikiLines(html: string): string[] {
   const lines: string[] = [];
   const lineStartRegex = /<span class="line">/g;
-  let match: RegExpExecArray | null;
+  let match: RegExpExecArray | null = lineStartRegex.exec(html);
 
-  while ((match = lineStartRegex.exec(html)) !== null) {
+  while (match !== null) {
     const startPos = match.index + match[0].length;
     let depth = 1;
     let pos = startPos;
@@ -95,6 +95,7 @@ function extractShikiLines(html: string): string[] {
         pos = nextClose + 7; // Move past "</span>"
       }
     }
+    match = lineStartRegex.exec(html);
   }
 
   return lines;

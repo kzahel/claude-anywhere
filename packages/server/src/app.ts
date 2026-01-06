@@ -6,7 +6,6 @@ import { createAuthRoutes } from "./auth/routes.js";
 import type { FrontendProxy } from "./frontend/index.js";
 import type { SessionIndexService } from "./indexes/index.js";
 import type { SessionMetadataService } from "./metadata/index.js";
-import type { RecentsService } from "./recents/index.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
 import { corsMiddleware, requireCustomHeader } from "./middleware/security.js";
 import type { NotificationService } from "./notifications/index.js";
@@ -21,6 +20,7 @@ import {
 import { ProjectScanner } from "./projects/scanner.js";
 import { PushNotifier, type PushService } from "./push/index.js";
 import { createPushRoutes } from "./push/routes.js";
+import type { RecentsService } from "./recents/index.js";
 import { createActivityRoutes } from "./routes/activity.js";
 import { createDebugStreamingRoutes } from "./routes/debug-streaming.js";
 import { createDevRoutes } from "./routes/dev.js";

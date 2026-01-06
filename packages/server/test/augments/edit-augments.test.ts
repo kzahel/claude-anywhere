@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  type WordDiffSegment,
   __test__,
   computeEditAugment,
-  type WordDiffSegment,
 } from "../../src/augments/edit-augments.js";
 
 const {

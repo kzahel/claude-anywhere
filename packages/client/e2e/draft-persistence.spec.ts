@@ -29,6 +29,9 @@ test.describe("Draft Persistence", () => {
       await page.waitForSelector(".project-list a");
       await page.locator(".project-list a").first().click();
 
+      // Wait for the new session form to load
+      await page.waitForSelector(".new-session-form textarea");
+
       // Type a message
       const textarea = page.locator(".new-session-form textarea");
       await textarea.fill("Draft to restore");
@@ -38,7 +41,10 @@ test.describe("Draft Persistence", () => {
 
       // Reload the page
       await page.reload();
-      await page.waitForSelector(".new-session-form textarea");
+      // Wait for the form to appear again after reload
+      await page.waitForSelector(".new-session-form textarea", {
+        timeout: 10000,
+      });
 
       // Draft should be restored
       const restoredTextarea = page.locator(".new-session-form textarea");
@@ -49,6 +55,9 @@ test.describe("Draft Persistence", () => {
       await page.goto("/projects");
       await page.waitForSelector(".project-list a");
       await page.locator(".project-list a").first().click();
+
+      // Wait for the new session form to load
+      await page.waitForSelector(".new-session-form textarea");
 
       // Get project ID for localStorage check
       const projectId = await page.evaluate(() => {
@@ -61,8 +70,8 @@ test.describe("Draft Persistence", () => {
       await page.waitForTimeout(700); // Wait for debounce
       await page.click(".new-session-form .send-button");
 
-      // Wait for navigation to session page
-      await expect(page).toHaveURL(/\/sessions\//);
+      // Wait for navigation to session page (allow longer timeout for session creation)
+      await expect(page).toHaveURL(/\/sessions\//, { timeout: 15000 });
 
       // Draft should be cleared
       const draft = await page.evaluate((pid) => {

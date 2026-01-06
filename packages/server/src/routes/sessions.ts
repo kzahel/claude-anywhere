@@ -240,6 +240,7 @@ interface ReadResultWithAugment {
   _highlightedContentHtml?: string;
   _highlightedLanguage?: string;
   _highlightedTruncated?: boolean;
+  _renderedMarkdownHtml?: string;
 }
 
 /**
@@ -366,6 +367,10 @@ async function augmentExitPlanModeMessages(messages: Message[]): Promise<void> {
                 readResult._highlightedContentHtml = augment.highlightedHtml;
                 readResult._highlightedLanguage = augment.language;
                 readResult._highlightedTruncated = augment.truncated;
+                if (augment.renderedMarkdownHtml) {
+                  readResult._renderedMarkdownHtml =
+                    augment.renderedMarkdownHtml;
+                }
               }
             })
             .catch(() => {

@@ -6,6 +6,10 @@ import type {
   ToolRenderer,
 } from "./types";
 
+/** Client-side markdown disabled by default. Set VITE_DISABLE_CLIENT_MARKDOWN=false to enable */
+const DISABLE_CLIENT_MARKDOWN =
+  import.meta.env.VITE_DISABLE_CLIENT_MARKDOWN !== "false";
+
 /** Extended input type with server-rendered HTML */
 interface ExitPlanModeInputWithHtml extends ExitPlanModeInput {
   _renderedHtml?: string;
@@ -74,6 +78,11 @@ export const exitPlanModeRenderer: ToolRenderer<
           // Server-rendered HTML with shiki syntax highlighting
           // biome-ignore lint/security/noDangerouslySetInnerHtml: server-rendered markdown is safe
           <div dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+        ) : DISABLE_CLIENT_MARKDOWN ? (
+          // Plain text fallback when client markdown is disabled
+          <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
+            {plan}
+          </pre>
         ) : (
           // Fallback to client-side markdown rendering
           <Markdown remarkPlugins={[remarkGfm]}>{plan}</Markdown>

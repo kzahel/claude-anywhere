@@ -51,4 +51,4 @@ function createDefaultUser(): UserConfig {
   };
 }
 
-export { validateUser, createDefaultUser, UserConfig };
+export { validateUser, createDefaultUser, type UserConfig };
