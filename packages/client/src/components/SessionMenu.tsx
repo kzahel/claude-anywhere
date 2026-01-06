@@ -1,15 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { api } from "../api/client";
 
 export interface SessionMenuProps {
   sessionId: string;
+  projectId: string;
   isStarred: boolean;
   isArchived: boolean;
   hasUnread?: boolean;
+  /** Provider name - clone is only available for Claude sessions */
+  provider?: string;
   onToggleStar: () => void | Promise<void>;
   onToggleArchive: () => void | Promise<void>;
   onToggleRead?: () => void | Promise<void>;
   onRename: () => void;
+  /** Called after successful clone with the new session ID */
+  onClone?: (newSessionId: string) => void | Promise<void>;
   /** Use "..." icon instead of chevron */
   useEllipsisIcon?: boolean;
   /** Additional class for the wrapper */
@@ -19,18 +25,23 @@ export interface SessionMenuProps {
 }
 
 export function SessionMenu({
+  sessionId,
+  projectId,
   isStarred,
   isArchived,
   hasUnread,
+  provider,
   onToggleStar,
   onToggleArchive,
   onToggleRead,
   onRename,
+  onClone,
   useEllipsisIcon = false,
   className = "",
   useFixedPositioning = false,
 }: SessionMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isCloning, setIsCloning] = useState(false);
   const [dropdownPosition, setDropdownPosition] = useState<{
     top: number;
     left?: number;
@@ -90,6 +101,21 @@ export function SessionMenu({
     action();
   };
 
+  const handleClone = async () => {
+    if (isCloning) return;
+    setIsCloning(true);
+    setIsOpen(false);
+    setDropdownPosition(null);
+    try {
+      const result = await api.cloneSession(projectId, sessionId);
+      onClone?.(result.sessionId);
+    } catch (error) {
+      console.error("Failed to clone session:", error);
+    } finally {
+      setIsCloning(false);
+    }
+  };
+
   const wrapperClasses = [
     "session-menu-wrapper",
     className,
@@ -145,6 +171,23 @@ export function SessionMenu({
         </svg>
         Rename
       </button>
+      {onClone && provider === "claude" && (
+        <button type="button" onClick={handleClone} disabled={isCloning}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+          {isCloning ? "Cloning..." : "Clone"}
+        </button>
+      )}
       <button type="button" onClick={() => handleAction(onToggleArchive)}>
         <svg
           width="14"

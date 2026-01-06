@@ -297,6 +297,21 @@ export const api = {
       body: JSON.stringify(updates),
     }),
 
+  /**
+   * Clone a session, creating a new session with the same conversation history.
+   * Currently only supported for Claude sessions.
+   */
+  cloneSession: (projectId: string, sessionId: string, title?: string) =>
+    fetchJSON<{
+      sessionId: string;
+      messageCount: number;
+      clonedFrom: string;
+      provider: string;
+    }>(`/projects/${projectId}/sessions/${sessionId}/clone`, {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    }),
+
   // Push notification API
   getPushPublicKey: () =>
     fetchJSON<{ publicKey: string }>("/push/vapid-public-key"),

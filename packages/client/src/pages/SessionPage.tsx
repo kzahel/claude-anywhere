@@ -20,11 +20,11 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import type { DraftControls } from "../hooks/useDraftPersistence";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
+import { recordSessionVisit } from "../hooks/useRecentSessions";
 import {
   type StreamingMarkdownCallbacks,
   useSession,
 } from "../hooks/useSession";
-import { recordSessionVisit } from "../hooks/useRecentSessions";
 import { useProjectLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { truncateText } from "../lib/text";
@@ -666,13 +666,20 @@ function SessionPageContent({
                 {!loading && (
                   <SessionMenu
                     sessionId={sessionId}
+                    projectId={projectId}
                     isStarred={isStarred}
                     isArchived={isArchived}
                     hasUnread={hasUnread}
+                    provider={session?.provider}
                     onToggleStar={handleToggleStar}
                     onToggleArchive={handleToggleArchive}
                     onToggleRead={handleToggleRead}
                     onRename={handleStartEditingTitle}
+                    onClone={(newSessionId) => {
+                      navigate(
+                        `/projects/${projectId}/sessions/${newSessionId}`,
+                      );
+                    }}
                     useFixedPositioning
                   />
                 )}

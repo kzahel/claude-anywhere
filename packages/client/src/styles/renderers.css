@@ -163,6 +163,8 @@
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .streaming-blocks pre code,
@@ -266,6 +268,8 @@
   overflow-x: auto;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .text-block pre code {

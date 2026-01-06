@@ -27,6 +27,7 @@ import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 import type { PermissionMode, SDKMessage, UserMessage } from "../sdk/types.js";
 import { CodexSessionReader } from "../sessions/codex-reader.js";
+import { cloneClaudeSession } from "../sessions/fork.js";
 import { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
@@ -1142,6 +1143,85 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     }
 
     return c.json({ updated: true });
+  });
+
+  // POST /api/projects/:projectId/sessions/:sessionId/clone - Clone a session
+  routes.post("/projects/:projectId/sessions/:sessionId/clone", async (c) => {
+    const projectId = c.req.param("projectId");
+    const sessionId = c.req.param("sessionId");
+
+    // Validate projectId format at API boundary
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    const project = await deps.scanner.getOrCreateProject(projectId);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
+
+    // Only Claude sessions can be cloned for now
+    if (project.provider !== "claude") {
+      return c.json(
+        { error: "Clone is only supported for Claude sessions" },
+        400,
+      );
+    }
+
+    let body: { title?: string } = {};
+    try {
+      body = await c.req.json();
+    } catch {
+      // Body is optional
+    }
+
+    try {
+      // Get session directory from project
+      const sessionDir = project.sessionDir;
+      if (!sessionDir) {
+        return c.json({ error: "Session directory not found" }, 500);
+      }
+
+      // Get original session to extract title for the clone
+      const reader = deps.readerFactory(project);
+      const originalSession = await reader.getSessionSummary(
+        sessionId,
+        projectId,
+      );
+
+      const result = await cloneClaudeSession(sessionDir, sessionId);
+
+      // Build clone title: use provided title, or derive from original
+      let cloneTitle = body.title;
+      if (!cloneTitle && deps.sessionMetadataService) {
+        // Check for custom title first, then fall back to auto-generated title
+        const originalMetadata =
+          deps.sessionMetadataService.getMetadata(sessionId);
+        const originalTitle =
+          originalMetadata?.customTitle ?? originalSession?.title;
+        if (originalTitle) {
+          cloneTitle = `${originalTitle} [cloned]`;
+        }
+      }
+
+      // Set the clone title
+      if (cloneTitle && deps.sessionMetadataService) {
+        await deps.sessionMetadataService.updateMetadata(result.newSessionId, {
+          title: cloneTitle,
+        });
+      }
+
+      return c.json({
+        sessionId: result.newSessionId,
+        messageCount: result.entries,
+        clonedFrom: sessionId,
+        provider: "claude",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to clone session";
+      return c.json({ error: message }, 500);
+    }
   });
 
   // ============ Worker Queue Endpoints ============

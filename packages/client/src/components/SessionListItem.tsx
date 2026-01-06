@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { ProcessStateType } from "../hooks/useFileActivity";
 import { type SessionSummary, getSessionDisplayTitle } from "../types";
@@ -49,6 +49,8 @@ export function SessionListItem({
   onSelect,
   isSelectionMode = false,
 }: SessionListItemProps) {
+  const navigate = useNavigate();
+
   // Local state for optimistic updates
   const [localIsStarred, setLocalIsStarred] = useState<boolean | undefined>(
     undefined,
@@ -328,13 +330,18 @@ export function SessionListItem({
 
       <SessionMenu
         sessionId={session.id}
+        projectId={projectId}
         isStarred={isStarred ?? false}
         isArchived={isArchived ?? false}
         hasUnread={hasUnread ?? false}
+        provider={session.provider}
         onToggleStar={handleToggleStar}
         onToggleArchive={handleToggleArchive}
         onToggleRead={handleToggleRead}
         onRename={handleRename}
+        onClone={(newSessionId) => {
+          navigate(`/projects/${projectId}/sessions/${newSessionId}`);
+        }}
         useEllipsisIcon
         useFixedPositioning
         className="session-list-item__menu"
