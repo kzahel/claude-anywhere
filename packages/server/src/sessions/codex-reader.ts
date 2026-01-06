@@ -356,9 +356,15 @@ export class CodexSessionReader implements ISessionReader {
     title: string | null;
     fullTitle: string | null;
   } {
+    const hasResponseItemUser = this.hasResponseItemUserMessages(entries);
+
     // Find first user message
     for (const entry of entries) {
-      if (entry.type === "event_msg" && entry.payload.type === "user_message") {
+      if (
+        !hasResponseItemUser &&
+        entry.type === "event_msg" &&
+        entry.payload.type === "user_message"
+      ) {
         const fullTitle = entry.payload.message.trim();
         const title =
           fullTitle.length <= SESSION_TITLE_MAX_LENGTH
@@ -397,11 +403,15 @@ export class CodexSessionReader implements ISessionReader {
    */
   private countMessages(entries: CodexSessionEntry[]): number {
     let count = 0;
+    const hasResponseItemUser = this.hasResponseItemUserMessages(entries);
 
     for (const entry of entries) {
       if (entry.type === "event_msg") {
         // Only count user_message events (not agent_message streaming tokens)
-        if (entry.payload.type === "user_message") {
+        if (
+          entry.payload.type === "user_message" &&
+          !hasResponseItemUser
+        ) {
           count++;
         }
       } else if (entry.type === "response_item") {
@@ -482,6 +492,7 @@ export class CodexSessionReader implements ISessionReader {
     const messages: Message[] = [];
     let messageIndex = 0;
     let lastMessageUuid: string | null = null;
+    const hasResponseItemUser = this.hasResponseItemUserMessages(entries);
 
     // Track function calls for pairing with outputs
     const pendingCalls = new Map<
@@ -505,7 +516,10 @@ export class CodexSessionReader implements ISessionReader {
       } else if (entry.type === "event_msg") {
         // Only process user_message events - agent_message events are
         // duplicates of the response_item data (streaming tokens)
-        if (entry.payload.type === "user_message") {
+        if (
+          entry.payload.type === "user_message" &&
+          !hasResponseItemUser
+        ) {
           const msg = this.convertEventMsg(entry, messageIndex++);
           if (msg) {
             // Set parentUuid to create linear chain for ordering/dedup
@@ -521,6 +535,17 @@ export class CodexSessionReader implements ISessionReader {
     }
 
     return messages;
+  }
+
+  private hasResponseItemUserMessages(
+    entries: CodexSessionEntry[],
+  ): boolean {
+    return entries.some(
+      (entry) =>
+        entry.type === "response_item" &&
+        entry.payload.type === "message" &&
+        entry.payload.role === "user",
+    );
   }
 
   /**
