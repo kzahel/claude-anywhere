@@ -13,6 +13,7 @@ export type FileType =
 
 export interface FileChangeEvent {
   type: "file-change";
+  provider: "claude" | "gemini" | "codex";
   path: string;
   relativePath: string;
   changeType: FileChangeType;

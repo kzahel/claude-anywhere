@@ -7,6 +7,7 @@ import {
   mergeSSEMessage,
 } from "../lib/mergeMessages";
 import { findPendingTasks } from "../lib/pendingTasks";
+import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
 import type {
   ContentBlock,
   InputRequest,
@@ -440,10 +441,7 @@ export function useSession(
 
       // Check if file matches current session (exact match to avoid false positives)
       // File format is: projects/<projectId>/<sessionId>.jsonl
-      const filename = event.relativePath.split("/").pop();
-      const fileSessionId = filename?.endsWith(".jsonl")
-        ? filename.slice(0, -6)
-        : null;
+      const fileSessionId = extractSessionIdFromFileEvent(event);
       if (fileSessionId !== sessionId) {
         return;
       }

@@ -1,6 +1,7 @@
 import { DEFAULT_PROVIDER } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
 import { type Project, type SessionSummary, toUrlProjectId } from "../types";
 import {
   type FileChangeEvent,
@@ -118,8 +119,7 @@ export function useSessions(projectId: string | undefined) {
       }
 
       // Extract session ID from the file path (e.g., "projects/xxx/session-id.jsonl" -> "session-id")
-      const match = event.relativePath.match(/([^/\\]+)\.jsonl$/);
-      const sessionId = match?.[1];
+      const sessionId = extractSessionIdFromFileEvent(event);
       if (!sessionId) return;
 
       // Check if this session is in our current list using the ref
