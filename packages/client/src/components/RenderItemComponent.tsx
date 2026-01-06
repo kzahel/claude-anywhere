@@ -65,7 +65,6 @@ export const RenderItemComponent = memo(function RenderItemComponent({
             toolInput={item.toolInput}
             toolResult={item.toolResult}
             status={item.status}
-            editAugment={item.editAugment}
           />
         );
 

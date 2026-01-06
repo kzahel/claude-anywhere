@@ -1,4 +1,4 @@
-import type { EditAugment, MarkdownAugment } from "@yep-anywhere/shared";
+import type { MarkdownAugment } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import {
@@ -56,11 +56,6 @@ export interface StreamingMarkdownCallbacks {
   captureHtml?: () => string | null;
 }
 
-/** Callbacks for edit augment events (server-computed unified diffs) */
-export interface EditAugmentCallbacks {
-  onEditAugment?: (augment: EditAugment) => void;
-}
-
 /** Pending message waiting for server confirmation */
 export interface PendingMessage {
   tempId: string;
@@ -73,7 +68,6 @@ export function useSession(
   sessionId: string,
   initialStatus?: { state: "owned"; processId: string },
   streamingMarkdownCallbacks?: StreamingMarkdownCallbacks,
-  editAugmentCallbacks?: EditAugmentCallbacks,
 ) {
   const [session, setSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -116,12 +110,6 @@ export function useSession(
   // Pending messages queue - messages waiting for server confirmation
   // These are displayed separately from the main message list
   const [pendingMessages, setPendingMessages] = useState<PendingMessage[]>([]);
-
-  // Edit augments loaded from REST response (keyed by toolUseId)
-  // SSE events are handled via callbacks, but REST responses need state
-  const [editAugments, setEditAugments] = useState<Record<string, EditAugment>>(
-    {},
-  );
 
   // Markdown augments loaded from REST response (keyed by message ID)
   const [markdownAugments, setMarkdownAugments] = useState<
@@ -292,14 +280,6 @@ export function useSession(
         // This fixes race condition where SSE connection is delayed but tool approval is pending
         if (data.pendingInputRequest) {
           setPendingInputRequest(data.pendingInputRequest);
-        }
-        // Store edit augments from REST response (pre-computed unified diffs)
-        if (data.editAugments) {
-          setEditAugments(data.editAugments);
-        }
-        // Store markdown augments from REST response (pre-rendered HTML)
-        if (data.markdownAugments) {
-          setMarkdownAugments(data.markdownAugments);
         }
       })
       .catch(setError)
@@ -1023,23 +1003,6 @@ export function useSession(
         streamingMarkdownCallbacks?.onPending?.({
           html: pendingData.html,
         });
-      } else if (data.eventType === "edit-augment") {
-        // Handle edit augment events (server-computed unified diffs)
-        const editAugmentData = data as {
-          eventType: string;
-          toolUseId: string;
-          type: "edit";
-          structuredPatch: EditAugment["structuredPatch"];
-          diffHtml: string;
-          filePath: string;
-        };
-        editAugmentCallbacks?.onEditAugment?.({
-          toolUseId: editAugmentData.toolUseId,
-          type: editAugmentData.type,
-          structuredPatch: editAugmentData.structuredPatch,
-          diffHtml: editAugmentData.diffHtml,
-          filePath: editAugmentData.filePath,
-        });
       }
     },
     [
@@ -1048,7 +1011,6 @@ export function useSession(
       updateStreamingMessage,
       throttledUpdateStreamingMessage,
       streamingMarkdownCallbacks,
-      editAugmentCallbacks,
     ],
   );
 
@@ -1081,7 +1043,6 @@ export function useSession(
     agentContent, // Subagent messages keyed by agentId (for Task tool)
     setAgentContent, // Setter for merging lazy-loaded agent content
     toolUseToAgent, // Mapping from Task tool_use_id → agentId (for rendering during streaming)
-    editAugments, // Pre-computed unified diffs from REST response (keyed by toolUseId)
     markdownAugments, // Pre-rendered markdown HTML from REST response (keyed by blockId)
     status,
     processState,

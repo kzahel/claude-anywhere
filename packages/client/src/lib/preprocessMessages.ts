@@ -1,4 +1,4 @@
-import type { EditAugment, MarkdownAugment } from "@yep-anywhere/shared";
+import type { MarkdownAugment } from "@yep-anywhere/shared";
 import type { ContentBlock, Message } from "../types";
 import type {
   RenderItem,
@@ -14,8 +14,6 @@ import { getMessageId } from "./mergeMessages";
 export interface PreprocessAugments {
   /** Pre-rendered markdown HTML keyed by message ID */
   markdown?: Record<string, MarkdownAugment>;
-  /** Pre-computed unified diffs keyed by toolUseId */
-  edit?: Record<string, EditAugment>;
 }
 
 /**
@@ -161,6 +159,8 @@ function processMessage(
 
     if (block.type === "text") {
       if (block.text?.trim()) {
+        // Get _html from server-injected augment, fall back to markdownAugments (for SSE path)
+        const blockHtml = (block as { _html?: string })._html;
         items.push({
           type: "text",
           id: blockId,
@@ -169,8 +169,8 @@ function processMessage(
           isSubagent: msg.isSubagent,
           // Only show streaming cursor on the last text block
           isStreaming: msg._isStreaming && i === lastTextBlockIndex,
-          // Markdown augments are keyed by message ID (not block index)
-          augmentHtml: augments?.markdown?.[msgId]?.html,
+          // Prefer inline _html from server, fall back to markdownAugments (SSE path)
+          augmentHtml: blockHtml ?? augments?.markdown?.[msgId]?.html,
         });
       }
     } else if (block.type === "thinking") {
@@ -198,7 +198,6 @@ function processMessage(
           status: isOrphaned ? "aborted" : "pending",
           sourceMessages: [msg],
           isSubagent: msg.isSubagent,
-          editAugment: augments?.edit?.[block.id],
         };
         pendingToolCalls.set(block.id, items.length);
         items.push(toolCall);
@@ -247,7 +246,6 @@ function attachToolResult(
     status: block.is_error ? "error" : "complete",
     sourceMessages: [...item.sourceMessages, resultMessage],
     isSubagent: item.isSubagent,
-    editAugment: item.editAugment,
   };
 
   items[index] = updatedItem;

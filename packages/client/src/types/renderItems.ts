@@ -1,4 +1,3 @@
-import type { EditAugment } from "@yep-anywhere/shared";
 import type { ContentBlock, Message } from "../types";
 
 /**
@@ -47,8 +46,6 @@ export interface ToolCallItem extends RenderItemBase {
   toolInput: unknown; // tool_use.input
   toolResult?: ToolResultData; // undefined while pending
   status: "pending" | "complete" | "error" | "aborted";
-  /** Pre-computed unified diff for Edit tool (from server) */
-  editAugment?: EditAugment;
 }
 
 export interface ToolResultData {

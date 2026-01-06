@@ -1,4 +1,3 @@
-import type { EditAugment } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
@@ -8,6 +7,12 @@ import { Modal } from "../../ui/Modal";
 import type { EditInput, EditResult, PatchHunk, ToolRenderer } from "./types";
 
 const MAX_VISIBLE_LINES = 12;
+
+/** Extended input type with embedded augment data from server */
+interface EditInputWithAugment extends EditInput {
+  _structuredPatch?: PatchHunk[];
+  _diffHtml?: string;
+}
 
 /**
  * Extract filename from path
@@ -143,20 +148,14 @@ function DiffHunk({ hunk }: { hunk: PatchHunk }) {
 
 /**
  * Edit tool use - shows file path and diff preview
- * Requires server augment for proper unified diff display.
+ * Reads augment data directly from input._structuredPatch and input._diffHtml.
  */
-function EditToolUse({
-  input,
-  augment,
-}: {
-  input: EditInput;
-  augment?: EditAugment;
-}) {
-  const fileName = getFileName(augment?.filePath ?? input.file_path);
-  const isPlan = isPlanFile(augment?.filePath ?? input.file_path);
+function EditToolUse({ input }: { input: EditInputWithAugment }) {
+  const fileName = getFileName(input.file_path);
+  const isPlan = isPlanFile(input.file_path);
 
-  // Require augment - show loading state if not available
-  if (!augment?.structuredPatch || augment.structuredPatch.length === 0) {
+  // Show loading state if augment data not yet available
+  if (!input._structuredPatch || input._structuredPatch.length === 0) {
     return (
       <div className="edit-result">
         <div className="edit-header">
@@ -168,8 +167,8 @@ function EditToolUse({
     );
   }
 
-  const diffLines = augment.structuredPatch.flatMap((hunk) => hunk.lines);
-  const changeSummary = computeChangeSummary(augment.structuredPatch);
+  const diffLines = input._structuredPatch.flatMap((hunk) => hunk.lines);
+  const changeSummary = computeChangeSummary(input._structuredPatch);
   const isTruncated = diffLines.length > MAX_VISIBLE_LINES;
 
   return (
@@ -183,9 +182,9 @@ function EditToolUse({
       )}
       <div className={`diff-view-container ${isTruncated ? "truncated" : ""}`}>
         <div className="diff-view">
-          {augment.diffHtml ? (
+          {input._diffHtml ? (
             <HighlightedDiff
-              diffHtml={augment.diffHtml}
+              diffHtml={input._diffHtml}
               truncateLines={isTruncated ? MAX_VISIBLE_LINES : undefined}
             />
           ) : (
@@ -232,18 +231,16 @@ function DiffModalContent({
 /**
  * Collapsed preview showing diff with expand button
  * Clicking opens a modal with the full diff.
- * Requires server augment for proper unified diff display.
+ * Reads augment data directly from input._structuredPatch and input._diffHtml.
  */
 function EditCollapsedPreview({
   input,
   result,
   isError,
-  augment,
 }: {
-  input: EditInput;
+  input: EditInputWithAugment;
   result: EditResult | undefined;
   isError: boolean;
-  augment?: EditAugment;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { enabled, reportValidationError, isToolIgnored } =
@@ -281,14 +278,17 @@ function EditCollapsedPreview({
     setIsModalOpen(false);
   }, []);
 
-  // Use result data if available, then augment, then fall back to input
-  const filePath = result?.filePath ?? augment?.filePath ?? input.file_path;
+  // Use result data if available, fall back to input
+  const filePath = result?.filePath ?? input.file_path;
   const fileName = getFileName(filePath);
   const isPlan = isPlanFile(filePath);
 
-  // Get structuredPatch - prefer result, then augment
+  // Get structuredPatch - prefer result, then input augment
   const structuredPatch =
-    result?.structuredPatch ?? augment?.structuredPatch ?? [];
+    result?.structuredPatch ?? input._structuredPatch ?? [];
+
+  // Get diffHtml from input augment (only used for tool_use display)
+  const diffHtml = input._diffHtml;
 
   if (isError) {
     // Extract error message - can be a string or object with content
@@ -351,9 +351,9 @@ function EditCollapsedPreview({
           className={`diff-view-container ${isTruncated ? "truncated" : ""}`}
         >
           <div className="diff-view">
-            {augment?.diffHtml ? (
+            {diffHtml ? (
               <HighlightedDiff
-                diffHtml={augment.diffHtml}
+                diffHtml={diffHtml}
                 truncateLines={isTruncated ? MAX_VISIBLE_LINES : undefined}
               />
             ) : (
@@ -376,7 +376,7 @@ function EditCollapsedPreview({
           onClose={handleClose}
         >
           <DiffModalContent
-            diffHtml={augment?.diffHtml}
+            diffHtml={diffHtml}
             structuredPatch={structuredPatch}
           />
         </Modal>
@@ -570,13 +570,8 @@ function EditToolResult({
 export const editRenderer: ToolRenderer<EditInput, EditResult> = {
   tool: "Edit",
 
-  renderToolUse(input, context) {
-    return (
-      <EditToolUse
-        input={input as EditInput}
-        augment={context.editAugment}
-      />
-    );
+  renderToolUse(input) {
+    return <EditToolUse input={input as EditInputWithAugment} />;
   },
 
   renderToolResult(result, isError, _context, input) {
@@ -599,13 +594,12 @@ export const editRenderer: ToolRenderer<EditInput, EditResult> = {
     return r?.filePath ? getFileName(r.filePath) : "file";
   },
 
-  renderCollapsedPreview(input, result, isError, context) {
+  renderCollapsedPreview(input, result, isError) {
     return (
       <EditCollapsedPreview
-        input={input as EditInput}
+        input={input as EditInputWithAugment}
         result={result as EditResult | undefined}
         isError={isError}
-        augment={context.editAugment}
       />
     );
   },

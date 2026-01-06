@@ -25,6 +25,18 @@ interface ExitPlanModeResult {
   _renderedHtml?: string;
 }
 
+/** Edit tool_use input with embedded augment data */
+interface EditInputWithAugment extends EditInput {
+  _structuredPatch?: Array<{
+    oldStart: number;
+    oldLines: number;
+    newStart: number;
+    newLines: number;
+    lines: string[];
+  }>;
+  _diffHtml?: string;
+}
+
 export interface StreamDeps {
   supervisor: Supervisor;
 }
@@ -166,22 +178,22 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         }
       };
 
-      // Helper to extract Edit tool_use from assistant messages
-      // Returns the tool_use id and input if found, null otherwise
-      const extractEditToolUse = (
+      // Helper to embed Edit augment data directly into tool_use inputs
+      // Adds _structuredPatch and _diffHtml to Edit tool_use input blocks
+      const augmentEditInputs = async (
         message: Record<string, unknown>,
-      ): { toolUseId: string; input: EditInput } | null => {
+      ): Promise<void> => {
         // Must be an assistant message
-        if (message.type !== "assistant") return null;
+        if (message.type !== "assistant") return;
 
         // SDK messages have content nested at message.message.content
         const innerMessage = message.message as
           | Record<string, unknown>
           | undefined;
         const content = innerMessage?.content ?? message.content;
-        if (!Array.isArray(content)) return null;
+        if (!Array.isArray(content)) return;
 
-        // Look for Edit tool_use blocks
+        // Look for Edit tool_use blocks and augment them
         for (const block of content) {
           if (
             typeof block === "object" &&
@@ -190,28 +202,33 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
             (block as Record<string, unknown>).name === "Edit"
           ) {
             const toolUseBlock = block as Record<string, unknown>;
-            const input = toolUseBlock.input as Record<string, unknown>;
+            const input = toolUseBlock.input as EditInputWithAugment;
 
-            // Validate input has required fields
+            // Validate input has required fields and hasn't been augmented yet
             if (
               typeof toolUseBlock.id === "string" &&
               typeof input?.file_path === "string" &&
               typeof input?.old_string === "string" &&
-              typeof input?.new_string === "string"
+              typeof input?.new_string === "string" &&
+              !input._structuredPatch
             ) {
-              return {
-                toolUseId: toolUseBlock.id,
-                input: {
+              try {
+                const augment = await computeEditAugment(toolUseBlock.id, {
                   file_path: input.file_path,
                   old_string: input.old_string,
                   new_string: input.new_string,
-                },
-              };
+                });
+                input._structuredPatch = augment.structuredPatch;
+                input._diffHtml = augment.diffHtml;
+              } catch (err) {
+                log.warn(
+                  { err, sessionId, toolUseId: toolUseBlock.id },
+                  "Failed to compute edit augment",
+                );
+              }
             }
           }
         }
-
-        return null;
       };
 
       // Helper to process text through StreamCoordinator and emit augments
@@ -355,30 +372,9 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         try {
           switch (event.type) {
             case "message": {
-              // Check for Edit tool_use - compute and send augment BEFORE raw message
-              // This ensures client has rendering data ready when message arrives
-              const editToolUse = extractEditToolUse(
-                event.message as Record<string, unknown>,
-              );
-              if (editToolUse) {
-                try {
-                  const augment = await computeEditAugment(
-                    editToolUse.toolUseId,
-                    editToolUse.input,
-                  );
-                  await stream.writeSSE({
-                    id: String(eventId++),
-                    event: "edit-augment",
-                    data: JSON.stringify(augment),
-                  });
-                } catch (err) {
-                  // Log warning but don't block message delivery
-                  log.warn(
-                    { err, sessionId, toolUseId: editToolUse.toolUseId },
-                    "Failed to compute edit augment",
-                  );
-                }
-              }
+              // Embed Edit augment data directly into tool_use inputs
+              // This adds _structuredPatch and _diffHtml to the input before sending
+              await augmentEditInputs(event.message as Record<string, unknown>);
 
               // Check for final assistant message - render markdown and send augment BEFORE raw message
               // This ensures client has the complete rendered HTML when the message arrives,

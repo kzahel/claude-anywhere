@@ -12,10 +12,6 @@ import { StatusIndicator } from "../components/StatusIndicator";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
 import {
-  EditAugmentProvider,
-  useEditAugmentContext,
-} from "../contexts/EditAugmentContext";
-import {
   StreamingMarkdownProvider,
   useStreamingMarkdownContext,
 } from "../contexts/StreamingMarkdownContext";
@@ -25,7 +21,6 @@ import type { DraftControls } from "../hooks/useDraftPersistence";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
 import {
-  type EditAugmentCallbacks,
   type StreamingMarkdownCallbacks,
   useSession,
 } from "../hooks/useSession";
@@ -47,16 +42,13 @@ export function SessionPage() {
 
   // Key ensures component remounts on session change, resetting all state
   // Wrap with StreamingMarkdownProvider for server-rendered markdown streaming
-  // Wrap with EditAugmentProvider for server-computed unified diffs
   return (
     <StreamingMarkdownProvider>
-      <EditAugmentProvider>
-        <SessionPageContent
-          key={sessionId}
-          projectId={projectId}
-          sessionId={sessionId}
-        />
-      </EditAugmentProvider>
+      <SessionPageContent
+        key={sessionId}
+        projectId={projectId}
+        sessionId={sessionId}
+      />
     </StreamingMarkdownProvider>
   );
 }
@@ -103,26 +95,12 @@ function SessionPageContent({
     };
   }, [streamingMarkdownContext]);
 
-  // Get edit augment context for server-computed unified diffs
-  const editAugmentContext = useEditAugmentContext();
-
-  // Memoize edit augment callbacks
-  const editAugmentCallbacks = useMemo<EditAugmentCallbacks | undefined>(() => {
-    if (!editAugmentContext) return undefined;
-    return {
-      onEditAugment: (augment) => {
-        editAugmentContext.setAugment(augment.toolUseId, augment);
-      },
-    };
-  }, [editAugmentContext]);
-
   const {
     session,
     messages,
     agentContent,
     setAgentContent,
     toolUseToAgent,
-    editAugments,
     markdownAugments,
     status,
     processState,
@@ -147,7 +125,6 @@ function SessionPageContent({
     sessionId,
     initialStatus,
     streamingMarkdownCallbacks,
-    editAugmentCallbacks,
   );
   const [scrollTrigger, setScrollTrigger] = useState(0);
   const draftControlsRef = useRef<DraftControls | null>(null);
@@ -748,7 +725,6 @@ function SessionPageContent({
                 scrollTrigger={scrollTrigger}
                 pendingMessages={pendingMessages}
                 markdownAugments={markdownAugments}
-                editAugments={editAugments}
               />
             </AgentContentProvider>
           )}

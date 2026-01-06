@@ -1,4 +1,3 @@
-import type { EditAugment } from "@yep-anywhere/shared";
 import type { ReactNode } from "react";
 
 /**
@@ -39,8 +38,6 @@ export interface RenderContext {
   thinkingExpanded?: boolean;
   /** Toggle thinking blocks expanded state */
   toggleThinkingExpanded?: () => void;
-  /** Pre-computed unified diff for Edit tool (from server) */
-  editAugment?: EditAugment;
 }
 
 /**

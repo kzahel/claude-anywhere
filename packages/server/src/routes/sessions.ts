@@ -1,5 +1,4 @@
 import {
-  type EditAugment,
   type ModelOption,
   type ProviderName,
   type ThinkingOption,
@@ -13,8 +12,7 @@ import {
   computeEditAugment,
 } from "../augments/edit-augments.js";
 import {
-  type MarkdownAugment,
-  computeMarkdownAugments,
+  augmentTextBlocks,
   renderMarkdownToHtml,
 } from "../augments/markdown-augments.js";
 import type { SessionMetadataService } from "../metadata/index.js";
@@ -136,13 +134,11 @@ function sdkMessagesToClientMessages(sdkMessages: SDKMessage[]): Message[] {
 }
 
 /**
- * Extract Edit tool_use blocks from messages for augment computation.
- * Looks at assistant messages and finds tool_use blocks with name === "Edit".
+ * Embed Edit augment data directly into tool_use inputs.
+ * Adds _structuredPatch and _diffHtml to Edit tool_use input blocks.
  */
-function extractEditToolUses(
-  messages: Message[],
-): Array<{ toolUseId: string; input: EditInput }> {
-  const results: Array<{ toolUseId: string; input: EditInput }> = [];
+async function augmentEditInputs(messages: Message[]): Promise<void> {
+  const promises: Promise<void>[] = [];
 
   for (const msg of messages) {
     // Only assistant messages have tool_use blocks
@@ -159,31 +155,35 @@ function extractEditToolUses(
         block.id &&
         block.input
       ) {
-        const input = block.input as {
-          file_path?: string;
-          old_string?: string;
-          new_string?: string;
-        };
-        // Validate required fields for Edit
+        const input = block.input as EditInputWithAugment;
+        // Validate required fields and hasn't been augmented yet
         if (
           input.file_path &&
           typeof input.old_string === "string" &&
-          typeof input.new_string === "string"
+          typeof input.new_string === "string" &&
+          !input._structuredPatch
         ) {
-          results.push({
-            toolUseId: block.id,
-            input: {
+          const toolUseId = block.id;
+          promises.push(
+            computeEditAugment(toolUseId, {
               file_path: input.file_path,
               old_string: input.old_string,
               new_string: input.new_string,
-            },
-          });
+            })
+              .then((augment) => {
+                input._structuredPatch = augment.structuredPatch;
+                input._diffHtml = augment.diffHtml;
+              })
+              .catch(() => {
+                // Ignore augment computation errors
+              }),
+          );
         }
       }
     }
   }
 
-  return results;
+  await Promise.all(promises);
 }
 
 /** ExitPlanMode tool_use input with rendered HTML */
@@ -196,6 +196,22 @@ interface ExitPlanModeInput {
 interface ExitPlanModeResult {
   plan?: string;
   _renderedHtml?: string;
+}
+
+/** Edit tool_use input with embedded augment data */
+interface EditInputWithAugment {
+  file_path: string;
+  old_string: string;
+  new_string: string;
+  replace_all?: boolean;
+  _structuredPatch?: Array<{
+    oldStart: number;
+    oldLines: number;
+    newStart: number;
+    newLines: number;
+    lines: string[];
+  }>;
+  _diffHtml?: string;
 }
 
 /**
@@ -453,7 +469,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
           messages: processMessages,
           status,
           pendingInputRequest,
-          editAugments: {},
         });
       }
       return c.json({ error: "Session not found" }, 404);
@@ -469,34 +484,13 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       ? deps.notificationService.hasUnread(sessionId, session.updatedAt)
       : undefined;
 
-    // Compute edit augments for all Edit tool_use blocks
-    const editToolUses = extractEditToolUses(session.messages);
-    const editAugments: Record<string, EditAugment> = {};
+    // Embed Edit augment data directly into tool_use inputs
+    // This adds _structuredPatch and _diffHtml to the input
+    await augmentEditInputs(session.messages);
 
-    // Compute augments in parallel
-    const augmentPromises = editToolUses.map(async ({ toolUseId, input }) => {
-      try {
-        const augment = await computeEditAugment(toolUseId, input);
-        return { toolUseId, augment };
-      } catch {
-        // Skip augments that fail to compute (e.g., highlighting errors)
-        return null;
-      }
-    });
-
-    const augmentResults = await Promise.all(augmentPromises);
-    for (const result of augmentResults) {
-      if (result) {
-        editAugments[result.toolUseId] = result.augment;
-      }
-    }
-
-    // Compute markdown augments for all text blocks
-    // Uses same rendering as streaming path for consistency
-    const getMessageId = (msg: { uuid?: string; id?: string }): string =>
-      msg.uuid ?? msg.id ?? "";
-    const markdownAugments: Record<string, MarkdownAugment> =
-      await computeMarkdownAugments(session.messages, getMessageId);
+    // Embed rendered HTML directly into text blocks
+    // This adds _html to text content blocks
+    await augmentTextBlocks(session.messages);
 
     // Render ExitPlanMode plan HTML directly into messages
     // This adds _renderedHtml to tool_use input and tool_result structured data
@@ -517,8 +511,6 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
       messages: session.messages,
       status,
       pendingInputRequest,
-      editAugments,
-      markdownAugments,
     });
   });
 

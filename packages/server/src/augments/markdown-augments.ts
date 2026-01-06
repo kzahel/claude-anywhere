@@ -96,58 +96,47 @@ export async function renderMarkdownToHtml(markdown: string): Promise<string> {
 }
 
 /**
- * Compute markdown augments for text content in messages.
+ * Augment text blocks with pre-rendered HTML.
  *
- * Extracts the first text block from assistant messages and renders to HTML.
- * Returns a map from message ID to augment.
+ * Mutates text blocks in assistant messages, adding `_html` field
+ * with rendered markdown/syntax-highlighted content.
  *
- * Note: Uses message ID as key (not messageId-blockIndex) because completed
- * messages have a single text block. The streaming path handles incremental
- * updates separately with chunk indices.
- *
- * @param messages - Array of messages from session
- * @param getMessageId - Function to get the ID of a message
- * @returns Map of message IDs to markdown augments
+ * @param messages - Array of messages from session (mutated in place)
  */
-export async function computeMarkdownAugments(
+export async function augmentTextBlocks(
   messages: Array<{
     type?: string;
     message?: { content?: unknown };
     content?: unknown;
-    uuid?: string;
-    id?: string;
   }>,
-  getMessageId: (msg: { uuid?: string; id?: string }) => string,
-): Promise<Record<string, MarkdownAugment>> {
-  const augments: Record<string, MarkdownAugment> = {};
-
+): Promise<void> {
   // Process all messages in parallel
   const messagePromises = messages.map(async (msg) => {
     // Only process assistant messages
     if (msg.type !== "assistant") return;
 
-    const msgId = getMessageId(msg);
-
     // Get content from nested message object (SDK structure) or top-level
     const content = msg.message?.content ?? msg.content;
     if (!Array.isArray(content)) return;
 
-    // Find the first text block (completed messages have one text block)
-    const textBlock = content.find(
-      (b): b is { type: "text"; text: string } =>
-        b?.type === "text" && typeof b.text === "string" && b.text.trim() !== "",
-    );
+    // Process all text blocks in the message
+    const blockPromises = content.map(async (block) => {
+      if (
+        block?.type === "text" &&
+        typeof block.text === "string" &&
+        block.text.trim() !== ""
+      ) {
+        try {
+          const html = await renderMarkdownToHtml(block.text);
+          (block as { _html?: string })._html = html;
+        } catch {
+          // Skip blocks that fail to render
+        }
+      }
+    });
 
-    if (!textBlock) return;
-
-    try {
-      const html = await renderMarkdownToHtml(textBlock.text);
-      augments[msgId] = { html };
-    } catch {
-      // Skip messages that fail to render
-    }
+    await Promise.all(blockPromises);
   });
 
   await Promise.all(messagePromises);
-  return augments;
 }
