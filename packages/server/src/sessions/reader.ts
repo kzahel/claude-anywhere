@@ -26,9 +26,9 @@ export type { GetSessionOptions, ISessionReader } from "./types.js";
 const CONTEXT_WINDOW_SIZE = 200_000;
 
 import {
+  type ClaudeSessionEntry,
   getMessageContent,
   isConversationEntry,
-  type ClaudeSessionEntry,
 } from "@yep-anywhere/shared";
 import { buildDag, findOrphanedToolUses } from "./dag.js";
 

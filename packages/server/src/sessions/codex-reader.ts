@@ -23,8 +23,8 @@ import {
   type CodexSessionEntry,
   type CodexSessionMetaEntry,
   SESSION_TITLE_MAX_LENGTH,
-  type UrlProjectId,
   type UnifiedSession,
+  type UrlProjectId,
   parseCodexSessionEntry,
 } from "@yep-anywhere/shared";
 import type {
@@ -160,7 +160,7 @@ export class CodexSessionReader implements ISessionReader {
         messageCount,
         status: { state: "idle" },
         contextUsage,
-        provider: "codex",
+        provider: this.determineProvider(metaEntry, model),
         model,
       };
     } catch {
@@ -195,7 +195,7 @@ export class CodexSessionReader implements ISessionReader {
     // Note: Codex entries are not 1:1 with messages, so standard ID filtering is tricky
     // with raw format. We return all entries for now.
     // Ideally the client handles diffing/appending.
-    let finalEntries = entries;
+    const finalEntries = entries;
     if (afterMessageId) {
       // Logic to filter entries would go here if strict incremental loading is needed
     }
@@ -203,7 +203,7 @@ export class CodexSessionReader implements ISessionReader {
     return {
       summary,
       data: {
-        provider: "codex",
+        provider: this.determineProviderFromEntries(entries),
         session: {
           entries: finalEntries,
         },
@@ -362,7 +362,7 @@ export class CodexSessionReader implements ISessionReader {
     fullTitle: string | null;
   } {
     const hasResponseItemUser = this.hasResponseItemUserMessages(entries);
-    let skipLeadingSystemPrompts = true;
+    const skipLeadingSystemPrompts = true;
 
     // Find first user message
     for (const entry of entries) {
@@ -495,6 +495,70 @@ export class CodexSessionReader implements ISessionReader {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Determine provider based on session metadata or model.
+   */
+  private determineProvider(
+    metaEntry: CodexSessionMetaEntry,
+    model?: string,
+  ): "codex" | "codex-oss" {
+    // Check explicit provider field if available
+    if (metaEntry.payload.model_provider) {
+      const provider = metaEntry.payload.model_provider.toLowerCase();
+      if (
+        provider === "ollama" ||
+        provider === "lmstudio" ||
+        provider === "local"
+      ) {
+        return "codex-oss";
+      }
+      if (provider === "openai" || provider === "azure") {
+        return "codex";
+      }
+    }
+
+    // fallback: check model name for known local models if provider not set
+    if (model) {
+      const lowerModel = model.toLowerCase();
+      // Heuristic: models starting with "gpt-" or "o1-" are usually OpenAI
+      if (lowerModel.startsWith("gpt-") || lowerModel.startsWith("o1-")) {
+        return "codex";
+      }
+      // Heuristic: other models often implying local usage (llama, mistral, qwen, etc)
+      // or if we just default to everything else being oss?
+      // For safety, let's just stick to specific local keywords for now to avoid false positives.
+      if (
+        lowerModel.includes("llama") ||
+        lowerModel.includes("mistral") ||
+        lowerModel.includes("qwen") ||
+        lowerModel.includes("gemma") ||
+        lowerModel.includes("deepseek") ||
+        lowerModel.includes("phi")
+      ) {
+        return "codex-oss";
+      }
+    }
+
+    // Default to codex if we can't be sure
+    return "codex";
+  }
+
+  /**
+   * Helper to determine provider from a list of entries.
+   */
+  private determineProviderFromEntries(
+    entries: CodexSessionEntry[],
+  ): "codex" | "codex-oss" {
+    const metaEntry = entries.find((e) => e.type === "session_meta") as
+      | CodexSessionMetaEntry
+      | undefined;
+
+    if (!metaEntry) return "codex";
+
+    const model = this.extractModel(entries);
+    return this.determineProvider(metaEntry, model);
   }
 
   /**

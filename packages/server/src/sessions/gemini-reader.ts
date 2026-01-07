@@ -18,8 +18,8 @@ import {
   type GeminiSessionMessage,
   type GeminiUserMessage,
   SESSION_TITLE_MAX_LENGTH,
-  type UrlProjectId,
   type UnifiedSession,
+  type UrlProjectId,
   parseGeminiSessionFile,
 } from "@yep-anywhere/shared";
 import type {

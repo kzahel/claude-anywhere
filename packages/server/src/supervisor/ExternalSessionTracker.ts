@@ -1,12 +1,12 @@
-import * as path from "node:path";
 import { readFile, stat } from "node:fs/promises";
+import * as path from "node:path";
 import {
   type DirProjectId,
   type UrlProjectId,
   asDirProjectId,
 } from "@yep-anywhere/shared";
-import type { ProjectScanner } from "../projects/scanner.js";
 import { encodeProjectId } from "../projects/paths.js";
+import type { ProjectScanner } from "../projects/scanner.js";
 import { BatchProcessor } from "../watcher/BatchProcessor.js";
 import type {
   BusEvent,

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 
 export const GEMINI_DIR = join(homedir(), ".gemini");
 export const GEMINI_TMP_DIR = join(GEMINI_DIR, "tmp");

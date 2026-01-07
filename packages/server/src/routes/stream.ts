@@ -575,8 +575,12 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
               // Capture message ID from message_start events OR assistant messages
               // This ID is included in augment events so client can key them for the final message
               const startMessageId =
-                extractMessageIdFromStart(event.message as Record<string, unknown>) ??
-                extractIdFromAssistant(event.message as Record<string, unknown>);
+                extractMessageIdFromStart(
+                  event.message as Record<string, unknown>,
+                ) ??
+                extractIdFromAssistant(
+                  event.message as Record<string, unknown>,
+                );
 
               if (startMessageId) {
                 currentStreamingMessageId = startMessageId;
@@ -586,7 +590,9 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
               // This runs after raw delivery so it doesn't block streaming
               const textDelta =
                 extractTextDelta(event.message as Record<string, unknown>) ??
-                extractTextFromAssistant(event.message as Record<string, unknown>);
+                extractTextFromAssistant(
+                  event.message as Record<string, unknown>,
+                );
 
               if (textDelta) {
                 // Process asynchronously to not block raw delivery

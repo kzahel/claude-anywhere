@@ -581,7 +581,7 @@ export function useSession(
 
   // Subscribe to live updates
   const handleSSEMessage = useCallback(
-    (data: { eventType: string;[key: string]: unknown }) => {
+    (data: { eventType: string; [key: string]: unknown }) => {
       if (data.eventType === "message") {
         // Track SSE activity for engagement tracking
         // This ensures sessions are marked as "seen" even when receiving

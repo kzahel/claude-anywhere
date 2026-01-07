@@ -454,9 +454,9 @@ export class GeminiProvider implements AgentProvider {
           exitCode,
           usage: lastStats
             ? {
-              input_tokens: lastStats.input_tokens,
-              output_tokens: lastStats.output_tokens,
-            }
+                input_tokens: lastStats.input_tokens,
+                output_tokens: lastStats.output_tokens,
+              }
             : undefined,
         } as SDKMessage;
       } finally {

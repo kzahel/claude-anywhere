@@ -1,21 +1,27 @@
 import type {
-  UnifiedSession,
-  CodexSessionEntry,
-  CodexResponseItemEntry,
+  ClaudeSessionEntry,
   CodexEventMsgEntry,
+  CodexFunctionCallOutputPayload,
+  CodexFunctionCallPayload,
   CodexMessagePayload,
   CodexReasoningPayload,
-  CodexFunctionCallPayload,
-  CodexFunctionCallOutputPayload,
+  CodexResponseItemEntry,
+  CodexSessionEntry,
+  GeminiAssistantMessage,
   GeminiSessionMessage,
   GeminiUserMessage,
-  GeminiAssistantMessage,
-  ClaudeSessionEntry,
+  UnifiedSession,
 } from "@yep-anywhere/shared";
 import { getMessageContent, isConversationEntry } from "@yep-anywhere/shared";
-import type { Session, Message, ContentBlock } from "../supervisor/types.js";
-import type { LoadedSession } from "./types.js";
+import type { ContentBlock, Message, Session } from "../supervisor/types.js";
 import { buildDag, findOrphanedToolUses } from "./dag.js";
+import type { LoadedSession } from "./types.js";
+
+interface CodexPendingCall {
+  name: string;
+  arguments: string;
+  timestamp: string;
+}
 
 /**
  * Normalize a UnifiedSession into the generic Session format expected by the frontend.
@@ -47,6 +53,7 @@ export function normalizeSession(loaded: LoadedSession): Session {
       };
     }
     case "codex":
+    case "codex-oss":
       return {
         ...summary,
         messages: convertCodexEntries(data.session.entries),
@@ -123,10 +130,7 @@ function convertCodexEntries(entries: CodexSessionEntry[]): Message[] {
   const hasResponseItemUser = hasCodexResponseItemUserMessages(entries);
 
   // Track function calls for pairing with outputs
-  const pendingCalls = new Map<
-    string,
-    { name: string; arguments: string; timestamp: string }
-  >();
+  const pendingCalls = new Map<string, CodexPendingCall>();
 
   for (const entry of entries) {
     if (entry.type === "response_item") {
@@ -169,7 +173,7 @@ function hasCodexResponseItemUserMessages(
 function convertCodexResponseItem(
   entry: CodexResponseItemEntry,
   index: number,
-  pendingCalls: Map<string, any>,
+  pendingCalls: Map<string, CodexPendingCall>,
 ): Message | null {
   const payload = entry.payload;
   const uuid = `codex-${index}-${entry.timestamp}`;
@@ -209,7 +213,7 @@ function convertCodexMessagePayload(
   uuid: string,
   timestamp: string,
 ): Message {
-  const fullText = payload.content.map((c: any) => c.text).join("");
+  const fullText = payload.content.map((c) => c.text).join("");
 
   if (!fullText.trim()) {
     return {

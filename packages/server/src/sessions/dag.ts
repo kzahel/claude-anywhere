@@ -9,9 +9,9 @@
  */
 
 import {
+  type ClaudeSessionEntry,
   getLogicalParentUuid,
   getMessageContent,
-  type ClaudeSessionEntry,
 } from "@yep-anywhere/shared";
 
 /** A node in the conversation DAG */
