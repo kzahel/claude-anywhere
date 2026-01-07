@@ -6,6 +6,7 @@
  */
 
 import { type ChildProcess, execSync, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -357,6 +358,8 @@ export class GeminiProvider implements AgentProvider {
         let lastStats: GeminiStats | undefined;
         let assistantContentBuffer: string | null = null;
         let assistantBufferTimestamp: string | null = null;
+        // Track unique ID for the current assistant response to enable markdown augment tracking
+        let currentAssistantMessageId: string | null = null;
 
         for await (const line of rl) {
           if (signal.aborted) break;
@@ -386,6 +389,10 @@ export class GeminiProvider implements AgentProvider {
                 assistantContentBuffer = "";
                 // Capture timestamp of the first fragment
                 assistantBufferTimestamp = msg.timestamp ?? null;
+                // Generate a stable ID for this assistant response if we don't have one
+                if (!currentAssistantMessageId) {
+                  currentAssistantMessageId = randomUUID();
+                }
               }
               assistantContentBuffer += msg.content;
               // Continue to next line without yielding - we'll yield when we see a non-assistant message or end of stream
@@ -399,6 +406,7 @@ export class GeminiProvider implements AgentProvider {
               type: "assistant",
               session_id: currentSessionId,
               timestamp: assistantBufferTimestamp ?? new Date().toISOString(),
+              uuid: currentAssistantMessageId ?? undefined,
               message: {
                 role: "assistant",
                 content: assistantContentBuffer,
@@ -425,6 +433,7 @@ export class GeminiProvider implements AgentProvider {
             type: "assistant",
             session_id: currentSessionId,
             timestamp: assistantBufferTimestamp ?? new Date().toISOString(),
+            uuid: currentAssistantMessageId ?? undefined,
             message: {
               role: "assistant",
               content: assistantContentBuffer,
@@ -503,6 +512,8 @@ export class GeminiProvider implements AgentProvider {
           type: "assistant",
           session_id: sessionId,
           timestamp: msg.timestamp,
+          // Note: for streaming messages, the loop above manually adds uuid
+          // This path is for non-streaming single messages (rare in current implementation)
           message: {
             role: "assistant",
             content: msg.content,

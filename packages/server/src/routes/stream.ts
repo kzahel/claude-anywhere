@@ -143,6 +143,34 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         return null;
       };
 
+      // Helper to extract text from assistant messages (Gemini/non-delta)
+      const extractTextFromAssistant = (
+        message: Record<string, unknown>,
+      ): string | null => {
+        if (message.type !== "assistant") return null;
+
+        const innerMessage = message.message as
+          | Record<string, unknown>
+          | undefined;
+        const content = innerMessage?.content ?? message.content;
+
+        if (typeof content === "string") {
+          return content;
+        }
+        return null;
+      };
+
+      // Helper to extract UUID from assistant messages (Gemini/non-delta)
+      const extractIdFromAssistant = (
+        message: Record<string, unknown>,
+      ): string | null => {
+        if (message.type !== "assistant") return null;
+        if (typeof message.uuid === "string") {
+          return message.uuid;
+        }
+        return null;
+      };
+
       // Helper to check if a message is a message_stop event (end of response)
       const isMessageStop = (message: Record<string, unknown>): boolean => {
         if (message.type !== "stream_event") return false;
@@ -544,27 +572,30 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
                 data: JSON.stringify(markSubagent(event.message)),
               });
 
-              // Capture message ID from message_start events
+              // Capture message ID from message_start events OR assistant messages
               // This ID is included in augment events so client can key them for the final message
-              const startMessageId = extractMessageIdFromStart(
-                event.message as Record<string, unknown>,
-              );
+              const startMessageId =
+                extractMessageIdFromStart(event.message as Record<string, unknown>) ??
+                extractIdFromAssistant(event.message as Record<string, unknown>);
+
               if (startMessageId) {
                 currentStreamingMessageId = startMessageId;
               }
 
               // Process text deltas through StreamCoordinator for markdown augments
               // This runs after raw delivery so it doesn't block streaming
-              const textDelta = extractTextDelta(
-                event.message as Record<string, unknown>,
-              );
+              const textDelta =
+                extractTextDelta(event.message as Record<string, unknown>) ??
+                extractTextFromAssistant(event.message as Record<string, unknown>);
+
               if (textDelta) {
                 // Process asynchronously to not block raw delivery
                 processTextChunk(textDelta);
               }
 
-              // Flush coordinator when message stream ends
-              if (isMessageStop(event.message as Record<string, unknown>)) {
+              // Flush coordinator when message stream ends (Claude message_stop or Gemini result)
+              const message = event.message as Record<string, unknown>;
+              if (isMessageStop(message) || message.type === "result") {
                 flushCoordinator();
                 // Clear message ID after flush completes (async, but ID is captured in closure)
                 currentStreamingMessageId = null;

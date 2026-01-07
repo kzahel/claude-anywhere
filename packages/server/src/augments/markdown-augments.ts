@@ -119,8 +119,8 @@ export async function augmentTextBlocks(
         if (msg.message && typeof msg.message === "object") {
           (msg.message as { _html?: string })._html = html;
         }
-      } catch {
-        // Skip content that fails to render
+      } catch (err) {
+        // Ignore errors during augmentation
       }
       return;
     }
@@ -137,8 +137,8 @@ export async function augmentTextBlocks(
         try {
           const html = await renderMarkdownToHtml(block.text);
           (block as { _html?: string })._html = html;
-        } catch {
-          // Skip blocks that fail to render
+        } catch (err) {
+          // Ignore errors during augmentation
         }
       }
     });
