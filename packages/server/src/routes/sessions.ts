@@ -540,11 +540,11 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Determine the session status
     const status = process
       ? {
-        state: "owned" as const,
-        processId: process.id,
-        permissionMode: process.permissionMode,
-        modeVersion: process.modeVersion,
-      }
+          state: "owned" as const,
+          processId: process.id,
+          permissionMode: process.permissionMode,
+          modeVersion: process.modeVersion,
+        }
       : isExternal
         ? { state: "external" as const }
         : (session?.status ?? { state: "idle" as const });
@@ -997,8 +997,8 @@ export function createSessionsRoutes(deps: SessionsDeps): Hono {
     // Normalize response to approve/deny
     const normalizedResponse =
       body.response === "approve" ||
-        body.response === "allow" ||
-        body.response === "approve_accept_edits"
+      body.response === "allow" ||
+      body.response === "approve_accept_edits"
         ? "approve"
         : "deny";
 

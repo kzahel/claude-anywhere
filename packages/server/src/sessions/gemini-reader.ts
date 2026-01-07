@@ -29,7 +29,11 @@ import type {
   Session,
   SessionSummary,
 } from "../supervisor/types.js";
-import type { GetSessionOptions, ISessionReader, LoadedSession } from "./types.js";
+import type {
+  GetSessionOptions,
+  ISessionReader,
+  LoadedSession,
+} from "./types.js";
 
 // Gemini model context window size (1M tokens for Gemini 2.0)
 const CONTEXT_WINDOW_SIZE = 1_000_000;

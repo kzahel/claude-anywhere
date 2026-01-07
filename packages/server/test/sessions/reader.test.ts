@@ -47,7 +47,10 @@ describe("SessionReader", () => {
       });
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const summary = await reader.getSessionSummary(sessionId, "test-project" as UrlProjectId);
+      const summary = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
       expect(summary?.title).toBe("What does this function do?");
     });
 
@@ -196,7 +199,10 @@ describe("SessionReader", () => {
       });
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const summary = await reader.getSessionSummary(sessionId, "test-project" as UrlProjectId);
+      const summary = await reader.getSessionSummary(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
       expect(summary?.title).toBe("Help me refactor these files");
     });
   });
@@ -241,7 +247,10 @@ describe("SessionReader", () => {
       ].join("\n");
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const loadedSession = await reader.getSession(sessionId, "test-project" as UrlProjectId);
+      const loadedSession = await reader.getSession(
+        sessionId,
+        "test-project" as UrlProjectId,
+      );
       const session = loadedSession ? normalizeSession(loadedSession) : null;
 
       expect(session?.messages).toHaveLength(3); // a, d, e (not b, c)
@@ -265,9 +274,14 @@ describe("SessionReader", () => {
       ].join("\n");
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const loadedSession = await reader.getSession(sessionId, "test-project" as UrlProjectId, undefined, {
-        includeOrphans: true,
-      });
+      const loadedSession = await reader.getSession(
+        sessionId,
+        "test-project" as UrlProjectId,
+        undefined,
+        {
+          includeOrphans: true,
+        },
+      );
       const session = loadedSession ? normalizeSession(loadedSession) : null;
 
       expect(session?.messages).toHaveLength(1);
@@ -304,9 +318,14 @@ describe("SessionReader", () => {
       ].join("\n");
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const loadedSession = await reader.getSession(sessionId, "test-project" as UrlProjectId, undefined, {
-        includeOrphans: true,
-      });
+      const loadedSession = await reader.getSession(
+        sessionId,
+        "test-project" as UrlProjectId,
+        undefined,
+        {
+          includeOrphans: true,
+        },
+      );
       const session = loadedSession ? normalizeSession(loadedSession) : null;
 
       expect(session?.messages).toHaveLength(2);
@@ -346,9 +365,14 @@ describe("SessionReader", () => {
       ].join("\n");
       await writeFile(join(testDir, `${sessionId}.jsonl`), `${jsonl}\n`);
 
-      const loadedSession = await reader.getSession(sessionId, "test-project", undefined, {
-        includeOrphans: true,
-      });
+      const loadedSession = await reader.getSession(
+        sessionId,
+        "test-project",
+        undefined,
+        {
+          includeOrphans: true,
+        },
+      );
       const session = loadedSession ? normalizeSession(loadedSession) : null;
 
       expect(session?.messages).toHaveLength(2);

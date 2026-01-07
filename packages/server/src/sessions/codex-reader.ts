@@ -34,7 +34,11 @@ import type {
   Session,
   SessionSummary,
 } from "../supervisor/types.js";
-import type { GetSessionOptions, ISessionReader, LoadedSession } from "./types.js";
+import type {
+  GetSessionOptions,
+  ISessionReader,
+  LoadedSession,
+} from "./types.js";
 
 // Codex model context window size (200K tokens for GPT-4)
 const CONTEXT_WINDOW_SIZE = 200_000;
@@ -427,10 +431,7 @@ export class CodexSessionReader implements ISessionReader {
     for (const entry of entries) {
       if (entry.type === "event_msg") {
         // Only count user_message events (not agent_message streaming tokens)
-        if (
-          entry.payload.type === "user_message" &&
-          !hasResponseItemUser
-        ) {
+        if (entry.payload.type === "user_message" && !hasResponseItemUser) {
           count++;
         }
       } else if (entry.type === "response_item") {
@@ -538,10 +539,7 @@ export class CodexSessionReader implements ISessionReader {
       } else if (entry.type === "event_msg") {
         // Only process user_message events - agent_message events are
         // duplicates of the response_item data (streaming tokens)
-        if (
-          entry.payload.type === "user_message" &&
-          !hasResponseItemUser
-        ) {
+        if (entry.payload.type === "user_message" && !hasResponseItemUser) {
           const msg = this.convertEventMsg(entry, messageIndex++);
           if (msg) {
             // Set parentUuid to create linear chain for ordering/dedup
@@ -559,9 +557,7 @@ export class CodexSessionReader implements ISessionReader {
     return messages;
   }
 
-  private hasResponseItemUserMessages(
-    entries: CodexSessionEntry[],
-  ): boolean {
+  private hasResponseItemUserMessages(entries: CodexSessionEntry[]): boolean {
     return entries.some(
       (entry) =>
         entry.type === "response_item" &&

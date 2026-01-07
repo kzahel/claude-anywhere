@@ -528,13 +528,11 @@ export class ExternalSessionTracker {
     this.eventBus.emit(event);
   }
 
-  private async resolveProjectForSession(
-    info: {
-      provider: FileChangeEvent["provider"];
-      dirProjectId?: DirProjectId;
-      projectId?: UrlProjectId;
-    },
-  ): Promise<{ id: UrlProjectId } | null> {
+  private async resolveProjectForSession(info: {
+    provider: FileChangeEvent["provider"];
+    dirProjectId?: DirProjectId;
+    projectId?: UrlProjectId;
+  }): Promise<{ id: UrlProjectId } | null> {
     if (info.projectId) {
       return { id: info.projectId };
     }
