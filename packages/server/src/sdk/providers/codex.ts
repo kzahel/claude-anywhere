@@ -241,6 +241,11 @@ export class CodexProvider implements AgentProvider {
     let sessionId = options.resumeSessionId ?? "";
     let initEmitted = !!options.resumeSessionId;
 
+    // Turn counter for generating unique UUIDs
+    // Codex SDK reuses item_0, item_1, etc. within each turn, so we need
+    // to combine with turn number to create globally unique IDs
+    let turnNumber = 0;
+
     // If resuming, emit init immediately with known ID
     if (options.resumeSessionId) {
       yield {
@@ -285,6 +290,9 @@ export class CodexProvider implements AgentProvider {
           content: userPrompt,
         },
       } as SDKMessage;
+
+      // Increment turn number for this new turn
+      turnNumber++;
 
       // Run a turn with the SDK
       try {
@@ -332,7 +340,11 @@ export class CodexProvider implements AgentProvider {
 
           // Convert event to SDKMessage(s) - skip thread.started as we handle it above
           if (event.type !== "thread.started") {
-            const messages = this.convertEventToSDKMessages(event, sessionId);
+            const messages = this.convertEventToSDKMessages(
+              event,
+              sessionId,
+              turnNumber,
+            );
             log.debug(
               { eventType: event.type, messageCount: messages.length },
               "Converted event to SDKMessages",
@@ -381,6 +393,7 @@ export class CodexProvider implements AgentProvider {
   private convertEventToSDKMessages(
     event: ThreadEvent,
     sessionId: string,
+    turnNumber: number,
   ): SDKMessage[] {
     switch (event.type) {
       case "thread.started": {
@@ -425,11 +438,21 @@ export class CodexProvider implements AgentProvider {
       case "item.started":
       case "item.updated": {
         // For streaming updates, emit partial messages
-        return this.convertItemToSDKMessages(event.item, sessionId, false);
+        return this.convertItemToSDKMessages(
+          event.item,
+          sessionId,
+          turnNumber,
+          false,
+        );
       }
 
       case "item.completed": {
-        return this.convertItemToSDKMessages(event.item, sessionId, true);
+        return this.convertItemToSDKMessages(
+          event.item,
+          sessionId,
+          turnNumber,
+          true,
+        );
       }
 
       case "error": {
@@ -450,19 +473,25 @@ export class CodexProvider implements AgentProvider {
 
   /**
    * Convert a ThreadItem to SDKMessage(s).
+   * Uses turnNumber to create unique UUIDs since Codex SDK reuses item_0, item_1 per turn.
    */
   private convertItemToSDKMessages(
     item: ThreadItem,
     sessionId: string,
+    turnNumber: number,
     isComplete: boolean,
   ): SDKMessage[] {
+    // Create unique UUID by combining item.id with turn number
+    // This prevents UUID collisions across turns (item_0-turn1, item_0-turn2, etc.)
+    const uuid = `${item.id}-turn${turnNumber}`;
+
     switch (item.type) {
       case "reasoning": {
         return [
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             message: {
               role: "assistant",
               content: [
@@ -481,7 +510,7 @@ export class CodexProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             message: {
               role: "assistant",
               content: item.text,
@@ -497,7 +526,7 @@ export class CodexProvider implements AgentProvider {
         messages.push({
           type: "assistant",
           session_id: sessionId,
-          uuid: item.id,
+          uuid,
           message: {
             role: "assistant",
             content: [
@@ -547,7 +576,7 @@ export class CodexProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             message: {
               role: "assistant",
               content: [
@@ -590,7 +619,7 @@ export class CodexProvider implements AgentProvider {
         messages.push({
           type: "assistant",
           session_id: sessionId,
-          uuid: item.id,
+          uuid,
           message: {
             role: "assistant",
             content: [
@@ -632,7 +661,7 @@ export class CodexProvider implements AgentProvider {
           {
             type: "assistant",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             message: {
               role: "assistant",
               content: [
@@ -655,7 +684,7 @@ export class CodexProvider implements AgentProvider {
             type: "system",
             subtype: "todo_list",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             items: item.items,
           } as SDKMessage,
         ];
@@ -666,7 +695,7 @@ export class CodexProvider implements AgentProvider {
           {
             type: "error",
             session_id: sessionId,
-            uuid: item.id,
+            uuid,
             error: item.message,
           } as SDKMessage,
         ];
