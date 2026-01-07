@@ -5,8 +5,6 @@ export {
 } from "./SessionView.js";
 
 export type {
-  ClaudeRawContentBlock,
-  ClaudeRawSessionMessage,
   ClaudeSessionFile,
   CodexSessionContent,
   UnifiedSession,

@@ -24,6 +24,11 @@ export const SessionEntrySchema = z.union([
 export type SessionEntry = z.infer<typeof SessionEntrySchema>;
 export type SidechainEntry = UserEntry | AssistantEntry | SystemEntry;
 
+// Aliases for clarity when working with Claude-specific session data
+export type ClaudeSessionEntry = SessionEntry;
+export const ClaudeSessionEntrySchema = SessionEntrySchema;
+export type ClaudeSidechainEntry = SidechainEntry;
+
 // Re-export all schemas and types for convenience
 export * from "./entry/AssistantEntrySchema.js";
 export * from "./entry/BaseEntrySchema.js";
@@ -48,3 +53,5 @@ export * from "./tool/CommonToolSchema.js";
 export * from "./tool/StructuredPatchSchema.js";
 export * from "./tool/TodoSchema.js";
 export { ToolUseResultSchema } from "./tool/index.js";
+
+export * from "./guards.js";

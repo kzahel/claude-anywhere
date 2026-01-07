@@ -18,6 +18,7 @@ export type { QueueOperationEntry } from "./entry/QueueOperationEntrySchema.js";
 
 // Composite entry types
 export type { SessionEntry, SidechainEntry } from "./index.js";
+export type { ClaudeSessionEntry, ClaudeSidechainEntry } from "./index.js";
 
 // Message types
 export type { AssistantMessageContent } from "./message/AssistantMessageSchema.js";

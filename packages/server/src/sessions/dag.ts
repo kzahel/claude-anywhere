@@ -8,10 +8,11 @@
  * - Clean recovery (resumption picks any node as continuation point)
  */
 
-import type { ClaudeRawSessionMessage } from "@yep-anywhere/shared";
-
-// Re-export for backwards compatibility and use locally
-export type RawSessionMessage = ClaudeRawSessionMessage;
+import {
+  getLogicalParentUuid,
+  getMessageContent,
+  type ClaudeSessionEntry,
+} from "@yep-anywhere/shared";
 
 /** A node in the conversation DAG */
 export interface DagNode {
@@ -19,7 +20,7 @@ export interface DagNode {
   parentUuid: string | null;
   /** Original position in JSONL file (0-indexed line number) */
   lineIndex: number;
-  raw: RawSessionMessage;
+  raw: ClaudeSessionEntry;
 }
 
 /** Info about an alternate branch (not selected as active) */
@@ -67,13 +68,9 @@ function walkBranchLength(
 
     // Determine next node: use parentUuid, or logicalParentUuid for compact_boundary
     let nextUuid = node.parentUuid;
-    if (
-      !nextUuid &&
-      node.raw.type === "system" &&
-      node.raw.subtype === "compact_boundary" &&
-      node.raw.logicalParentUuid
-    ) {
-      nextUuid = node.raw.logicalParentUuid;
+    const logicalParent = getLogicalParentUuid(node.raw);
+    if (!nextUuid && logicalParent) {
+      nextUuid = logicalParent;
     }
 
     currentUuid = nextUuid;
@@ -94,7 +91,7 @@ function walkBranchLength(
  *
  * Messages without uuid (like queue-operation, file-history-snapshot) are skipped.
  */
-export function buildDag(messages: RawSessionMessage[]): DagResult {
+export function buildDag(messages: ClaudeSessionEntry[]): DagResult {
   const nodeMap = new Map<string, DagNode>();
   const childrenMap = new Map<string | null, string[]>();
 
@@ -103,24 +100,27 @@ export function buildDag(messages: RawSessionMessage[]): DagResult {
     const raw = messages[lineIndex];
     if (!raw) continue;
 
-    const uuid = raw.uuid;
+    // Access uuid - only some entry types have it
+    const uuid = "uuid" in raw ? raw.uuid : undefined;
     if (!uuid) continue; // Skip messages without uuid (internal types)
+
+    // Access parentUuid - only some entry types have it
+    const parentUuid = "parentUuid" in raw ? (raw.parentUuid ?? null) : null;
 
     const node: DagNode = {
       uuid,
-      parentUuid: raw.parentUuid ?? null,
+      parentUuid,
       lineIndex,
       raw,
     };
     nodeMap.set(uuid, node);
 
     // Track children for each parent
-    const parentKey = raw.parentUuid ?? null;
-    const children = childrenMap.get(parentKey);
+    const children = childrenMap.get(parentUuid);
     if (children) {
       children.push(uuid);
     } else {
-      childrenMap.set(parentKey, [uuid]);
+      childrenMap.set(parentUuid, [uuid]);
     }
   }
 
@@ -178,14 +178,10 @@ export function buildDag(messages: RawSessionMessage[]): DagResult {
 
     // Determine next node: use parentUuid, or logicalParentUuid for compact_boundary
     let nextUuid = current.parentUuid;
-    if (
-      !nextUuid &&
-      current.raw.type === "system" &&
-      current.raw.subtype === "compact_boundary" &&
-      current.raw.logicalParentUuid
-    ) {
+    const logicalParent = getLogicalParentUuid(current.raw);
+    if (!nextUuid && logicalParent) {
       // Follow the logical parent chain across the compaction boundary
-      nextUuid = current.raw.logicalParentUuid;
+      nextUuid = logicalParent;
     }
 
     current = nextUuid ? (nodeMap.get(nextUuid) ?? null) : null;
@@ -212,14 +208,21 @@ export function findOrphanedToolUses(activeBranch: DagNode[]): Set<string> {
   const toolResultIds = new Set<string>();
 
   for (const node of activeBranch) {
-    const content = node.raw.message?.content;
+    const content = getMessageContent(node.raw);
     if (!Array.isArray(content)) continue;
 
     for (const block of content) {
-      if (block.type === "tool_use" && block.id) {
+      // Skip string content blocks (can appear in user messages)
+      if (typeof block === "string") continue;
+
+      if (block.type === "tool_use" && "id" in block && block.id) {
         toolUseIds.add(block.id);
       }
-      if (block.type === "tool_result" && block.tool_use_id) {
+      if (
+        block.type === "tool_result" &&
+        "tool_use_id" in block &&
+        block.tool_use_id
+      ) {
         toolResultIds.add(block.tool_use_id);
       }
     }

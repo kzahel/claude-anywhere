@@ -77,6 +77,8 @@ export type {
   QueueOperationEntry,
   SessionEntry,
   SidechainEntry,
+  ClaudeSessionEntry,
+  ClaudeSidechainEntry,
   BaseEntry,
   // Message types
   AssistantMessage,
@@ -94,6 +96,14 @@ export type {
   StructuredPatch,
   ToolUseResult,
 } from "./claude-sdk-schema/types.js";
+
+// SDK schema guards (type guards for session entries)
+export {
+  isCompactBoundary,
+  getLogicalParentUuid,
+  isConversationEntry,
+  getMessageContent,
+} from "./claude-sdk-schema/guards.js";
 
 // App-specific types (extend SDK types with runtime fields)
 export type {
@@ -138,8 +148,6 @@ export {
 export type {
   UnifiedSession,
   ClaudeSessionFile,
-  ClaudeRawSessionMessage,
-  ClaudeRawContentBlock,
   CodexSessionContent,
 } from "./session/index.js";
 

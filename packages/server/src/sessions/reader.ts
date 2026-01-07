@@ -13,7 +13,11 @@ import type {
   Message,
   SessionSummary,
 } from "../supervisor/types.js";
-import type { GetSessionOptions, ISessionReader, LoadedSession } from "./types.js";
+import type {
+  GetSessionOptions,
+  ISessionReader,
+  LoadedSession,
+} from "./types.js";
 
 // Re-export interface types
 export type { GetSessionOptions, ISessionReader } from "./types.js";
@@ -21,7 +25,12 @@ export type { GetSessionOptions, ISessionReader } from "./types.js";
 // Claude model context window size (200K tokens)
 const CONTEXT_WINDOW_SIZE = 200_000;
 
-import { buildDag, findOrphanedToolUses, type RawSessionMessage } from "./dag.js";
+import {
+  getMessageContent,
+  isConversationEntry,
+  type ClaudeSessionEntry,
+} from "@yep-anywhere/shared";
+import { buildDag, findOrphanedToolUses } from "./dag.js";
 
 export interface ClaudeSessionReaderOptions {
   sessionDir: string;
@@ -114,12 +123,12 @@ export class ClaudeSessionReader implements ISessionReader {
       const messages = lines
         .map((line) => {
           try {
-            return JSON.parse(line) as RawSessionMessage;
+            return JSON.parse(line) as ClaudeSessionEntry;
           } catch {
             return null;
           }
         })
-        .filter((m): m is RawSessionMessage => m !== null);
+        .filter((m): m is ClaudeSessionEntry => m !== null);
 
       // Build DAG and get active branch (filters out dead branches from rewinds, etc.)
       const { activeBranch } = buildDag(messages);
@@ -175,10 +184,10 @@ export class ClaudeSessionReader implements ISessionReader {
     const content = await readFile(filePath, "utf-8");
     const lines = content.trim().split("\n");
 
-    const rawMessages: RawSessionMessage[] = [];
+    const rawMessages: ClaudeSessionEntry[] = [];
     for (const line of lines) {
       try {
-        rawMessages.push(JSON.parse(line) as RawSessionMessage);
+        rawMessages.push(JSON.parse(line) as ClaudeSessionEntry);
       } catch {
         // Skip malformed lines
       }
@@ -189,7 +198,9 @@ export class ClaudeSessionReader implements ISessionReader {
     // But typically they do.
     let finalMessages = rawMessages;
     if (afterMessageId) {
-      const afterIndex = rawMessages.findIndex((m) => m.uuid === afterMessageId);
+      const afterIndex = rawMessages.findIndex(
+        (m) => "uuid" in m && m.uuid === afterMessageId,
+      );
       if (afterIndex !== -1) {
         finalMessages = rawMessages.slice(afterIndex + 1);
       }
@@ -227,11 +238,11 @@ export class ClaudeSessionReader implements ISessionReader {
       }
 
       const lines = trimmed.split("\n");
-      const rawMessages: RawSessionMessage[] = [];
+      const rawMessages: ClaudeSessionEntry[] = [];
 
       for (const line of lines) {
         try {
-          rawMessages.push(JSON.parse(line) as RawSessionMessage);
+          rawMessages.push(JSON.parse(line) as ClaudeSessionEntry);
         } catch {
           // Skip malformed lines
         }
@@ -291,7 +302,9 @@ export class ClaudeSessionReader implements ISessionReader {
           const lines = trimmed.split("\n").slice(0, 5);
           for (const line of lines) {
             try {
-              const msg = JSON.parse(line) as RawSessionMessage;
+              const msg = JSON.parse(line) as ClaudeSessionEntry & {
+                parent_tool_use_id?: string;
+              };
               if (msg.parent_tool_use_id) {
                 mappings.push({
                   toolUseId: msg.parent_tool_use_id,
@@ -336,8 +349,7 @@ export class ClaudeSessionReader implements ISessionReader {
       // Check for result type message (SDK's final message)
       if (msg.type === "result") {
         // Check for error in result
-        const rawMessage = msg as RawSessionMessage;
-        if (rawMessage.is_error === true) {
+        if ("is_error" in msg && msg.is_error === true) {
           return "failed";
         }
         return "completed";
@@ -348,10 +360,21 @@ export class ClaudeSessionReader implements ISessionReader {
     return "running";
   }
 
-  private findFirstUserMessage(messages: RawSessionMessage[]): string | null {
+  private findFirstUserMessage(messages: ClaudeSessionEntry[]): string | null {
     for (const msg of messages) {
-      if (msg.type === "user" && msg.message?.content) {
-        return this.extractTitleContent(msg.message.content);
+      if (msg.type === "user") {
+        const content = msg.message.content;
+        if (content) {
+          // Content can be string or array of content blocks
+          if (typeof content === "string") {
+            return this.extractTitleContent(content);
+          }
+          // Filter to object blocks only (skip string items), cast for compatibility
+          const objectBlocks = content.filter(
+            (b) => typeof b !== "string",
+          ) as Array<{ type: string; text?: string }>;
+          return this.extractTitleContent(objectBlocks);
+        }
       }
     }
     return null;
@@ -362,18 +385,18 @@ export class ClaudeSessionReader implements ISessionReader {
    * Usage data is stored in message.usage with input_tokens, cache_read_input_tokens, etc.
    */
   private extractContextUsage(
-    messages: RawSessionMessage[],
+    messages: ClaudeSessionEntry[],
   ): ContextUsage | undefined {
     // Find the last assistant message (iterate backwards)
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
-      if (msg && msg.type === "assistant" && msg.message) {
+      if (msg && msg.type === "assistant") {
         const usage = msg.message.usage as
           | {
-            input_tokens?: number;
-            cache_read_input_tokens?: number;
-            cache_creation_input_tokens?: number;
-          }
+              input_tokens?: number;
+              cache_read_input_tokens?: number;
+              cache_creation_input_tokens?: number;
+            }
           | undefined;
 
         if (usage) {
@@ -403,11 +426,11 @@ export class ClaudeSessionReader implements ISessionReader {
    * Extract the model from the first assistant message.
    * The model is stored in message.model (e.g., "claude-opus-4-5-20251101").
    */
-  private extractModel(messages: RawSessionMessage[]): string | undefined {
+  private extractModel(messages: ClaudeSessionEntry[]): string | undefined {
     // Find the first assistant message with a model field
     for (const msg of messages) {
-      if (msg.type === "assistant" && msg.message) {
-        const model = msg.message.model as string | undefined;
+      if (msg.type === "assistant") {
+        const model = msg.message.model;
         if (model) {
           return model;
         }
@@ -506,26 +529,32 @@ export class ClaudeSessionReader implements ISessionReader {
    * - Add computed orphanedToolUseIds
    */
   private convertMessage(
-    raw: RawSessionMessage,
+    raw: ClaudeSessionEntry,
     _index: number,
     orphanedToolUses: Set<string> = new Set(),
   ): Message {
     // Normalize content blocks - pass through all fields
     let content: string | ContentBlock[] | undefined;
-    if (typeof raw.message?.content === "string") {
-      content = raw.message.content;
-    } else if (Array.isArray(raw.message?.content)) {
+    const rawContent = getMessageContent(raw);
+    if (typeof rawContent === "string") {
+      content = rawContent;
+    } else if (Array.isArray(rawContent)) {
       // Pass through all fields from each content block
-      content = raw.message.content.map((block) => ({ ...block }));
+      // Filter out string items (which can appear in user message content)
+      content = rawContent
+        .filter((block) => typeof block !== "string")
+        .map((block) => ({ ...(block as object) })) as ContentBlock[];
     }
 
     // Build message by spreading all raw fields, then override with normalized values
+    // Use type assertion since we're converting to a looser Message type
+    const rawAny = raw as Record<string, unknown>;
     const message: Message = {
-      ...raw,
+      ...rawAny,
       // Include normalized content if message had content
-      ...(raw.message && {
+      ...(isConversationEntry(raw) && {
         message: {
-          ...raw.message,
+          ...(raw.message as Record<string, unknown>),
           ...(content !== undefined && { content }),
         },
       }),
