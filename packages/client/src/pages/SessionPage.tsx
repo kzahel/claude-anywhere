@@ -736,6 +736,7 @@ function SessionPageContent({
                       );
                     }}
                     useFixedPositioning
+                    useEllipsisIcon
                   />
                 )}
               </div>
