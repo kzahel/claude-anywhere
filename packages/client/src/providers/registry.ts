@@ -4,30 +4,48 @@ import {
   CodexProvider,
 } from "./implementations/CodexProvider";
 import { GeminiProvider } from "./implementations/GeminiProvider";
-import type { Provider } from "./types";
+import { OpenCodeProvider } from "./implementations/OpenCodeProvider";
+import type { Provider, ProviderMetadata } from "./types";
 
 const providers: Record<string, Provider> = {
   claude: new ClaudeProvider(),
   gemini: new GeminiProvider(),
   codex: new CodexProvider(),
   "codex-oss": new CodexOssProvider(),
+  opencode: new OpenCodeProvider(),
 };
+
+/**
+ * Get all registered providers for settings display.
+ */
+export function getAllProviders(): Provider[] {
+  return Object.values(providers);
+}
 
 /**
  * Fallback provider for unknown IDs.
  * Assumes minimal capabilities (no DAG, no cloning).
  */
 class GenericProvider implements Provider {
-  constructor(readonly id: string) {}
-
-  get displayName(): string {
-    return this.id;
-  }
-
   readonly capabilities = {
     supportsDag: false,
     supportsCloning: false,
   };
+
+  readonly metadata: ProviderMetadata;
+
+  constructor(readonly id: string) {
+    this.metadata = {
+      description: "Unknown provider",
+      limitations: [],
+      website: "",
+      cliName: id,
+    };
+  }
+
+  get displayName(): string {
+    return this.id;
+  }
 }
 
 /**

@@ -12,7 +12,6 @@
  */
 
 import { type ChildProcess, execSync, spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -22,7 +21,6 @@ import type {
   OpenCodeMessagePartUpdatedEvent,
   OpenCodePart,
   OpenCodeSSEEvent,
-  OpenCodeSessionIdleEvent,
 } from "@yep-anywhere/shared";
 import { parseOpenCodeSSEEvent } from "@yep-anywhere/shared";
 import { getLogger } from "../../logging/logger.js";
@@ -339,47 +337,118 @@ export class OpenCodeProvider implements AgentProvider {
   ): AsyncIterableIterator<SDKMessage> {
     const log = getLogger();
 
-    // Connect to SSE before sending message
     const sseUrl = `${baseUrl}/event`;
-    let sseController: AbortController | null = new AbortController();
+    const sseController = new AbortController();
 
-    // Track message completion
-    let turnComplete = false;
-    const turnCompletePromise = new Promise<void>((resolve) => {
-      const checkComplete = () => {
-        if (turnComplete) resolve();
-      };
-      // Check periodically
-      const interval = setInterval(checkComplete, 100);
-      // Clean up interval when done
-      signal.addEventListener("abort", () => {
-        clearInterval(interval);
-        resolve();
-      });
-    });
+    // Event buffer and signaling for producer/consumer pattern
+    // Using an object to avoid TypeScript control flow issues across async boundaries
+    const state = {
+      eventBuffer: [] as SDKMessage[],
+      sseError: null as Error | null,
+      sseComplete: false,
+      resolveWaiting: null as (() => void) | null,
+    };
 
-    // Start SSE connection
-    const ssePromise = this.connectSSE(
-      sseUrl,
-      opencodeSessionId,
-      sessionId,
-      sseController.signal,
-      (event) => {
-        // Check for idle event to know when turn is complete
-        if (event.type === "session.idle") {
-          const idleEvent = event as OpenCodeSessionIdleEvent;
-          if (idleEvent.properties.sessionID === opencodeSessionId) {
-            turnComplete = true;
+    // Start SSE connection immediately (runs in background)
+    const ssePromise = (async () => {
+      try {
+        const response = await fetch(sseUrl, {
+          headers: { Accept: "text/event-stream" },
+          signal: sseController.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          log.error({ status: response.status }, "Failed to connect to SSE");
+          state.sseError = new Error(
+            `SSE connection failed: ${response.status}`,
+          );
+          return;
+        }
+
+        log.debug({ sseUrl }, "SSE connected");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let currentAssistantMessageId: string | null = null;
+
+        while (!sseController.signal.aborted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // Process complete lines
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+
+            const data = line.slice(6);
+            const event = parseOpenCodeSSEEvent(data);
+            if (!event) continue;
+
+            log.trace({ event }, "SSE event received");
+
+            // Filter to only events for our session
+            if (
+              "properties" in event &&
+              event.properties &&
+              "sessionID" in event.properties
+            ) {
+              if (event.properties.sessionID !== opencodeSessionId) continue;
+            }
+
+            // Convert to SDK message
+            const sdkMessage = this.convertSSEEventToSDKMessage(
+              event,
+              sessionId,
+              currentAssistantMessageId,
+            );
+
+            if (sdkMessage) {
+              // Track assistant message ID for consistent streaming
+              if (
+                sdkMessage.type === "assistant" &&
+                "uuid" in sdkMessage &&
+                sdkMessage.uuid
+              ) {
+                currentAssistantMessageId = sdkMessage.uuid as string;
+              }
+              state.eventBuffer.push(sdkMessage);
+              // Wake up consumer if waiting
+              state.resolveWaiting?.();
+            }
+
+            // Stop on session.idle
+            if (event.type === "session.idle") {
+              log.debug({ opencodeSessionId }, "Session idle, stopping SSE");
+              return;
+            }
           }
         }
-      },
-    );
+      } catch (error) {
+        if (!sseController.signal.aborted) {
+          log.error({ error }, "SSE connection error");
+          state.sseError =
+            error instanceof Error ? error : new Error(String(error));
+        }
+      } finally {
+        state.sseComplete = true;
+        state.resolveWaiting?.();
+      }
+    })();
 
-    // Small delay to ensure SSE is connected
+    // Wait briefly for SSE connection to establish
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Send the message
     try {
+      log.debug(
+        { opencodeSessionId, textLength: text.length },
+        "Sending message to OpenCode",
+      );
       const response = await fetch(
         `${baseUrl}/session/${opencodeSessionId}/message`,
         {
@@ -401,10 +470,9 @@ export class OpenCodeProvider implements AgentProvider {
           `Failed to send message: ${response.status} ${errorText}`,
         );
       }
-
-      // The response contains the final message - we've already streamed via SSE
-      // Just wait for SSE to indicate completion
+      log.debug({ opencodeSessionId }, "Message sent successfully");
     } catch (error) {
+      sseController.abort();
       if (signal.aborted) {
         return;
       }
@@ -417,12 +485,37 @@ export class OpenCodeProvider implements AgentProvider {
       return;
     }
 
-    // Yield events from SSE
+    // Yield events from buffer as they arrive
     try {
-      yield* ssePromise;
+      while (!signal.aborted) {
+        // Yield any buffered events
+        while (state.eventBuffer.length > 0) {
+          const event = state.eventBuffer.shift();
+          if (event) yield event;
+        }
+
+        // Check if done
+        if (state.sseComplete) break;
+        if (state.sseError) {
+          yield {
+            type: "error",
+            session_id: sessionId,
+            error: state.sseError.message,
+          } as SDKMessage;
+          break;
+        }
+
+        // Wait for more events
+        await new Promise<void>((resolve) => {
+          state.resolveWaiting = resolve;
+          // Also resolve after a short timeout to check conditions
+          setTimeout(resolve, 100);
+        });
+        state.resolveWaiting = null;
+      }
     } finally {
-      sseController?.abort();
-      sseController = null;
+      sseController.abort();
+      await ssePromise; // Ensure SSE task completes
     }
 
     // Emit result message
@@ -430,97 +523,6 @@ export class OpenCodeProvider implements AgentProvider {
       type: "result",
       session_id: sessionId,
     } as SDKMessage;
-  }
-
-  /**
-   * Connect to SSE and yield SDK messages.
-   */
-  private async *connectSSE(
-    url: string,
-    opencodeSessionId: string,
-    sessionId: string,
-    signal: AbortSignal,
-    onEvent?: (event: OpenCodeSSEEvent) => void,
-  ): AsyncIterableIterator<SDKMessage> {
-    const log = getLogger();
-
-    try {
-      const response = await fetch(url, {
-        headers: {
-          Accept: "text/event-stream",
-        },
-        signal,
-      });
-
-      if (!response.ok || !response.body) {
-        log.error({ status: response.status }, "Failed to connect to SSE");
-        return;
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let currentAssistantMessageId: string | null = null;
-
-      while (!signal.aborted) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Process complete lines
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-
-          const data = line.slice(6);
-          const event = parseOpenCodeSSEEvent(data);
-          if (!event) continue;
-
-          // Notify callback
-          onEvent?.(event);
-
-          // Filter to only events for our session
-          if (
-            "properties" in event &&
-            event.properties &&
-            "sessionID" in event.properties
-          ) {
-            if (event.properties.sessionID !== opencodeSessionId) continue;
-          }
-
-          // Convert to SDK message
-          const sdkMessage = this.convertSSEEventToSDKMessage(
-            event,
-            sessionId,
-            currentAssistantMessageId,
-          );
-
-          if (sdkMessage) {
-            // Track assistant message ID for consistent streaming
-            if (
-              sdkMessage.type === "assistant" &&
-              "uuid" in sdkMessage &&
-              sdkMessage.uuid
-            ) {
-              currentAssistantMessageId = sdkMessage.uuid as string;
-            }
-            yield sdkMessage;
-          }
-
-          // Stop on session.idle
-          if (event.type === "session.idle") {
-            return;
-          }
-        }
-      }
-    } catch (error) {
-      if (!signal.aborted) {
-        log.error({ error }, "SSE connection error");
-      }
-    }
   }
 
   /**

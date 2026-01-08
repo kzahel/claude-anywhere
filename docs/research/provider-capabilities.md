@@ -10,6 +10,7 @@ Research notes on what each AI provider offers for mobile supervision use cases.
 | Codex | Full | Full | Black box (edits invisible) | Partial (searches only) | No (in-chat only) |
 | Codex-OSS | Full | Full (via shell) | Full (all bash commands visible) | Yes | No |
 | Gemini | Full | None (read-only tools) | N/A | Yes | N/A |
+| OpenCode | Full | Full | Full (tool events via SSE) | Yes | ? |
 
 ## Claude
 
@@ -159,8 +160,79 @@ For Yep Anywhere's value proposition (mobile supervision):
 2. **Gemini** = Research/analysis assistant
 3. **Codex** = Research mode (read-only) or "fire and forget" with clear warnings
 4. **Codex-OSS** = Experimental, needs more investigation
+5. **OpenCode** = Local model experimentation, free inference (tool calling unreliable)
 
 The edit transparency problem with Codex is fundamental to their architecture (internal apply-model approach). Unlikely to change unless they expose more granular events via SDK.
+
+## OpenCode
+
+**Status: Experimental provider, implemented**
+
+OpenCode is an open-source agentic coding CLI from SST. We spawn `opencode serve` per-session and communicate via HTTP/SSE.
+
+### Local Model Support
+
+OpenCode's main appeal is its support for local models via:
+- **Ollama** (`http://localhost:11434/v1`)
+- **LM Studio** (`http://127.0.0.1:1234/v1`)
+- **llama.cpp** (`http://127.0.0.1:8080/v1`)
+
+Configuration example:
+```json
+{
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": { "baseURL": "http://localhost:11434/v1" },
+      "models": { "qwen3:8b-16k": { "tools": true } }
+    }
+  }
+}
+```
+
+### Tool Calling with Local Models
+
+**Current state: Unreliable.** Known issues:
+- Ollama defaults to 4096 context, breaking tool calling (need 16k-32k)
+- Models may "think about" tools but never invoke them
+- Some users report local models can't see files at all
+
+The official docs acknowledge "foundation models from labs... are going to perform much better."
+
+### Session Persistence
+
+OpenCode has robust persistence:
+- SQLite database at `~/.local/share/opencode/storage/`
+- Full conversation history with message parts, tool calls, file diffs
+- Context compaction (summarizes long conversations)
+- Session forking (branch conversations)
+- Session sharing via URL
+
+### Transparency
+
+Full tool transparency via SSE events:
+- `message.part.updated` with part types: text, tool-use, tool-result
+- `session.idle` for completion detection
+- All tool invocations and results visible
+
+### Unknown
+
+- Permission/approval model (appears to auto-approve everything)
+- How well different local models handle the agentic workflow
+- Performance characteristics vs Claude SDK
+
+### Use Case Fit
+
+- **Good for**: Local model experimentation, free inference, privacy-sensitive contexts
+- **Bad for**: Production reliability (local model tool calling is flaky)
+- **Interesting**: Could be a path to truly free agentic coding if local models improve
+
+### References
+
+- [OpenCode Models Documentation](https://opencode.ai/docs/models/)
+- [OpenCode Providers Documentation](https://opencode.ai/docs/providers/)
+- [Tool calling issues with Ollama](https://github.com/sst/opencode/issues/1034)
+- [Local models not agentic](https://github.com/sst/opencode/issues/5694)
 
 ## References
 

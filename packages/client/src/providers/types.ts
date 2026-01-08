@@ -17,6 +17,23 @@ export interface ProviderCapabilities {
 }
 
 /**
+ * Metadata for settings display.
+ */
+export interface ProviderMetadata {
+  /** Short description of the provider */
+  description: string;
+
+  /** Limitations or caveats for mobile supervision */
+  limitations: string[];
+
+  /** Official website URL */
+  website: string;
+
+  /** CLI name for auto-detection */
+  cliName: string;
+}
+
+/**
  * Client-side abstraction for an AI provider.
  * Encapsulates capabilities and metadata to avoid scattered "if/else" checks.
  */
@@ -29,4 +46,7 @@ export interface Provider {
 
   /** Capability flags */
   readonly capabilities: ProviderCapabilities;
+
+  /** Settings display metadata */
+  readonly metadata: ProviderMetadata;
 }
