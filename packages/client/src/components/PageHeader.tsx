@@ -1,8 +1,11 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { truncateText } from "../lib/text";
 
 interface PageHeaderProps {
   title: string;
+  /** Optional custom element to render instead of the default title */
+  titleElement?: ReactNode;
   /** Mobile: opens the sidebar overlay */
   onOpenSidebar?: () => void;
   /** Desktop: toggles sidebar expanded/collapsed */
@@ -34,6 +37,7 @@ const SidebarToggleIcon = () => (
 
 export function PageHeader({
   title,
+  titleElement,
   onOpenSidebar,
   onToggleSidebar,
   isWideScreen = false,
@@ -64,12 +68,14 @@ export function PageHeader({
               <SidebarToggleIcon />
             </button>
           )}
-          <span
-            className="session-title"
-            title={title.length > 60 ? title : undefined}
-          >
-            {truncateText(title)}
-          </span>
+          {titleElement ?? (
+            <span
+              className="session-title"
+              title={title.length > 60 ? title : undefined}
+            >
+              {truncateText(title)}
+            </span>
+          )}
         </div>
         {!hideSettingsLink && (
           <Link to="/settings" className="settings-link" aria-label="Settings">

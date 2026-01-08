@@ -1,4 +1,3 @@
-import { DEFAULT_PROVIDER } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
@@ -11,6 +10,7 @@ import {
   type SessionMetadataChangedEvent,
   type SessionSeenEvent,
   type SessionStatusEvent,
+  type SessionUpdatedEvent,
   useFileActivity,
 } from "./useFileActivity";
 
@@ -323,6 +323,32 @@ export function useSessions(projectId: string | undefined) {
     );
   }, []);
 
+  // Handle session content updates (auto-generated title, messageCount)
+  const handleSessionUpdated = useCallback(
+    (event: SessionUpdatedEvent) => {
+      // Only handle events for our project
+      if (event.projectId !== projectId) return;
+
+      setSessions((prev) =>
+        prev.map((session) => {
+          if (session.id !== event.sessionId) return session;
+
+          return {
+            ...session,
+            ...(event.title !== undefined && { title: event.title }),
+            ...(event.messageCount !== undefined && {
+              messageCount: event.messageCount,
+            }),
+            ...(event.updatedAt !== undefined && {
+              updatedAt: event.updatedAt,
+            }),
+          };
+        }),
+      );
+    },
+    [projectId],
+  );
+
   // Subscribe to file activity, status changes, session creation, and process state
   useFileActivity({
     onFileChange: handleFileChange,
@@ -331,6 +357,7 @@ export function useSessions(projectId: string | undefined) {
     onProcessStateChange: handleProcessStateChange,
     onSessionMetadataChange: handleSessionMetadataChange,
     onSessionSeen: handleSessionSeen,
+    onSessionUpdated: handleSessionUpdated,
     onReconnect: fetch, // Refetch to sync state after SSE reconnection
   });
 
@@ -352,33 +379,6 @@ export function useSessions(projectId: string | undefined) {
     };
   }, []);
 
-  // Add an optimistic session (used when creating a new session before SSE event arrives)
-  const addOptimisticSession = useCallback(
-    (sessionId: string, title: string) => {
-      if (!projectId) return;
-
-      const now = new Date().toISOString();
-      const optimisticSession: SessionSummary = {
-        id: sessionId,
-        projectId: toUrlProjectId(projectId),
-        title,
-        fullTitle: title,
-        createdAt: now,
-        updatedAt: now,
-        messageCount: 0,
-        status: { state: "idle" },
-        provider: DEFAULT_PROVIDER,
-      };
-
-      setSessions((prev) => {
-        // Don't add if already exists
-        if (prev.some((s) => s.id === sessionId)) return prev;
-        return [optimisticSession, ...prev];
-      });
-    },
-    [projectId],
-  );
-
   return {
     project,
     sessions,
@@ -386,6 +386,5 @@ export function useSessions(projectId: string | undefined) {
     error,
     refetch: fetch,
     processStates,
-    addOptimisticSession,
   };
 }

@@ -416,4 +416,141 @@ describe("preprocessMessages", () => {
       });
     });
   });
+
+  describe("activeToolApproval handling", () => {
+    it("treats all orphaned tools as pending when activeToolApproval is true", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Bash",
+              input: { command: "npm test" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+          orphanedToolUseIds: ["tool-1"],
+        },
+      ];
+
+      const items = preprocessMessages(messages, {
+        activeToolApproval: true,
+      });
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        type: "tool_call",
+        id: "tool-1",
+        status: "pending", // Should be pending, not aborted
+      });
+    });
+
+    it("still marks orphaned tools as aborted when activeToolApproval is false", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Bash",
+              input: { command: "npm test" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+          orphanedToolUseIds: ["tool-1"],
+        },
+      ];
+
+      const items = preprocessMessages(messages, {
+        activeToolApproval: false,
+      });
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        type: "tool_call",
+        id: "tool-1",
+        status: "aborted",
+      });
+    });
+
+    it("treats multiple orphaned tools as pending when activeToolApproval is true", () => {
+      // Scenario: batch of tool calls all queued for approval
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Edit",
+              input: { file_path: "a.ts" },
+            },
+            {
+              type: "tool_use",
+              id: "tool-2",
+              name: "Edit",
+              input: { file_path: "b.ts" },
+            },
+            {
+              type: "tool_use",
+              id: "tool-3",
+              name: "Edit",
+              input: { file_path: "c.ts" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+          orphanedToolUseIds: ["tool-1", "tool-2", "tool-3"],
+        },
+      ];
+
+      const items = preprocessMessages(messages, {
+        activeToolApproval: true,
+      });
+
+      expect(items).toHaveLength(3);
+      // All should be pending, not aborted
+      for (const item of items) {
+        expect(item).toMatchObject({
+          type: "tool_call",
+          status: "pending",
+        });
+      }
+    });
+
+    it("handles activeToolApproval with no orphaned tools (no-op)", () => {
+      const messages: Message[] = [
+        {
+          id: "msg-1",
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "Bash",
+              input: { command: "npm test" },
+            },
+          ],
+          timestamp: "2024-01-01T00:00:00Z",
+          // No orphanedToolUseIds
+        },
+      ];
+
+      const items = preprocessMessages(messages, {
+        activeToolApproval: true,
+      });
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        type: "tool_call",
+        id: "tool-1",
+        status: "pending", // Already pending, stays pending
+      });
+    });
+  });
 });

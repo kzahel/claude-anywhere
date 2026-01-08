@@ -15,6 +15,7 @@ import type {
   SessionAbortedEvent,
   SessionCreatedEvent,
   SessionStatusEvent,
+  SessionUpdatedEvent,
 } from "../watcher/EventBus.js";
 import type { Supervisor } from "./Supervisor.js";
 import type { SessionStatus, SessionSummary } from "./types.js";
@@ -74,6 +75,11 @@ export class ExternalSessionTracker {
   private sessionParser: BatchProcessor<SessionSummary | null>;
   /** Tracks sessions that have already emitted session-created */
   private createdSessions: Set<string> = new Set();
+  /** Cache of last known session state for change detection */
+  private sessionStateCache: Map<
+    string,
+    { title: string | null; messageCount: number; projectId: UrlProjectId }
+  > = new Map();
 
   constructor(options: ExternalSessionTrackerOptions) {
     this.eventBus = options.eventBus;
@@ -90,18 +96,55 @@ export class ExternalSessionTracker {
       batchMs: 300,
       onResult: (sessionId, summary) => {
         if (!summary) return;
-        if (this.createdSessions.has(sessionId)) return;
 
-        // Update status to external
-        summary.status = { state: "external" };
+        const projectId = summary.projectId as UrlProjectId;
+        const now = new Date().toISOString();
 
-        const event: SessionCreatedEvent = {
-          type: "session-created",
-          session: summary,
-          timestamp: new Date().toISOString(),
-        };
-        this.eventBus.emit(event);
-        this.createdSessions.add(sessionId);
+        if (!this.createdSessions.has(sessionId)) {
+          // New session - emit session-created
+          summary.status = { state: "external" };
+
+          const event: SessionCreatedEvent = {
+            type: "session-created",
+            session: summary,
+            timestamp: now,
+          };
+          this.eventBus.emit(event);
+          this.createdSessions.add(sessionId);
+
+          // Cache initial state for future change detection
+          this.sessionStateCache.set(sessionId, {
+            title: summary.title,
+            messageCount: summary.messageCount,
+            projectId,
+          });
+        } else {
+          // Existing session - check for changes and emit session-updated
+          const cached = this.sessionStateCache.get(sessionId);
+          const titleChanged = cached?.title !== summary.title;
+          const messageCountChanged =
+            cached?.messageCount !== summary.messageCount;
+
+          if (titleChanged || messageCountChanged) {
+            const event: SessionUpdatedEvent = {
+              type: "session-updated",
+              sessionId,
+              projectId,
+              title: summary.title,
+              messageCount: summary.messageCount,
+              updatedAt: summary.updatedAt,
+              timestamp: now,
+            };
+            this.eventBus.emit(event);
+
+            // Update cache
+            this.sessionStateCache.set(sessionId, {
+              title: summary.title,
+              messageCount: summary.messageCount,
+              projectId,
+            });
+          }
+        }
       },
       onError: (sessionId, error) => {
         // Log but don't fail - session may not be readable yet
@@ -253,6 +296,14 @@ export class ExternalSessionTracker {
     if (process) {
       // We own it - remove from external tracking if present
       this.removeExternal(sessionId);
+      // Still parse to detect title/messageCount changes for owned sessions
+      if (this.getSessionSummary) {
+        const getSessionSummary = this.getSessionSummary;
+        const projectId = process.projectId;
+        this.sessionParser.enqueue(sessionId, async () => {
+          return getSessionSummary(sessionId, projectId);
+        });
+      }
       return;
     }
 
@@ -310,6 +361,14 @@ export class ExternalSessionTracker {
     const process = this.supervisor.getProcessForSession(sessionId);
     if (process) {
       this.removeExternal(sessionId);
+      // Still parse to detect title/messageCount changes for owned sessions
+      if (this.getSessionSummary) {
+        const getSessionSummary = this.getSessionSummary;
+        const projectId = process.projectId;
+        this.sessionParser.enqueue(sessionId, async () => {
+          return getSessionSummary(sessionId, projectId);
+        });
+      }
       return;
     }
 
@@ -426,8 +485,8 @@ export class ExternalSessionTracker {
       clearTimeout(existing.timeoutId);
       existing.lastActivity = now;
       existing.timeoutId = this.createDecayTimeout(sessionId);
-      // Retry session summary parsing until we can emit session-created
-      if (this.getSessionSummary && !this.createdSessions.has(sessionId)) {
+      // Always parse to detect changes (title, messageCount)
+      if (this.getSessionSummary) {
         const getSessionSummary = this.getSessionSummary;
         this.sessionParser.enqueue(sessionId, async () => {
           const project = await this.resolveProjectForSession(info);

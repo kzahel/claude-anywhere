@@ -1,6 +1,9 @@
 import type { MarkdownAugment } from "@yep-anywhere/shared";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { preprocessMessages } from "../lib/preprocessMessages";
+import {
+  type ActiveToolApproval,
+  preprocessMessages,
+} from "../lib/preprocessMessages";
 import type { Message } from "../types";
 import type { RenderItem } from "../types/renderItems";
 import { ProcessingIndicator } from "./ProcessingIndicator";
@@ -56,6 +59,8 @@ interface Props {
   pendingMessages?: PendingMessage[];
   /** Pre-rendered markdown HTML from server (keyed by message ID) */
   markdownAugments?: Record<string, MarkdownAugment>;
+  /** Active tool approval - prevents matching orphaned tool from showing as interrupted */
+  activeToolApproval?: ActiveToolApproval;
 }
 
 export const MessageList = memo(function MessageList({
@@ -65,6 +70,7 @@ export const MessageList = memo(function MessageList({
   scrollTrigger = 0,
   pendingMessages = [],
   markdownAugments,
+  activeToolApproval,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -107,8 +113,9 @@ export const MessageList = memo(function MessageList({
     () =>
       preprocessMessages(messages, {
         markdown: markdownAugments,
+        activeToolApproval,
       }),
-    [messages, markdownAugments],
+    [messages, markdownAugments, activeToolApproval],
   );
   const turnGroups = useMemo(
     () => groupItemsIntoTurns(renderItems),

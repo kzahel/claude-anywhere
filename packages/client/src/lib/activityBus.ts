@@ -59,6 +59,24 @@ export interface SessionMetadataChangedEvent {
   timestamp: string;
 }
 
+/**
+ * Event emitted when session content changes (title, messageCount, etc.).
+ * This is different from session-metadata-changed which is for user-set metadata.
+ * This event is for auto-derived values from the session JSONL file.
+ */
+export interface SessionUpdatedEvent {
+  type: "session-updated";
+  sessionId: string;
+  projectId: UrlProjectId;
+  /** New title (derived from first user message) */
+  title?: string | null;
+  /** New message count */
+  messageCount?: number;
+  /** Updated timestamp */
+  updatedAt?: string;
+  timestamp: string;
+}
+
 // Dev mode events
 export interface SourceChangeEvent {
   type: "source-change";
@@ -80,6 +98,7 @@ interface ActivityEventMap {
   "file-change": FileChangeEvent;
   "session-status-changed": SessionStatusEvent;
   "session-created": SessionCreatedEvent;
+  "session-updated": SessionUpdatedEvent;
   "session-seen": SessionSeenEvent;
   "process-state-changed": ProcessStateEvent;
   "session-metadata-changed": SessionMetadataChangedEvent;
@@ -98,7 +117,7 @@ const API_BASE = "/api";
 const RECONNECT_DELAY_MS = 2000;
 
 /**
- * Singleton that manages a single SSE connection to /api/activity/fswatch.
+ * Singleton that manages a single SSE connection to /api/activity/events.
  * Hooks subscribe via on() and receive events through callbacks.
  */
 class ActivityBus {
@@ -118,7 +137,7 @@ class ActivityBus {
   connect(): void {
     if (this.eventSource) return;
 
-    const es = new EventSource(`${API_BASE}/activity/fswatch`);
+    const es = new EventSource(`${API_BASE}/activity/events`);
 
     es.onopen = () => {
       const isReconnect = this.hasConnected;
@@ -139,6 +158,9 @@ class ActivityBus {
     );
     es.addEventListener("session-created", (event) =>
       this.handleEvent("session-created", event),
+    );
+    es.addEventListener("session-updated", (event) =>
+      this.handleEvent("session-updated", event),
     );
     es.addEventListener("session-seen", (event) =>
       this.handleEvent("session-seen", event),

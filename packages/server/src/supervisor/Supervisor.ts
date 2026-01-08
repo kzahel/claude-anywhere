@@ -833,10 +833,12 @@ export class Supervisor {
         };
         this.emitStatusChange(event.newSessionId, process.projectId, status);
       } else if (event.type === "state-change") {
-        // Emit process state change for running/waiting-input states
+        // Emit process state change for all states that clients need to track
+        // This includes running/waiting-input (active) and idle (inactive)
         if (
           event.state.type === "running" ||
-          event.state.type === "waiting-input"
+          event.state.type === "waiting-input" ||
+          event.state.type === "idle"
         ) {
           this.emitProcessStateChange(
             process.sessionId,
@@ -889,6 +891,10 @@ export class Supervisor {
     this.emitStatusChange(process.sessionId, process.projectId, {
       state: "idle",
     });
+
+    // Emit process state change to notify clients that this session is no longer running
+    // This is needed for real-time updates (e.g., AgentsNavItem indicator)
+    this.emitProcessStateChange(process.sessionId, process.projectId, "idle");
 
     // Emit worker activity after unregistering (worker removed)
     this.emitWorkerActivity();

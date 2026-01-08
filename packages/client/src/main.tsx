@@ -8,7 +8,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { App } from "./App";
 import { initializeFontSize } from "./hooks/useFontSize";
 import { initializeTheme } from "./hooks/useTheme";
-import { NavigationLayout, ProjectLayout } from "./layouts";
+import { NavigationLayout } from "./layouts";
 import { activityBus } from "./lib/activityBus";
 import { ActivityPage } from "./pages/ActivityPage";
 import { AgentsPage } from "./pages/AgentsPage";
@@ -20,7 +20,6 @@ import { NewSessionPage } from "./pages/NewSessionPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { RecentsPage } from "./pages/RecentsPage";
 import { SessionPage } from "./pages/SessionPage";
-import { SessionsPage } from "./pages/SessionsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import "./styles/index.css";
 
@@ -48,7 +47,7 @@ createRoot(rootElement).render(
           <Route path="/" element={<Navigate to="/projects" replace />} />
           {/* Login page (no layout wrapper) */}
           <Route path="/login" element={<LoginPage />} />
-          {/* Top-level navigation pages share NavigationLayout */}
+          {/* All pages share NavigationLayout for persistent sidebar */}
           <Route element={<NavigationLayout />}>
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/sessions" element={<GlobalSessionsPage />} />
@@ -56,14 +55,19 @@ createRoot(rootElement).render(
             <Route path="/inbox" element={<InboxPage />} />
             <Route path="/recents" element={<RecentsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            {/* Project-scoped pages */}
+            <Route
+              path="/projects/:projectId"
+              element={<Navigate to="/sessions" replace />}
+            />
+            <Route path="/new-session" element={<NewSessionPage />} />
+            <Route
+              path="/projects/:projectId/sessions/:sessionId"
+              element={<SessionPage />}
+            />
           </Route>
-          {/* Project pages use ProjectLayout with project-specific sidebar */}
-          <Route path="/projects/:projectId" element={<ProjectLayout />}>
-            <Route index element={<SessionsPage />} />
-            <Route path="new-session" element={<NewSessionPage />} />
-            <Route path="sessions/:sessionId" element={<SessionPage />} />
-            <Route path="file" element={<FilePage />} />
-          </Route>
+          {/* File page has its own layout (no sidebar) */}
+          <Route path="/projects/:projectId/file" element={<FilePage />} />
           {/* Activity page has its own layout */}
           <Route path="/activity" element={<ActivityPage />} />
         </Routes>

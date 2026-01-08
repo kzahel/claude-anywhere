@@ -74,8 +74,14 @@ export interface AppMessageExtensions {
   role?: "user" | "assistant" | "system";
 
   /**
-   * Tool use IDs that reference tool_use blocks not found in previous messages.
-   * Computed by SessionReader when processing tool_result blocks.
+   * IDs of tool_use blocks that don't have a matching tool_result in the message history.
+   * Computed by SessionReader via DAG analysis.
+   *
+   * NOTE: This is a misnomer. These aren't necessarily "orphaned" (abandoned) - they may be
+   * actively pending (awaiting approval or currently executing). The client should check
+   * process state to determine if tools are truly orphaned vs just pending.
+   *
+   * TODO: Consider renaming to `toolUsesWithoutResults` for clarity.
    */
   orphanedToolUseIds?: string[];
 

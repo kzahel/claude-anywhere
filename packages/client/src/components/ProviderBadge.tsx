@@ -6,6 +6,7 @@ const PROVIDER_COLORS: Record<ProviderName, string> = {
   codex: "var(--provider-codex)", // OpenAI green
   "codex-oss": "var(--provider-codex)", // OpenAI green (same as codex)
   gemini: "var(--provider-gemini)", // Google blue
+  opencode: "var(--provider-opencode)", // OpenCode purple
 };
 
 const PROVIDER_LABELS: Record<ProviderName, string> = {
@@ -13,6 +14,7 @@ const PROVIDER_LABELS: Record<ProviderName, string> = {
   codex: "Codex",
   "codex-oss": "CodexOSS",
   gemini: "Gemini",
+  opencode: "OpenCode",
 };
 
 interface ProviderBadgeProps {
@@ -96,7 +98,7 @@ export function ProviderBadge({
       style={{ borderColor: color, color }}
     >
       <span className={dotClass} style={dotStyle} />
-      {label}
+      <span className="provider-badge-label">{label}</span>
       {modelLabel && <span className="provider-badge-model">{modelLabel}</span>}
     </span>
   );

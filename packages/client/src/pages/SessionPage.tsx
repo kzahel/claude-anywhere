@@ -8,7 +8,6 @@ import { MessageList } from "../components/MessageList";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { QuestionAnswerPanel } from "../components/QuestionAnswerPanel";
 import { SessionMenu } from "../components/SessionMenu";
-import { StatusIndicator } from "../components/StatusIndicator";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
 import {
@@ -20,13 +19,14 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import type { DraftControls } from "../hooks/useDraftPersistence";
 import { useEngagementTracking } from "../hooks/useEngagementTracking";
 import { getModelSetting, getThinkingSetting } from "../hooks/useModelSettings";
+import { useProject } from "../hooks/useProjects";
 import { useProviders } from "../hooks/useProviders";
 import { recordSessionVisit } from "../hooks/useRecentSessions";
 import {
   type StreamingMarkdownCallbacks,
   useSession,
 } from "../hooks/useSession";
-import { useProjectLayout } from "../layouts";
+import { useNavigationLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
 import { truncateText } from "../lib/text";
 import { getSessionDisplayTitle } from "../types";
@@ -62,13 +62,9 @@ function SessionPageContent({
   projectId: string;
   sessionId: string;
 }) {
-  const {
-    openSidebar,
-    isWideScreen,
-    toggleSidebar,
-    isSidebarCollapsed,
-    project,
-  } = useProjectLayout();
+  const { openSidebar, isWideScreen, toggleSidebar, isSidebarCollapsed } =
+    useNavigationLayout();
+  const { project } = useProject(projectId);
   const navigate = useNavigate();
   const location = useLocation();
   // Get initial status and title from navigation state (passed by NewSessionPage)
@@ -437,6 +433,12 @@ function SessionPageContent({
   // Check if pending request is an AskUserQuestion
   const isAskUserQuestion = pendingInputRequest?.toolName === "AskUserQuestion";
 
+  // If process is actively running or waiting for input, don't mark tools as orphaned.
+  // "orphanedToolUseIds" from server just means "no result yet" - but if the process is
+  // running (e.g., executing a Task subagent) or waiting for approval, they're not orphaned.
+  const activeToolApproval =
+    processState === "running" || processState === "waiting-input";
+
   // Detect if session has pending tool calls without results
   // This can happen when the session is idle but was active in another process (VS Code, CLI)
   // that is waiting for user input (tool approval, question answer)
@@ -707,11 +709,6 @@ function SessionPageContent({
                   isThinking={processState === "running"}
                 />
               )}
-              <StatusIndicator
-                status={status}
-                connected={connected}
-                processState={processState}
-              />
             </div>
           </div>
         </header>
@@ -752,6 +749,7 @@ function SessionPageContent({
                 scrollTrigger={scrollTrigger}
                 pendingMessages={pendingMessages}
                 markdownAugments={markdownAugments}
+                activeToolApproval={activeToolApproval}
               />
             </AgentContentProvider>
           )}

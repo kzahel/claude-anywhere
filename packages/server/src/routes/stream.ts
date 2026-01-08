@@ -445,23 +445,6 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         }
       };
 
-      // Send initial connection event
-      await stream.writeSSE({
-        id: String(eventId++),
-        event: "connected",
-        data: JSON.stringify({
-          processId: process.id,
-          sessionId: process.sessionId,
-          state: process.state.type,
-          permissionMode: process.permissionMode,
-          modeVersion: process.modeVersion,
-          // Include pending request for waiting-input state
-          ...(process.state.type === "waiting-input"
-            ? { request: process.state.request }
-            : {}),
-        }),
-      });
-
       // Helper to mark subagent messages
       // Subagent messages have parent_tool_use_id set (pointing to Task tool_use id)
       const markSubagent = <T extends { parent_tool_use_id?: string | null }>(
@@ -478,16 +461,6 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
         return message;
       };
 
-      // Replay buffered messages (for mock SDK that doesn't persist to disk)
-      // This ensures clients that connect after messages were emitted still receive them
-      for (const message of process.getMessageHistory()) {
-        await stream.writeSSE({
-          id: String(eventId++),
-          event: "message",
-          data: JSON.stringify(markSubagent(message)),
-        });
-      }
-
       // Heartbeat interval
       const heartbeatInterval = setInterval(async () => {
         try {
@@ -503,7 +476,12 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
 
       let completed = false;
 
-      // Subscribe to process events
+      // IMPORTANT: Subscribe to process events BEFORE capturing state for "connected" event
+      // This prevents a race condition where the process transitions to waiting-input
+      // during the message replay loop, causing the state-change event to be lost.
+      // By subscribing first, any state change is guaranteed to either:
+      // 1. Be captured in our state snapshot below (if it happened before)
+      // 2. Be received by this subscriber (if it happened after)
       const unsubscribe = process.subscribe(async (event: ProcessEvent) => {
         if (completed) return;
 
@@ -597,6 +575,13 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
               if (textDelta) {
                 // Process asynchronously to not block raw delivery
                 processTextChunk(textDelta);
+                // Accumulate in Process for catch-up when clients connect mid-stream
+                if (currentStreamingMessageId) {
+                  process.accumulateStreamingText(
+                    currentStreamingMessageId,
+                    textDelta,
+                  );
+                }
               }
 
               // Flush coordinator when message stream ends (Claude message_stop or Gemini result)
@@ -605,6 +590,8 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
                 flushCoordinator();
                 // Clear message ID after flush completes (async, but ID is captured in closure)
                 currentStreamingMessageId = null;
+                // Clear accumulated streaming text
+                process.clearStreamingText();
               }
               break;
             }
@@ -661,6 +648,57 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
           unsubscribe();
         }
       });
+
+      // Now that we're subscribed, capture current state and send "connected" event
+      // Any state changes after this point will be received by the subscriber above
+      const currentState = process.state;
+      await stream.writeSSE({
+        id: String(eventId++),
+        event: "connected",
+        data: JSON.stringify({
+          processId: process.id,
+          sessionId: process.sessionId,
+          state: currentState.type,
+          permissionMode: process.permissionMode,
+          modeVersion: process.modeVersion,
+          // Include pending request for waiting-input state
+          ...(currentState.type === "waiting-input"
+            ? { request: currentState.request }
+            : {}),
+        }),
+      });
+
+      // Replay buffered messages (for mock SDK that doesn't persist to disk)
+      // This ensures clients that connect after messages were emitted still receive them
+      for (const message of process.getMessageHistory()) {
+        await stream.writeSSE({
+          id: String(eventId++),
+          event: "message",
+          data: JSON.stringify(markSubagent(message)),
+        });
+      }
+
+      // Catch-up: send accumulated streaming text as pending HTML for late-joining clients
+      // This ensures clients that connect mid-stream see all content, not just from join point
+      const streamingContent = process.getStreamingContent();
+      if (streamingContent) {
+        try {
+          const coord = await getCoordinator();
+          const result = await coord.onChunk(streamingContent.text);
+          if (result.pendingHtml) {
+            await stream.writeSSE({
+              id: String(eventId++),
+              event: "pending",
+              data: JSON.stringify({
+                html: result.pendingHtml,
+                messageId: streamingContent.messageId,
+              }),
+            });
+          }
+        } catch (err) {
+          log.warn({ err, sessionId }, "Failed to send catch-up pending HTML");
+        }
+      }
 
       // Keep stream open until process completes or client disconnects
       await new Promise<void>((resolve) => {

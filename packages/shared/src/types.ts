@@ -4,8 +4,14 @@
  * - "codex": OpenAI Codex via SDK (cloud models)
  * - "codex-oss": Codex via CLI with --oss (local models via Ollama)
  * - "gemini": Google Gemini via CLI
+ * - "opencode": OpenCode via HTTP server (multi-provider agent)
  */
-export type ProviderName = "claude" | "codex" | "codex-oss" | "gemini";
+export type ProviderName =
+  | "claude"
+  | "codex"
+  | "codex-oss"
+  | "gemini"
+  | "opencode";
 
 /**
  * The default provider when none is specified.

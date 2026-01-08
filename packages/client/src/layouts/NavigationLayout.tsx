@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet, useOutletContext } from "react-router-dom";
+import { Outlet, useOutletContext, useParams } from "react-router-dom";
 import { Sidebar } from "../components/Sidebar";
 import { useSidebarPreference } from "../hooks/useSidebarPreference";
 import { useSidebarWidth } from "../hooks/useSidebarWidth";
@@ -17,10 +17,12 @@ export interface NavigationLayoutContext {
 }
 
 /**
- * Shared layout for top-level navigation pages (inbox, projects, settings, agents).
- * Renders the NavigationSidebar once so it persists across route changes.
+ * Shared layout for all pages that need a sidebar.
+ * Renders the Sidebar once so it persists across route changes.
  */
 export function NavigationLayout() {
+  // Extract sessionId from URL for highlighting in sidebar (works for session pages)
+  const { sessionId } = useParams<{ sessionId?: string }>();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { isExpanded, toggleExpanded } = useSidebarPreference();
   const {
@@ -65,6 +67,7 @@ export function NavigationLayout() {
             isOpen={true}
             onClose={() => {}}
             onNavigate={() => {}}
+            currentSessionId={sessionId}
             isDesktop={true}
             isCollapsed={effectivelyCollapsed}
             onToggleExpanded={toggleExpanded}
@@ -82,6 +85,7 @@ export function NavigationLayout() {
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           onNavigate={() => setSidebarOpen(false)}
+          currentSessionId={sessionId}
         />
       )}
 

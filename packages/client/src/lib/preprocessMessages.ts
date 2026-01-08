@@ -9,12 +9,23 @@ import type {
 import { getMessageId } from "./mergeMessages";
 
 /**
+ * When true, indicates the session has an active tool approval request.
+ * All orphaned tools will be treated as pending (not interrupted).
+ *
+ * This handles the case where multiple tools are queued for approval -
+ * only the first is sent to the client, but all are waiting in the server queue.
+ */
+export type ActiveToolApproval = boolean;
+
+/**
  * Augments to embed into RenderItems during preprocessing.
  * These are pre-computed on the server for completed messages.
  */
 export interface PreprocessAugments {
   /** Pre-rendered markdown HTML keyed by message ID */
   markdown?: Record<string, MarkdownAugment>;
+  /** Active tool approval request - if present, matching tool_use won't be marked aborted */
+  activeToolApproval?: ActiveToolApproval;
 }
 
 /**
@@ -31,11 +42,15 @@ export function preprocessMessages(
   const pendingToolCalls = new Map<string, number>(); // tool_use_id → index in items
 
   // Collect all orphaned tool IDs from messages (set by server DAG filtering)
+  // If there's an active tool approval, skip orphan detection entirely -
+  // all tools without results are pending (either current or queued for approval)
   const orphanedToolIds = new Set<string>();
-  for (const msg of messages) {
-    if (msg.orphanedToolUseIds) {
-      for (const id of msg.orphanedToolUseIds) {
-        orphanedToolIds.add(id);
+  if (!augments?.activeToolApproval) {
+    for (const msg of messages) {
+      if (msg.orphanedToolUseIds) {
+        for (const id of msg.orphanedToolUseIds) {
+          orphanedToolIds.add(id);
+        }
       }
     }
   }

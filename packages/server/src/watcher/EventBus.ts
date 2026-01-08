@@ -66,7 +66,7 @@ export interface SessionSeenEvent {
 }
 
 /** Process state type - what the agent is doing */
-export type ProcessStateType = "running" | "waiting-input";
+export type ProcessStateType = "running" | "waiting-input" | "idle";
 
 /** Event emitted when a process state changes (running vs waiting for input) */
 export interface ProcessStateEvent {
@@ -138,6 +138,24 @@ export interface SessionAbortedEvent {
   timestamp: string;
 }
 
+/**
+ * Event emitted when session content changes (title, messageCount, etc.).
+ * This is different from session-metadata-changed which is for user-set metadata.
+ * This event is for auto-derived values from the session JSONL file.
+ */
+export interface SessionUpdatedEvent {
+  type: "session-updated";
+  sessionId: string;
+  projectId: UrlProjectId;
+  /** New title (derived from first user message) */
+  title?: string | null;
+  /** New message count */
+  messageCount?: number;
+  /** Updated timestamp */
+  updatedAt?: string;
+  timestamp: string;
+}
+
 /** Union of all event types that can be emitted through the bus */
 export type BusEvent =
   | FileChangeEvent
@@ -152,7 +170,8 @@ export type BusEvent =
   | QueueRequestRemovedEvent
   | WorkerActivityEvent
   | SessionMetadataChangedEvent
-  | SessionAbortedEvent;
+  | SessionAbortedEvent
+  | SessionUpdatedEvent;
 
 export type EventHandler<T = BusEvent> = (event: T) => void;
 

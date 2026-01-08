@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type GlobalSessionItem, api } from "../api/client";
+import {
+  type GlobalSessionItem,
+  type GlobalSessionStats,
+  type ProjectOption,
+  api,
+} from "../api/client";
 import {
   type ProcessStateEvent,
   type SessionCreatedEvent,
   type SessionMetadataChangedEvent,
   type SessionSeenEvent,
   type SessionStatusEvent,
+  type SessionUpdatedEvent,
   useFileActivity,
 } from "./useFileActivity";
 
@@ -18,9 +24,20 @@ export interface UseGlobalSessionsOptions {
   includeArchived?: boolean;
 }
 
+/** Default stats when no data loaded */
+const DEFAULT_STATS: GlobalSessionStats = {
+  totalCount: 0,
+  unreadCount: 0,
+  starredCount: 0,
+  archivedCount: 0,
+  providerCounts: {},
+};
+
 export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
   const { projectId, searchQuery, limit, includeArchived } = options;
   const [sessions, setSessions] = useState<GlobalSessionItem[]>([]);
+  const [stats, setStats] = useState<GlobalSessionStats>(DEFAULT_STATS);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -97,6 +114,8 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
       }
 
       setHasMore(data.hasMore);
+      setStats(data.stats);
+      setProjects(data.projects);
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
@@ -269,6 +288,24 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
     );
   }, []);
 
+  // Handle session content updates (auto-generated title, messageCount)
+  const handleSessionUpdated = useCallback((event: SessionUpdatedEvent) => {
+    setSessions((prev) =>
+      prev.map((session) => {
+        if (session.id !== event.sessionId) return session;
+
+        return {
+          ...session,
+          ...(event.title !== undefined && { title: event.title }),
+          ...(event.messageCount !== undefined && {
+            messageCount: event.messageCount,
+          }),
+          ...(event.updatedAt !== undefined && { updatedAt: event.updatedAt }),
+        };
+      }),
+    );
+  }, []);
+
   // Subscribe to SSE events
   useFileActivity({
     onSessionStatusChange: handleSessionStatusChange,
@@ -276,6 +313,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
     onProcessStateChange: handleProcessStateChange,
     onSessionMetadataChange: handleSessionMetadataChange,
     onSessionSeen: handleSessionSeen,
+    onSessionUpdated: handleSessionUpdated,
     onReconnect: fetch,
   });
 
@@ -295,6 +333,8 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
 
   return {
     sessions,
+    stats,
+    projects,
     loading,
     error,
     hasMore,

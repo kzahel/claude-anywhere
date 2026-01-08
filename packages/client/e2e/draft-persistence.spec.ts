@@ -3,9 +3,21 @@ import { expect, test } from "./fixtures.js";
 test.describe("Draft Persistence", () => {
   test.describe("New Session Input", () => {
     test("persists draft to localStorage while typing", async ({ page }) => {
+      // First get a project ID
       await page.goto("/projects");
       await page.waitForSelector(".project-list a");
-      await page.locator(".project-list a").first().click();
+      const href = await page
+        .locator(".project-list a")
+        .first()
+        .getAttribute("href");
+      const projectId = new URLSearchParams(href?.split("?")[1] ?? "").get(
+        "project",
+      );
+      expect(projectId).toBeTruthy();
+
+      // Navigate to new session page
+      await page.goto(`/new-session?projectId=${projectId}`);
+      await page.waitForSelector(".new-session-form textarea");
 
       // Type a message
       const textarea = page.locator(".new-session-form textarea");
@@ -15,9 +27,6 @@ test.describe("Draft Persistence", () => {
       await page.waitForTimeout(700);
 
       // Check localStorage has the draft
-      const projectId = await page.evaluate(() => {
-        return window.location.pathname.split("/")[2];
-      });
       const draft = await page.evaluate((pid) => {
         return localStorage.getItem(`draft-new-session-${pid}`);
       }, projectId);
@@ -25,11 +34,20 @@ test.describe("Draft Persistence", () => {
     });
 
     test("restores draft after page reload", async ({ page }) => {
+      // First get a project ID
       await page.goto("/projects");
       await page.waitForSelector(".project-list a");
-      await page.locator(".project-list a").first().click();
+      const href = await page
+        .locator(".project-list a")
+        .first()
+        .getAttribute("href");
+      const projectId = new URLSearchParams(href?.split("?")[1] ?? "").get(
+        "project",
+      );
+      expect(projectId).toBeTruthy();
 
-      // Wait for the new session form to load
+      // Navigate to new session page
+      await page.goto(`/new-session?projectId=${projectId}`);
       await page.waitForSelector(".new-session-form textarea");
 
       // Type a message
@@ -52,17 +70,21 @@ test.describe("Draft Persistence", () => {
     });
 
     test("clears draft after successful session start", async ({ page }) => {
+      // First get a project ID
       await page.goto("/projects");
       await page.waitForSelector(".project-list a");
-      await page.locator(".project-list a").first().click();
+      const href = await page
+        .locator(".project-list a")
+        .first()
+        .getAttribute("href");
+      const projectId = new URLSearchParams(href?.split("?")[1] ?? "").get(
+        "project",
+      );
+      expect(projectId).toBeTruthy();
 
-      // Wait for the new session form to load
+      // Navigate to new session page
+      await page.goto(`/new-session?projectId=${projectId}`);
       await page.waitForSelector(".new-session-form textarea");
-
-      // Get project ID for localStorage check
-      const projectId = await page.evaluate(() => {
-        return window.location.pathname.split("/")[2];
-      });
 
       // Type and submit
       const textarea = page.locator(".new-session-form textarea");

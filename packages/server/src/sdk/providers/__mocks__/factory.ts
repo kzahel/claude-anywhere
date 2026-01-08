@@ -7,8 +7,9 @@
 import type { SDKMessage } from "../../types.js";
 import type { ProviderName } from "../types.js";
 import { MockClaudeProvider } from "./claude.js";
-import { MockCodexProvider } from "./codex.js";
+import { MockCodexOSSProvider, MockCodexProvider } from "./codex.js";
 import { MockGeminiProvider } from "./gemini.js";
+import { MockOpenCodeProvider } from "./opencode.js";
 import type {
   MockAgentProvider,
   MockProviderConfig,
@@ -27,8 +28,12 @@ export function createMockProvider(
       return new MockClaudeProvider(config);
     case "codex":
       return new MockCodexProvider(config);
+    case "codex-oss":
+      return new MockCodexOSSProvider(config);
     case "gemini":
       return new MockGeminiProvider(config);
+    case "opencode":
+      return new MockOpenCodeProvider(config);
     default:
       throw new Error(`Unknown provider type: ${type}`);
   }
@@ -43,7 +48,9 @@ export function createAllMockProviders(
   const providers = new Map<ProviderName, MockAgentProvider>();
   providers.set("claude", new MockClaudeProvider(config));
   providers.set("codex", new MockCodexProvider(config));
+  providers.set("codex-oss", new MockCodexOSSProvider(config));
   providers.set("gemini", new MockGeminiProvider(config));
+  providers.set("opencode", new MockOpenCodeProvider(config));
   return providers;
 }
 
@@ -63,7 +70,9 @@ export function createMockProviderWithScenarios(
 export const MOCK_PROVIDER_TYPES: ProviderName[] = [
   "claude",
   "codex",
+  "codex-oss",
   "gemini",
+  "opencode",
 ];
 
 /**

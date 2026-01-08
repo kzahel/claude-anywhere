@@ -33,6 +33,7 @@ export {
 } from "./claude.js";
 export {
   MockCodexProvider,
+  MockCodexOSSProvider,
   createCodexScenario,
   createCodexToolScenario,
   createCodexErrorScenario,
@@ -44,6 +45,12 @@ export {
   createGeminiThoughtsScenario,
   createGeminiErrorScenario,
 } from "./gemini.js";
+export {
+  MockOpenCodeProvider,
+  createOpenCodeScenario,
+  createOpenCodeToolScenario,
+  createOpenCodeErrorScenario,
+} from "./opencode.js";
 
 // Factory functions
 export {

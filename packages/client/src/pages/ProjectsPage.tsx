@@ -29,8 +29,8 @@ export function ProjectsPage() {
       await refetch();
       setNewProjectPath("");
       setShowAddForm(false);
-      // Navigate to the new project
-      navigate(`/projects/${project.id}`);
+      // Navigate to sessions filtered by the new project
+      navigate(`/sessions?project=${project.id}`);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : "Failed to add project");
     } finally {
@@ -119,7 +119,7 @@ export function ProjectsPage() {
               <ul className="project-list">
                 {projects.map((project) => (
                   <li key={project.id}>
-                    <Link to={`/projects/${project.id}`}>
+                    <Link to={`/sessions?project=${project.id}`}>
                       <strong>{project.name}</strong>
                       <span className="meta">
                         {project.sessionCount} sessions

@@ -102,7 +102,7 @@ export function FloatingActionButton() {
     setIsExpanded(false);
 
     // Navigate to new session page
-    navigate(`/projects/${targetProjectId}/new-session`);
+    navigate(`/new-session?projectId=${encodeURIComponent(targetProjectId)}`);
   }, [message, projectIdFromUrl, navigate, draftControls]);
 
   const handleKeyDown = useCallback(
@@ -154,7 +154,7 @@ export function FloatingActionButton() {
 
   // Hide (but don't unmount) when not visible or on new-session page
   // This preserves expanded state and draft across navigation
-  const isHidden = !fabVisibility || location.pathname.endsWith("/new-session");
+  const isHidden = !fabVisibility || location.pathname === "/new-session";
 
   const { right, bottom, maxWidth } = fabVisibility ?? {
     right: 24,

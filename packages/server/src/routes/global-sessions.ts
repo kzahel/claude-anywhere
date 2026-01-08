@@ -13,7 +13,11 @@ import { Hono } from "hono";
 import type { SessionIndexService } from "../indexes/index.js";
 import type { SessionMetadataService } from "../metadata/SessionMetadataService.js";
 import type { NotificationService } from "../notifications/index.js";
+import type { CodexSessionScanner } from "../projects/codex-scanner.js";
+import type { GeminiSessionScanner } from "../projects/gemini-scanner.js";
 import type { ProjectScanner } from "../projects/scanner.js";
+import { CodexSessionReader } from "../sessions/codex-reader.js";
+import { GeminiSessionReader } from "../sessions/gemini-reader.js";
 import type { ISessionReader } from "../sessions/types.js";
 import type { ExternalSessionTracker } from "../supervisor/ExternalSessionTracker.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
@@ -33,6 +37,14 @@ export interface GlobalSessionsDeps {
   notificationService?: NotificationService;
   sessionIndexService?: SessionIndexService;
   sessionMetadataService?: SessionMetadataService;
+  /** Codex scanner for checking if a project has Codex sessions */
+  codexScanner?: CodexSessionScanner;
+  /** Codex sessions directory (defaults to ~/.codex/sessions) */
+  codexSessionsDir?: string;
+  /** Gemini scanner for checking if a project has Gemini sessions */
+  geminiScanner?: GeminiSessionScanner;
+  /** Gemini sessions directory (defaults to ~/.gemini/tmp) */
+  geminiSessionsDir?: string;
 }
 
 export interface GlobalSessionItem {
@@ -56,9 +68,29 @@ export interface GlobalSessionItem {
   isStarred?: boolean;
 }
 
+/** Stats about all sessions (computed during full scan) */
+export interface GlobalSessionStats {
+  totalCount: number;
+  unreadCount: number;
+  starredCount: number;
+  archivedCount: number;
+  /** Counts per provider (non-archived only) */
+  providerCounts: Partial<Record<ProviderName, number>>;
+}
+
+/** Minimal project info for filter dropdowns */
+export interface ProjectOption {
+  id: string;
+  name: string;
+}
+
 export interface GlobalSessionsResponse {
   sessions: GlobalSessionItem[];
   hasMore: boolean;
+  /** Global stats computed from all sessions (not just paginated results) */
+  stats: GlobalSessionStats;
+  /** All projects for filter dropdown */
+  projects: ProjectOption[];
 }
 
 /** Default limit for sessions per page */
@@ -91,11 +123,19 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
       ? allProjects.filter((p) => p.id === filterProjectId)
       : allProjects;
 
-    // Build a map of projectId -> projectName for enrichment
-    const projectNameMap = new Map<string, string>();
-    for (const project of allProjects) {
-      projectNameMap.set(project.id, project.name);
-    }
+    // Build project options for filter dropdown (from all projects, sorted by name)
+    const projectOptions: ProjectOption[] = allProjects
+      .map((p) => ({ id: p.id, name: p.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // Global stats counters (computed from ALL sessions, ignoring filters)
+    const stats: GlobalSessionStats = {
+      totalCount: 0,
+      unreadCount: 0,
+      starredCount: 0,
+      archivedCount: 0,
+      providerCounts: {},
+    };
 
     // Collect all sessions with enriched data
     const allSessions: GlobalSessionItem[] = [];
@@ -116,11 +156,77 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
         sessions = await reader.listSessions(project.id);
       }
 
+      // For Claude projects, also check for Codex sessions for the same path
+      // This handles the case where a project has sessions from multiple providers
+      if (project.provider === "claude" && deps.codexScanner) {
+        const codexSessions = await deps.codexScanner.getSessionsForProject(
+          project.path,
+        );
+        if (codexSessions.length > 0 && deps.codexSessionsDir) {
+          const codexReader = new CodexSessionReader({
+            sessionsDir: deps.codexSessionsDir,
+            projectPath: project.path,
+          });
+          const codexSessionSummaries = await codexReader.listSessions(
+            project.id,
+          );
+          // Merge Codex sessions with Claude sessions
+          sessions = [...sessions, ...codexSessionSummaries];
+        }
+      }
+
+      // For Claude/Codex projects, also check for Gemini sessions for the same path
+      // This handles the case where a project has sessions from multiple providers
+      if (
+        (project.provider === "claude" || project.provider === "codex") &&
+        deps.geminiScanner
+      ) {
+        const geminiSessions = await deps.geminiScanner.getSessionsForProject(
+          project.path,
+        );
+        if (geminiSessions.length > 0 && deps.geminiSessionsDir) {
+          const geminiReader = new GeminiSessionReader({
+            sessionsDir: deps.geminiSessionsDir,
+            projectPath: project.path,
+            hashToCwd: deps.geminiScanner.getHashToCwd(),
+          });
+          const geminiSessionSummaries = await geminiReader.listSessions(
+            project.id,
+          );
+          // Merge Gemini sessions with Claude/Codex sessions
+          sessions = [...sessions, ...geminiSessionSummaries];
+        }
+      }
+
       // Enrich each session
       for (const session of sessions) {
         // Get session metadata
         const metadata = deps.sessionMetadataService?.getMetadata(session.id);
         const isArchived = metadata?.isArchived ?? session.isArchived ?? false;
+        const isStarred = metadata?.isStarred ?? session.isStarred ?? false;
+        const customTitle = metadata?.customTitle ?? session.customTitle;
+
+        // Get unread status
+        const hasUnread = deps.notificationService
+          ? deps.notificationService.hasUnread(session.id, session.updatedAt)
+          : undefined;
+
+        // Update global stats (always, regardless of filters)
+        // Stats are computed only when not filtering by project (global view)
+        if (!filterProjectId) {
+          if (isArchived) {
+            stats.archivedCount++;
+          } else {
+            stats.totalCount++;
+            if (hasUnread) stats.unreadCount++;
+            // Provider counts only for non-archived
+            if (session.provider) {
+              stats.providerCounts[session.provider] =
+                (stats.providerCounts[session.provider] ?? 0) + 1;
+            }
+          }
+          if (isStarred) stats.starredCount++;
+        }
 
         // Skip archived sessions unless explicitly requested
         if (isArchived && !includeArchived) continue;
@@ -157,14 +263,6 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
             processState = state;
           }
         }
-
-        // Get unread status
-        const hasUnread = deps.notificationService
-          ? deps.notificationService.hasUnread(session.id, session.updatedAt)
-          : undefined;
-
-        const customTitle = metadata?.customTitle ?? session.customTitle;
-        const isStarred = metadata?.isStarred ?? session.isStarred;
 
         // Apply search filter
         if (searchQuery) {
@@ -224,6 +322,8 @@ export function createGlobalSessionsRoutes(deps: GlobalSessionsDeps): Hono {
     const response: GlobalSessionsResponse = {
       sessions,
       hasMore,
+      stats,
+      projects: projectOptions,
     };
 
     return c.json(response);

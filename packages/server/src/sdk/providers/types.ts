@@ -6,7 +6,12 @@ import type { CanUseTool, SDKMessage, UserMessage } from "../types.js";
 /**
  * Provider names - extensible for future providers.
  */
-export type ProviderName = "claude" | "codex" | "codex-oss" | "gemini";
+export type ProviderName =
+  | "claude"
+  | "codex"
+  | "codex-oss"
+  | "gemini"
+  | "opencode";
 
 /**
  * Authentication status for a provider.

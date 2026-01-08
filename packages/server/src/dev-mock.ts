@@ -31,8 +31,10 @@ import {
 import {
   type MockAgentProvider,
   MockClaudeProvider,
+  MockCodexOSSProvider,
   MockCodexProvider,
   MockGeminiProvider,
+  MockOpenCodeProvider,
   type MockScenario,
 } from "./sdk/providers/__mocks__/index.js";
 import type { ProviderName } from "./sdk/providers/types.js";
@@ -136,10 +138,13 @@ function createMockScenarios(provider: string): MockScenario[] {
 const mockProviders: Record<ProviderName, MockAgentProvider> = {
   claude: new MockClaudeProvider({ scenarios: createMockScenarios("claude") }),
   codex: new MockCodexProvider({ scenarios: createMockScenarios("codex") }),
-  "codex-oss": new MockCodexProvider({
+  "codex-oss": new MockCodexOSSProvider({
     scenarios: createMockScenarios("codex-oss"),
   }),
   gemini: new MockGeminiProvider({ scenarios: createMockScenarios("gemini") }),
+  opencode: new MockOpenCodeProvider({
+    scenarios: createMockScenarios("opencode"),
+  }),
 };
 
 // Create legacy mock SDK for backward compatibility

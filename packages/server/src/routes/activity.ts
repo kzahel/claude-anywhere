@@ -9,8 +9,8 @@ export interface ActivityDeps {
 export function createActivityRoutes(deps: ActivityDeps): Hono {
   const routes = new Hono();
 
-  // GET /api/activity/fswatch - SSE endpoint for file changes and session status
-  routes.get("/fswatch", async (c) => {
+  // GET /api/activity/events - SSE endpoint for all real-time events
+  routes.get("/events", async (c) => {
     return streamSSE(c, async (stream) => {
       let eventId = 0;
 

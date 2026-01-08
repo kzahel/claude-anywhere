@@ -1,8 +1,7 @@
 /**
- * Mock Codex provider for testing.
+ * Mock OpenCode provider for testing.
  *
- * Simulates Codex CLI behavior without requiring the CLI or API keys.
- * Normalizes Codex-specific message formats to SDKMessage format.
+ * Simulates OpenCode server behavior without requiring the CLI.
  */
 
 import type { SDKMessage } from "../../types.js";
@@ -11,12 +10,12 @@ import { BaseMockProvider } from "./base.js";
 import type { MockProviderConfig, MockScenario } from "./types.js";
 
 /**
- * Mock Codex provider.
- * Extends BaseMockProvider with Codex-specific defaults.
+ * Mock OpenCode provider.
+ * Extends BaseMockProvider with OpenCode-specific defaults.
  */
-export class MockCodexProvider extends BaseMockProvider {
-  readonly name: ProviderName = "codex";
-  readonly displayName = "Codex";
+export class MockOpenCodeProvider extends BaseMockProvider {
+  readonly name: ProviderName = "opencode";
+  readonly displayName = "OpenCode";
 
   constructor(config: MockProviderConfig = {}) {
     super(config);
@@ -24,64 +23,37 @@ export class MockCodexProvider extends BaseMockProvider {
 }
 
 /**
- * Mock Codex OSS provider.
- * Same as MockCodexProvider but with codex-oss name.
+ * Create a simple OpenCode response scenario.
  */
-export class MockCodexOSSProvider extends BaseMockProvider {
-  readonly name: ProviderName = "codex-oss";
-  readonly displayName = "CodexOSS";
-
-  constructor(config: MockProviderConfig = {}) {
-    super(config);
-  }
-}
-
-/**
- * Create a simple Codex response scenario.
- * Messages are already normalized to SDKMessage format.
- */
-export function createCodexScenario(
+export function createOpenCodeScenario(
   sessionId: string,
   assistantResponse: string,
-  options: { delayMs?: number; includeReasoning?: boolean } = {},
+  options: { delayMs?: number; model?: string } = {},
 ): MockScenario {
   const messages: SDKMessage[] = [
     {
       type: "system",
       subtype: "init",
       session_id: sessionId,
-      model: "gpt-4",
+      model: options.model ?? "opencode/big-pickle",
     },
-  ];
-
-  if (options.includeReasoning) {
-    messages.push({
+    {
       type: "assistant",
       session_id: sessionId,
       message: {
         role: "assistant",
-        content: "<thinking>\nLet me analyze this step by step...\n</thinking>",
+        content: assistantResponse,
       },
-    });
-  }
-
-  messages.push({
-    type: "assistant",
-    session_id: sessionId,
-    message: {
-      role: "assistant",
-      content: assistantResponse,
     },
-  });
-
-  messages.push({
-    type: "result",
-    session_id: sessionId,
-    usage: {
-      input_tokens: 100,
-      output_tokens: 50,
+    {
+      type: "result",
+      session_id: sessionId,
+      usage: {
+        input_tokens: 50,
+        output_tokens: 30,
+      },
     },
-  });
+  ];
 
   return {
     messages,
@@ -91,17 +63,16 @@ export function createCodexScenario(
 }
 
 /**
- * Create a Codex tool use scenario.
- * Uses function_call format normalized to tool_use.
+ * Create an OpenCode tool use scenario.
  */
-export function createCodexToolScenario(
+export function createOpenCodeToolScenario(
   sessionId: string,
   toolName: string,
   toolInput: Record<string, unknown>,
   toolResult: string,
   finalResponse: string,
 ): MockScenario {
-  const toolUseId = `call_${Date.now()}`;
+  const toolUseId = `prt_${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
   return {
     messages: [
@@ -109,7 +80,7 @@ export function createCodexToolScenario(
         type: "system",
         subtype: "init",
         session_id: sessionId,
-        model: "gpt-4",
+        model: "opencode/big-pickle",
       },
       {
         type: "assistant",
@@ -152,8 +123,8 @@ export function createCodexToolScenario(
         type: "result",
         session_id: sessionId,
         usage: {
-          input_tokens: 200,
-          output_tokens: 100,
+          input_tokens: 120,
+          output_tokens: 60,
         },
       },
     ],
@@ -163,9 +134,9 @@ export function createCodexToolScenario(
 }
 
 /**
- * Create a Codex error scenario.
+ * Create an OpenCode error scenario.
  */
-export function createCodexErrorScenario(
+export function createOpenCodeErrorScenario(
   sessionId: string,
   errorMessage: string,
 ): MockScenario {

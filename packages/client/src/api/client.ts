@@ -64,12 +64,32 @@ export interface GlobalSessionItem {
   isStarred?: boolean;
 }
 
+/** Stats about all sessions (computed during full scan on server) */
+export interface GlobalSessionStats {
+  totalCount: number;
+  unreadCount: number;
+  starredCount: number;
+  archivedCount: number;
+  /** Counts per provider (non-archived only) */
+  providerCounts: Partial<Record<ProviderName, number>>;
+}
+
+/** Minimal project info for filter dropdowns */
+export interface ProjectOption {
+  id: string;
+  name: string;
+}
+
 /**
  * Response from the global sessions API.
  */
 export interface GlobalSessionsResponse {
   sessions: GlobalSessionItem[];
   hasMore: boolean;
+  /** Global stats computed from all sessions (not just paginated results) */
+  stats: GlobalSessionStats;
+  /** All projects for filter dropdown */
+  projects: ProjectOption[];
 }
 
 export interface SessionOptions {

@@ -67,8 +67,6 @@ function formatSize(bytes: number): string {
 
 export interface NewSessionFormProps {
   projectId: string;
-  /** Called before session creation starts to add optimistic session to sidebar */
-  onOptimisticSession?: (sessionId: string, title: string) => void;
   /** Whether to focus the textarea on mount (default: true) */
   autoFocus?: boolean;
   /** Number of rows for the textarea (default: 6) */
@@ -81,7 +79,6 @@ export interface NewSessionFormProps {
 
 export function NewSessionForm({
   projectId,
-  onOptimisticSession,
   autoFocus = true,
   rows = 6,
   placeholder = "Describe what you'd like help with...",
@@ -309,8 +306,6 @@ export function NewSessionForm({
       }
 
       draftControls.clearDraft();
-      // Add optimistic session to sidebar before navigation
-      onOptimisticSession?.(sessionId, trimmedMessage);
       // Pass initial status so SessionPage can connect SSE immediately
       // without waiting for getSession to complete
       // Also pass initial message as optimistic title (session name = first message)

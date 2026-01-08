@@ -79,6 +79,11 @@ export class Process {
   /** In-memory message history for mock SDK (real SDK persists to disk) */
   private messageHistory: SDKMessage[] = [];
 
+  /** Accumulated streaming text for catch-up when clients connect mid-stream */
+  private _streamingText = "";
+  /** Message ID for current streaming response */
+  private _streamingMessageId: string | null = null;
+
   /** Pending tool approval requests (from canUseTool callback) - supports concurrent approvals */
   private pendingToolApprovals: Map<string, PendingToolApproval> = new Map();
   /** Order of pending approval request IDs for FIFO processing */
@@ -379,6 +384,42 @@ export class Process {
    */
   getMessageHistory(): SDKMessage[] {
     return [...this.messageHistory];
+  }
+
+  /**
+   * Get accumulated streaming text for catch-up when clients connect mid-stream.
+   * Returns the message ID and accumulated text, or null if not streaming.
+   */
+  getStreamingContent(): { messageId: string; text: string } | null {
+    if (!this._streamingMessageId || !this._streamingText) {
+      return null;
+    }
+    return {
+      messageId: this._streamingMessageId,
+      text: this._streamingText,
+    };
+  }
+
+  /**
+   * Accumulate streaming text from a delta.
+   * Called by stream routes when processing stream_event messages.
+   */
+  accumulateStreamingText(messageId: string, text: string): void {
+    if (this._streamingMessageId !== messageId) {
+      // New streaming message, reset accumulator
+      this._streamingMessageId = messageId;
+      this._streamingText = text;
+    } else {
+      this._streamingText += text;
+    }
+  }
+
+  /**
+   * Clear streaming text accumulator (called when stream ends).
+   */
+  clearStreamingText(): void {
+    this._streamingText = "";
+    this._streamingMessageId = null;
   }
 
   /**

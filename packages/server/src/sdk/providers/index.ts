@@ -42,12 +42,26 @@ export {
   type CodexOSSProviderConfig,
 } from "./codex-oss.js";
 
+// OpenCode provider (uses opencode serve for multi-provider agent)
+import { opencodeProvider } from "./opencode.js";
+export {
+  OpenCodeProvider,
+  opencodeProvider,
+  type OpenCodeProviderConfig,
+} from "./opencode.js";
+
 /**
  * Get all available provider instances.
  * Useful for provider detection UI.
  */
 export function getAllProviders(): AgentProvider[] {
-  return [claudeProvider, codexProvider, codexOSSProvider, geminiProvider];
+  return [
+    claudeProvider,
+    codexProvider,
+    codexOSSProvider,
+    geminiProvider,
+    opencodeProvider,
+  ];
 }
 
 /**
@@ -63,6 +77,8 @@ export function getProvider(name: ProviderName): AgentProvider | null {
       return codexOSSProvider;
     case "gemini":
       return geminiProvider;
+    case "opencode":
+      return opencodeProvider;
     default:
       return null;
   }

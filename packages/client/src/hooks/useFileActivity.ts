@@ -7,6 +7,7 @@ import {
   type SessionMetadataChangedEvent,
   type SessionSeenEvent,
   type SessionStatusEvent,
+  type SessionUpdatedEvent,
   activityBus,
 } from "../lib/activityBus";
 
@@ -21,6 +22,7 @@ export type {
   SessionMetadataChangedEvent,
   SessionSeenEvent,
   SessionStatusEvent,
+  SessionUpdatedEvent,
 } from "../lib/activityBus";
 
 interface UseFileActivityOptions {
@@ -40,6 +42,8 @@ interface UseFileActivityOptions {
   onProcessStateChange?: (event: ProcessStateEvent) => void;
   /** Callback when session metadata changes (title, archived, starred) */
   onSessionMetadataChange?: (event: SessionMetadataChangedEvent) => void;
+  /** Callback when session content changes (auto-generated title, messageCount) */
+  onSessionUpdated?: (event: SessionUpdatedEvent) => void;
   /** Callback when SSE connection is re-established after being disconnected */
   onReconnect?: () => void;
 }
@@ -59,6 +63,7 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
     onSessionSeen,
     onProcessStateChange,
     onSessionMetadataChange,
+    onSessionUpdated,
     onReconnect,
   } = options;
 
@@ -80,6 +85,8 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
   onProcessStateChangeRef.current = onProcessStateChange;
   const onSessionMetadataChangeRef = useRef(onSessionMetadataChange);
   onSessionMetadataChangeRef.current = onSessionMetadataChange;
+  const onSessionUpdatedRef = useRef(onSessionUpdated);
+  onSessionUpdatedRef.current = onSessionUpdated;
   const onReconnectRef = useRef(onReconnect);
   onReconnectRef.current = onReconnect;
   const maxEventsRef = useRef(maxEvents);
@@ -134,6 +141,12 @@ export function useFileActivity(options: UseFileActivityOptions = {}) {
     unsubscribers.push(
       activityBus.on("session-metadata-changed", (data) => {
         onSessionMetadataChangeRef.current?.(data);
+      }),
+    );
+
+    unsubscribers.push(
+      activityBus.on("session-updated", (data) => {
+        onSessionUpdatedRef.current?.(data);
       }),
     );
 

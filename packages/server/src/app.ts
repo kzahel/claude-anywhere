@@ -161,6 +161,11 @@ export function createApp(options: AppOptions): AppResult {
         });
       case "claude":
         return new ClaudeSessionReader({ sessionDir: project.sessionDir });
+      case "opencode":
+        // OpenCode uses its own session storage managed by the server
+        // For now, return Claude reader as a fallback (sessions won't be visible)
+        // TODO: Implement OpenCodeSessionReader when session file format is understood
+        return new ClaudeSessionReader({ sessionDir: project.sessionDir });
     }
   };
 
@@ -263,6 +268,10 @@ export function createApp(options: AppOptions): AppResult {
       notificationService: options.notificationService,
       sessionIndexService: options.sessionIndexService,
       sessionMetadataService: options.sessionMetadataService,
+      codexScanner,
+      codexSessionsDir: CODEX_SESSIONS_DIR,
+      geminiScanner,
+      geminiSessionsDir: GEMINI_TMP_DIR,
     }),
   );
 

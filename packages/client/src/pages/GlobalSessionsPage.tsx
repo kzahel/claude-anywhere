@@ -25,6 +25,7 @@ const PROVIDER_COLORS: Record<ProviderName, string> = {
   codex: "#10a37f",
   "codex-oss": "#f97316",
   gemini: "#4285f4",
+  opencode: "#9333ea", // Purple for OpenCode
 };
 
 /**
@@ -97,22 +98,12 @@ export function GlobalSessionsPage() {
   // Include archived sessions when archived filter is selected
   const includeArchived = statusFilters.includes("archived");
 
-  const { sessions, loading, error, hasMore, loadMore } = useGlobalSessions({
-    projectId: projectFilter,
-    searchQuery,
-    includeArchived,
-  });
-
-  // Get unique projects for filter dropdown
-  const projectOptions = useMemo(() => {
-    const projects = new Map<string, string>();
-    for (const session of sessions) {
-      if (!projects.has(session.projectId)) {
-        projects.set(session.projectId, session.projectName);
-      }
-    }
-    return Array.from(projects.entries()).map(([id, name]) => ({ id, name }));
-  }, [sessions]);
+  const { sessions, stats, projects, loading, error, hasMore, loadMore } =
+    useGlobalSessions({
+      projectId: projectFilter,
+      searchQuery,
+      includeArchived,
+    });
 
   // Filter sessions based on status and provider filters (client-side)
   const filteredSessions = useMemo(() => {
@@ -155,32 +146,41 @@ export function GlobalSessionsPage() {
     });
   }, [sessions, statusFilters, providerFilters]);
 
-  // Build status filter options with counts
+  // Build status filter options with global counts from server
+  // When filtering by project, we don't have global stats, so omit counts
   const statusOptions = useMemo((): FilterOption<StatusFilter>[] => {
-    const allCount = sessions.filter((s) => !s.isArchived).length;
-    const unreadCount = sessions.filter(
-      (s) => s.hasUnread && !s.isArchived,
-    ).length;
-    const starredCount = sessions.filter((s) => s.isStarred).length;
-    const archivedCount = sessions.filter((s) => s.isArchived).length;
+    // Only show counts when not filtering by project (global view)
+    const showCounts = !projectFilter;
 
     return [
-      { value: "all", label: "All", count: allCount },
-      { value: "unread", label: "Unread", count: unreadCount },
-      { value: "starred", label: "Starred", count: starredCount },
-      { value: "archived", label: "Archived", count: archivedCount },
+      {
+        value: "all",
+        label: "All",
+        count: showCounts ? stats.totalCount : undefined,
+      },
+      {
+        value: "unread",
+        label: "Unread",
+        count: showCounts ? stats.unreadCount : undefined,
+      },
+      {
+        value: "starred",
+        label: "Starred",
+        count: showCounts ? stats.starredCount : undefined,
+      },
+      {
+        value: "archived",
+        label: "Archived",
+        count: showCounts ? stats.archivedCount : undefined,
+      },
     ];
-  }, [sessions]);
+  }, [stats, projectFilter]);
 
-  // Build provider filter options with counts and colors
+  // Build provider filter options with global counts from server
+  // When filtering by project, we don't have global stats, so omit counts
   const providerOptions = useMemo((): FilterOption<ProviderName>[] => {
-    // Count sessions per provider
-    const providerCounts: Partial<Record<ProviderName, number>> = {};
-    for (const s of sessions) {
-      if (s.provider && !s.isArchived) {
-        providerCounts[s.provider] = (providerCounts[s.provider] ?? 0) + 1;
-      }
-    }
+    const showCounts = !projectFilter;
+    const providerCounts = stats.providerCounts;
 
     // Only show providers that have sessions
     const options: FilterOption<ProviderName>[] = [];
@@ -196,13 +196,13 @@ export function GlobalSessionsPage() {
         options.push({
           value: provider,
           label: provider.charAt(0).toUpperCase() + provider.slice(1),
-          count,
+          count: showCounts ? count : undefined,
           color: PROVIDER_COLORS[provider],
         });
       }
     }
     return options;
-  }, [sessions]);
+  }, [stats.providerCounts, projectFilter]);
 
   // Selection state for multi-select mode
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -511,14 +511,14 @@ export function GlobalSessionsPage() {
                 </button>
               </form>
               <div className="filter-dropdowns">
-                {projectOptions.length > 0 && (
+                {projects.length > 0 && (
                   <select
                     value={projectFilter || ""}
                     onChange={handleProjectFilter}
                     className="filter-dropdown-select"
                   >
                     <option value="">All projects</option>
-                    {projectOptions.map((project) => (
+                    {projects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name}
                       </option>
