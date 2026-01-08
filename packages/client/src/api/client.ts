@@ -418,12 +418,14 @@ export const api = {
     q?: string;
     after?: string;
     limit?: number;
+    includeArchived?: boolean;
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.project) searchParams.set("project", params.project);
     if (params?.q) searchParams.set("q", params.q);
     if (params?.after) searchParams.set("after", params.after);
     if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.includeArchived) searchParams.set("includeArchived", "true");
     const query = searchParams.toString();
     return fetchJSON<GlobalSessionsResponse>(
       query ? `/sessions?${query}` : "/sessions",

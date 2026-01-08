@@ -15,10 +15,11 @@ export interface UseGlobalSessionsOptions {
   projectId?: string | null;
   searchQuery?: string;
   limit?: number;
+  includeArchived?: boolean;
 }
 
 export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
-  const { projectId, searchQuery, limit } = options;
+  const { projectId, searchQuery, limit, includeArchived } = options;
   const [sessions, setSessions] = useState<GlobalSessionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -33,19 +34,26 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
     projectId?: string | null;
     searchQuery?: string;
     limit?: number;
+    includeArchived?: boolean;
   }>({});
 
   const fetch = useCallback(async () => {
     // Reset initial load flag when options change
     const optionsChanged =
       lastFetchOptionsRef.current.projectId !== projectId ||
-      lastFetchOptionsRef.current.searchQuery !== searchQuery;
+      lastFetchOptionsRef.current.searchQuery !== searchQuery ||
+      lastFetchOptionsRef.current.includeArchived !== includeArchived;
 
     if (optionsChanged) {
       hasInitialLoadRef.current = false;
     }
 
-    lastFetchOptionsRef.current = { projectId, searchQuery, limit };
+    lastFetchOptionsRef.current = {
+      projectId,
+      searchQuery,
+      limit,
+      includeArchived,
+    };
 
     // Only show loading state on initial load
     if (sessionsRef.current.length === 0 || optionsChanged) {
@@ -58,6 +66,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
         project: projectId ?? undefined,
         q: searchQuery || undefined,
         limit,
+        includeArchived,
       });
 
       if (!hasInitialLoadRef.current || optionsChanged) {
@@ -93,7 +102,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
     } finally {
       setLoading(false);
     }
-  }, [projectId, searchQuery, limit]);
+  }, [projectId, searchQuery, limit, includeArchived]);
 
   // Load more sessions (pagination)
   const loadMore = useCallback(async () => {
@@ -108,6 +117,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
         q: searchQuery || undefined,
         limit,
         after: lastSession.updatedAt,
+        includeArchived,
       });
 
       setSessions((prev) => {
@@ -121,7 +131,7 @@ export function useGlobalSessions(options: UseGlobalSessionsOptions = {}) {
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     }
-  }, [hasMore, sessions, projectId, searchQuery, limit]);
+  }, [hasMore, sessions, projectId, searchQuery, limit, includeArchived]);
 
   // Debounced refetch
   const debouncedRefetch = useCallback(() => {

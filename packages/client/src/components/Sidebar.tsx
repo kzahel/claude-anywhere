@@ -353,94 +353,67 @@ export function Sidebar({
         </div>
 
         <div className="sidebar-actions">
+          {/* New Session is always sticky at top */}
           {isGlobalMode ? (
-            /* Global mode navigation */
-            <SidebarNavSection>
+            /* Global mode: link to most recent project's new session page */
+            recentProjects[0] && (
               <SidebarNavItem
-                to="/inbox"
-                icon={SidebarIcons.inbox}
-                label="Inbox"
-                badge={effectiveInboxCount}
+                to={`/projects/${recentProjects[0].id}/new-session`}
+                icon={SidebarIcons.newSession}
+                label="New Session"
                 onClick={onNavigate}
               />
-              <SidebarNavItem
-                to="/sessions"
-                icon={SidebarIcons.allSessions}
-                label="All Sessions"
-                onClick={onNavigate}
-              />
+            )
+          ) : (
+            /* Project mode: link to current project's new session page */
+            <SidebarNavItem
+              to={`/projects/${projectId}/new-session`}
+              icon={SidebarIcons.newSession}
+              label="New Session"
+              onClick={onNavigate}
+              hasDraft={hasNewSessionDraft}
+            />
+          )}
+        </div>
+
+        <div className="sidebar-sessions">
+          {/* Navigation items that scroll with content */}
+          <SidebarNavSection>
+            <SidebarNavItem
+              to={isGlobalMode ? "/inbox" : `/inbox?project=${projectId}`}
+              icon={SidebarIcons.inbox}
+              label="Inbox"
+              badge={effectiveInboxCount}
+              onClick={onNavigate}
+            />
+            <SidebarNavItem
+              to={isGlobalMode ? "/sessions" : `/projects/${projectId}`}
+              icon={SidebarIcons.allSessions}
+              label="All Sessions"
+              onClick={onNavigate}
+            />
+            {isGlobalMode && (
               <SidebarNavItem
                 to="/recents"
                 icon={SidebarIcons.recents}
                 label="Recents"
                 onClick={onNavigate}
               />
-              <SidebarNavItem
-                to="/projects"
-                icon={SidebarIcons.projects}
-                label="Projects"
-                onClick={onNavigate}
-              />
-              <AgentsNavItem onClick={onNavigate} />
-              <SidebarNavItem
-                to="/settings"
-                icon={SidebarIcons.settings}
-                label="Settings"
-                onClick={onNavigate}
-              />
-            </SidebarNavSection>
-          ) : (
-            /* Project mode navigation */
-            <>
-              <SidebarNavItem
-                to={`/projects/${projectId}/new-session`}
-                icon={SidebarIcons.newSession}
-                label="New Session"
-                onClick={onNavigate}
-                hasDraft={hasNewSessionDraft}
-              />
-
-              <SidebarNavSection>
-                <SidebarNavItem
-                  to={`/inbox?project=${projectId}`}
-                  icon={SidebarIcons.inbox}
-                  label="Inbox"
-                  badge={effectiveInboxCount}
-                  onClick={onNavigate}
-                />
-                <SidebarNavItem
-                  to={`/projects/${projectId}`}
-                  icon={SidebarIcons.allSessions}
-                  label="All Sessions"
-                  onClick={onNavigate}
-                />
-              </SidebarNavSection>
-            </>
-          )}
-        </div>
-
-        <div className="sidebar-sessions">
-          {!isGlobalMode && (
-            /* Global navigation (scrolls with content) - project mode only */
-            <div className="sidebar-global-nav">
-              <div className="sidebar-nav-divider" />
-              <SidebarNavSection>
-                <SidebarNavItem
-                  to="/projects"
-                  icon={SidebarIcons.projects}
-                  label="Projects"
-                  onClick={onNavigate}
-                />
-                <AgentsNavItem onClick={onNavigate} />
-                <SidebarNavItem
-                  to="/settings"
-                  icon={SidebarIcons.settings}
-                  label="Settings"
-                  onClick={onNavigate}
-                />
-              </SidebarNavSection>
-            </div>
-          )}
+            )}
+            <SidebarNavItem
+              to="/projects"
+              icon={SidebarIcons.projects}
+              label="Projects"
+              onClick={onNavigate}
+            />
+            <AgentsNavItem onClick={onNavigate} />
+            <SidebarNavItem
+              to="/settings"
+              icon={SidebarIcons.settings}
+              label="Settings"
+              onClick={onNavigate}
+            />
+          </SidebarNavSection>
 
           {isGlobalMode ? (
             /* Global mode: show recent projects */
