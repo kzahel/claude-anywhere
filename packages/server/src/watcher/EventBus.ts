@@ -68,6 +68,9 @@ export interface SessionSeenEvent {
 /** Process state type - what the agent is doing */
 export type ProcessStateType = "running" | "waiting-input" | "idle";
 
+/** Pending input type - what kind of input the agent is waiting for */
+export type PendingInputType = "tool-approval" | "user-question";
+
 /** Event emitted when a process state changes (running vs waiting for input) */
 export interface ProcessStateEvent {
   type: "process-state-changed";
@@ -76,6 +79,8 @@ export interface ProcessStateEvent {
   projectId: UrlProjectId;
   /** Current process state - what the agent is doing */
   processState: ProcessStateType;
+  /** Type of pending input (only set when processState is "waiting-input") */
+  pendingInputType?: PendingInputType;
   timestamp: string;
 }
 

@@ -11,6 +11,7 @@ import type {
 } from "../sdk/types.js";
 import type {
   EventBus,
+  PendingInputType,
   ProcessStateEvent,
   ProcessStateType,
   SessionAbortedEvent,
@@ -892,12 +893,23 @@ export class Supervisor {
     this.emitStatusChange(process.sessionId, process.projectId, status);
 
     // Emit initial process state (process starts in running state)
-    const initialState = process.state.type;
-    if (initialState === "running" || initialState === "waiting-input") {
+    const initialState = process.state;
+    if (
+      initialState.type === "running" ||
+      initialState.type === "waiting-input"
+    ) {
+      // Convert InputRequest.type to PendingInputType if waiting for input at start
+      let pendingInputType: PendingInputType | undefined;
+      if (initialState.type === "waiting-input") {
+        const requestType = initialState.request.type;
+        pendingInputType =
+          requestType === "tool-approval" ? "tool-approval" : "user-question";
+      }
       this.emitProcessStateChange(
         process.sessionId,
         process.projectId,
-        initialState,
+        initialState.type,
+        pendingInputType,
       );
     }
 
@@ -945,10 +957,21 @@ export class Supervisor {
           event.state.type === "waiting-input" ||
           event.state.type === "idle"
         ) {
+          // Convert InputRequest.type to PendingInputType when waiting for input
+          // "tool-approval" stays as-is, "question" or "choice" becomes "user-question"
+          let pendingInputType: PendingInputType | undefined;
+          if (event.state.type === "waiting-input") {
+            const requestType = event.state.request.type;
+            pendingInputType =
+              requestType === "tool-approval"
+                ? "tool-approval"
+                : "user-question";
+          }
           this.emitProcessStateChange(
             process.sessionId,
             process.projectId,
             event.state.type,
+            pendingInputType,
           );
         }
         // Emit worker activity on any state change (affects hasActiveWork)
@@ -1085,6 +1108,7 @@ export class Supervisor {
     sessionId: string,
     projectId: UrlProjectId,
     processState: ProcessStateType,
+    pendingInputType?: PendingInputType,
   ): void {
     if (!this.eventBus) return;
 
@@ -1093,6 +1117,7 @@ export class Supervisor {
       sessionId,
       projectId,
       processState,
+      pendingInputType,
       timestamp: new Date().toISOString(),
     };
     this.eventBus.emit(event);

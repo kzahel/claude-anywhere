@@ -184,26 +184,39 @@ export function useSessions(projectId: string | undefined) {
   );
 
   // Handle file change events
+  // NOTE: Most session state updates come through dedicated SSE events now:
+  // - session-updated: title, messageCount, updatedAt
+  // - session-metadata-changed: customTitle, archived, starred
+  // - session-status-changed: status
+  // - process-state-changed: processState, pendingInputType
+  // - session-seen: lastSeenAt, hasUnread
+  //
+  // We only need to fetch metadata for NEW sessions (session-created event fires)
+  // or on reconnect (onReconnect handler). File changes are now handled by SSE.
   const handleFileChange = useCallback(
     (event: FileChangeEvent) => {
-      // Only care about session files
+      // Only care about new session files
       if (event.fileType !== "session" && event.fileType !== "agent-session") {
         return;
       }
+      if (event.changeType !== "create") {
+        // Modifications are handled by session-updated SSE event
+        return;
+      }
 
-      // Extract session ID from the file path (e.g., "projects/xxx/session-id.jsonl" -> "session-id")
+      // Extract session ID from the file path
       const sessionId = extractSessionIdFromFileEvent(event);
       if (!sessionId) return;
 
-      // Check if this session is in our current list using the ref
-      // This avoids calling side effects inside a state updater
+      // Check if this is a new session we don't know about yet
+      // (session-created event should have handled this, but this is a fallback)
       const sessionExists = sessionsRef.current.some((s) => s.id === sessionId);
-      if (sessionExists) {
-        // Fetch only this session's metadata (lightweight, ~0.7kB vs ~654kB for full project)
-        debouncedRefetchSession(sessionId);
+      if (!sessionExists) {
+        // New session - trigger a full refetch to pick it up
+        debouncedRefetch();
       }
     },
-    [debouncedRefetchSession],
+    [debouncedRefetch],
   );
 
   // Handle session status changes (real-time updates without refetch)
@@ -252,9 +265,19 @@ export function useSessions(projectId: string | undefined) {
         [event.sessionId]: event.processState,
       }));
 
-      // When state changes to "running", clear pendingInputType since input was resolved
-      // This fixes the "approval needed" badge getting stuck after approval
-      if (event.processState === "running") {
+      // Update pendingInputType based on process state
+      if (event.processState === "waiting-input" && event.pendingInputType) {
+        // Set pendingInputType from SSE event (no API call needed)
+        setSessions((prev) =>
+          prev.map((session) =>
+            session.id === event.sessionId
+              ? { ...session, pendingInputType: event.pendingInputType }
+              : session,
+          ),
+        );
+      } else if (event.processState === "running") {
+        // When state changes to "running", clear pendingInputType since input was resolved
+        // This fixes the "approval needed" badge getting stuck after approval
         setSessions((prev) =>
           prev.map((session) =>
             session.id === event.sessionId

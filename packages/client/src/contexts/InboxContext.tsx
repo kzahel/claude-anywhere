@@ -240,13 +240,15 @@ export function InboxProvider({
   }, [fetchInbox]);
 
   // Subscribe to SSE events for real-time updates
+  // NOTE: We no longer refetch on file-change events. The inbox API primarily categorizes
+  // sessions by processState and pendingInputType, which are now available via SSE events:
+  // - process-state-changed: processState, pendingInputType (for needsAttention/active tiers)
+  // - session-status-changed: when session becomes owned/external/idle
+  // - session-created: new session
+  // - session-seen: hasUnread status changes (less critical for inbox tiers)
+  //
+  // File changes mostly affect hasUnread, which is secondary to inbox tier categorization.
   useFileActivity({
-    onFileChange: (event) => {
-      // Refetch on session file changes (new messages may change hasUnread status)
-      if (event.fileType === "session" || event.fileType === "agent-session") {
-        debouncedRefetch();
-      }
-    },
     onProcessStateChange: debouncedRefetch,
     onSessionStatusChange: debouncedRefetch,
     onSessionSeen: debouncedRefetch,

@@ -13,6 +13,7 @@ import type {
 import {
   type FileChangeEvent,
   type SessionStatusEvent,
+  type SessionUpdatedEvent,
   useFileActivity,
 } from "./useFileActivity";
 import { useSSE } from "./useSSE";
@@ -360,7 +361,9 @@ export function useSession(
     }
   }, [fetchNewMessages]);
 
-  // Handle file changes - triggers metadata refetch for all sessions
+  // Handle file changes - for non-owned sessions only
+  // For owned sessions, SSE provides real-time messages and session-updated events
+  // provide metadata (title, messageCount), so we don't need to poll the API
   const handleFileChange = useCallback(
     (event: FileChangeEvent) => {
       // Only care about session files
@@ -375,17 +378,39 @@ export function useSession(
         return;
       }
 
-      // For owned sessions: SSE provides real-time messages, but we still need
-      // to fetch session metadata (like title) which isn't streamed
+      // For owned sessions: messages come via SSE stream, metadata via session-updated event
+      // No API call needed - skip file change processing entirely
       if (status.state === "owned") {
-        fetchSessionMetadata();
         return;
       }
 
-      // For external/idle sessions: fetch both messages and metadata
+      // For external/idle sessions: fetch both messages and metadata via API
       throttledFetch();
     },
-    [sessionId, status.state, throttledFetch, fetchSessionMetadata],
+    [sessionId, status.state, throttledFetch],
+  );
+
+  // Handle session content updates via SSE (title, messageCount, updatedAt)
+  const handleSessionUpdated = useCallback(
+    (event: SessionUpdatedEvent) => {
+      if (event.sessionId !== sessionId) return;
+
+      // Update session metadata from SSE event (no API call needed)
+      setSession((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          ...(event.title !== undefined && { title: event.title }),
+          ...(event.messageCount !== undefined && {
+            messageCount: event.messageCount,
+          }),
+          ...(event.updatedAt !== undefined && {
+            updatedAt: event.updatedAt,
+          }),
+        };
+      });
+    },
+    [sessionId, setSession],
   );
 
   // Listen for session status changes via SSE
@@ -401,6 +426,7 @@ export function useSession(
   useFileActivity({
     onSessionStatusChange: handleSessionStatusChange,
     onFileChange: handleFileChange,
+    onSessionUpdated: handleSessionUpdated,
   });
 
   // Cleanup throttle timers

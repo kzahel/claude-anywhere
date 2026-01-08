@@ -1,4 +1,8 @@
-import type { ProcessStateType, UrlProjectId } from "@yep-anywhere/shared";
+import type {
+  PendingInputType,
+  ProcessStateType,
+  UrlProjectId,
+} from "@yep-anywhere/shared";
 import type { SessionStatus, SessionSummary } from "../types";
 
 // Event types matching what the server emits
@@ -47,6 +51,8 @@ export interface ProcessStateEvent {
   sessionId: string;
   projectId: UrlProjectId;
   processState: ProcessStateType;
+  /** Type of pending input (only set when processState is "waiting-input") */
+  pendingInputType?: PendingInputType;
   timestamp: string;
 }
 
