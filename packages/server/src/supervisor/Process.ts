@@ -63,6 +63,7 @@ export class Process {
   readonly projectId: UrlProjectId;
   readonly startedAt: Date;
   readonly provider: ProviderName;
+  readonly model: string | undefined;
 
   private legacyQueue: UserMessage[] = [];
   private messageQueue: MessageQueue | null;
@@ -125,6 +126,7 @@ export class Process {
     this.abortFn = options.abortFn ?? null;
     this._permissionMode = options.permissionMode ?? "default";
     this.provider = options.provider;
+    this.model = options.model;
     this._maxThinkingTokens = options.maxThinkingTokens;
 
     // Start processing messages from the SDK

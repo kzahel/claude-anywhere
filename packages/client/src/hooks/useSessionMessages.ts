@@ -51,6 +51,8 @@ export interface UseSessionMessagesResult {
   loading: boolean;
   /** Session data from initial load */
   session: Session | null;
+  /** Set session data (for SSE connected event) */
+  setSession: React.Dispatch<React.SetStateAction<Session | null>>;
   /** Handle streaming content updates (for useStreamingContent) */
   handleStreamingUpdate: (message: Message, agentId?: string) => void;
   /** Handle SSE message event (buffered until initial load completes) */
@@ -338,6 +340,7 @@ export function useSessionMessages(
     toolUseToAgent,
     loading,
     session,
+    setSession,
     handleStreamingUpdate,
     handleSSEMessageEvent,
     handleSSESubagentMessage,

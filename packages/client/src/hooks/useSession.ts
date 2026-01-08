@@ -1,4 +1,4 @@
-import type { MarkdownAugment } from "@yep-anywhere/shared";
+import type { MarkdownAugment, ProviderName } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { getMessageId } from "../lib/mergeMessages";
@@ -155,6 +155,7 @@ export function useSession(
     toolUseToAgent,
     loading,
     session,
+    setSession,
     handleStreamingUpdate,
     handleSSEMessageEvent,
     handleSSESubagentMessage,
@@ -600,6 +601,8 @@ export function useSession(
           permissionMode?: PermissionMode;
           modeVersion?: number;
           request?: InputRequest;
+          provider?: ProviderName;
+          model?: string;
         };
 
         // Update actual session ID if server reports a different one
@@ -635,6 +638,26 @@ export function useSession(
             connectedData.permissionMode,
             connectedData.modeVersion,
           );
+        }
+
+        // Update session with provider/model from connected event (belt-and-suspenders)
+        // This ensures the ProviderBadge shows even if the initial session load returned
+        // incomplete data (e.g., JSONL not yet written for new sessions)
+        const sseProvider = connectedData.provider;
+        const sseModel = connectedData.model;
+        if (sseProvider) {
+          setSession((prev) => {
+            // Can only update if we have an existing session object
+            if (!prev) return prev;
+            // If session already has provider/model, don't override with SSE data
+            if (prev.provider) return prev;
+            // Add provider/model to existing session
+            return {
+              ...prev,
+              provider: sseProvider,
+              model: sseModel,
+            };
+          });
         }
       } else if (data.eventType === "mode-change") {
         // Handle mode change from another tab/client
@@ -703,6 +726,7 @@ export function useSession(
       registerToolUseAgent,
       setAgentContent,
       setMessages,
+      setSession,
     ],
   );
 

@@ -304,6 +304,7 @@ export class Supervisor {
       abortFn: abort,
       permissionMode: effectiveMode,
       provider: "claude", // Real SDK is always Claude
+      model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
     };
 
@@ -378,6 +379,7 @@ export class Supervisor {
       abortFn: abort,
       permissionMode: effectiveMode,
       provider: "claude", // Real SDK is always Claude
+      model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
     };
 
@@ -447,6 +449,7 @@ export class Supervisor {
       abortFn: abort,
       permissionMode: effectiveMode,
       provider: activeProvider.name,
+      model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
     };
 
@@ -517,6 +520,7 @@ export class Supervisor {
       abortFn: abort,
       permissionMode: effectiveMode,
       provider: activeProvider.name,
+      model: modelSettings?.model,
       maxThinkingTokens: modelSettings?.maxThinkingTokens,
     };
 

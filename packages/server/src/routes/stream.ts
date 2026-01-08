@@ -661,6 +661,9 @@ export function createStreamRoutes(deps: StreamDeps): Hono {
           state: currentState.type,
           permissionMode: process.permissionMode,
           modeVersion: process.modeVersion,
+          // Include provider and model for immediate UI display (belt-and-suspenders)
+          provider: process.provider,
+          model: process.model,
           // Include pending request for waiting-input state
           ...(currentState.type === "waiting-input"
             ? { request: currentState.request }

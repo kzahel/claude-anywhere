@@ -192,4 +192,6 @@ export interface ProcessOptions {
   provider: ProviderName; // which provider is running this process
   /** Max thinking tokens this process was created with (undefined = thinking disabled) */
   maxThinkingTokens?: number;
+  /** Model used for this session (e.g., "claude-opus-4-5-20251101") */
+  model?: string;
 }
