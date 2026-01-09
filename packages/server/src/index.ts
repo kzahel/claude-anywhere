@@ -27,7 +27,7 @@ import {
 } from "./metadata/index.js";
 import { NotificationService } from "./notifications/index.js";
 import { ProjectScanner } from "./projects/scanner.js";
-import { PushService, loadVapidKeys } from "./push/index.js";
+import { PushService, getOrCreateVapidKeys } from "./push/index.js";
 import { RecentsService } from "./recents/index.js";
 import { createUploadRoutes } from "./routes/upload.js";
 import { detectClaudeCli } from "./sdk/cli-detection.js";
@@ -154,16 +154,10 @@ async function startServer() {
     console.log("[Auth] Cookie auth not enabled (enable in Settings)");
   }
 
-  // Load VAPID keys if available (run 'pnpm setup-vapid' to generate)
-  const vapidKeys = await loadVapidKeys();
-  if (vapidKeys) {
-    pushService.setVapidKeys(vapidKeys);
-    console.log("[Push] VAPID keys loaded, push notifications enabled");
-  } else {
-    console.log(
-      "[Push] VAPID keys not found. Run 'pnpm setup-vapid' to enable push notifications.",
-    );
-  }
+  // Load or auto-create VAPID keys for push notifications
+  const vapidKeys = await getOrCreateVapidKeys();
+  pushService.setVapidKeys(vapidKeys);
+  console.log("[Push] VAPID keys loaded, push notifications enabled");
 
   // Determine if we're in production mode (no Vite dev server)
   const isProduction = process.env.NODE_ENV === "production";
