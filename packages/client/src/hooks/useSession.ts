@@ -455,17 +455,6 @@ export function useSession(
     [setAgentContent],
   );
 
-  // Callback for main session context usage updates
-  const handleSessionContextUsage = useCallback(
-    (usage: { inputTokens: number; percentage: number }) => {
-      setSession((prev) => {
-        if (!prev) return prev;
-        return { ...prev, contextUsage: usage };
-      });
-    },
-    [setSession],
-  );
-
   // Use streaming content hook for handling stream_event SSE messages
   const {
     handleStreamEvent,
@@ -475,7 +464,6 @@ export function useSession(
     onUpdateMessage: handleStreamingUpdate,
     onToolUseMapping: registerToolUseAgent,
     onAgentContextUsage: handleAgentContextUsage,
-    onSessionContextUsage: handleSessionContextUsage,
     streamingMarkdownCallbacks,
   });
 

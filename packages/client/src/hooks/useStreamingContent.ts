@@ -36,8 +36,6 @@ export interface UseStreamingContentOptions {
   onToolUseMapping?: (toolUseId: string, agentId: string) => void;
   /** Callback for agent context usage updates */
   onAgentContextUsage?: (agentId: string, usage: ContextUsage) => void;
-  /** Callback for main session context usage updates (non-subagent) */
-  onSessionContextUsage?: (usage: ContextUsage) => void;
 }
 
 /** Result from useStreamingContent hook */
@@ -76,7 +74,6 @@ export function useStreamingContent(
     streamingMarkdownCallbacks,
     onToolUseMapping,
     onAgentContextUsage,
-    onSessionContextUsage,
   } = options;
 
   // Streaming state: accumulates content from stream_event messages
@@ -185,17 +182,18 @@ export function useStreamingContent(
             message.id as string,
           );
 
-          // Extract context usage from message_start
-          const usage = message.usage as { input_tokens?: number } | undefined;
-          if (usage?.input_tokens) {
-            const inputTokens = usage.input_tokens;
-            const percentage = (inputTokens / 200000) * 100;
-            if (streamAgentId && onAgentContextUsage) {
-              // Subagent context usage
+          // Extract context usage for subagent progress tracking
+          // Note: We only update subagent context usage from message_start, not main session.
+          // Main session context usage comes from the API (which reads from JSONL after
+          // the assistant message is complete with full usage data).
+          if (streamAgentId && onAgentContextUsage) {
+            const usage = message.usage as
+              | { input_tokens?: number }
+              | undefined;
+            if (usage?.input_tokens) {
+              const inputTokens = usage.input_tokens;
+              const percentage = (inputTokens / 200000) * 100;
               onAgentContextUsage(streamAgentId, { inputTokens, percentage });
-            } else if (!streamAgentId && onSessionContextUsage) {
-              // Main session context usage
-              onSessionContextUsage({ inputTokens, percentage });
             }
           }
         }
@@ -273,7 +271,6 @@ export function useStreamingContent(
       streamingMarkdownCallbacks,
       onToolUseMapping,
       onAgentContextUsage,
-      onSessionContextUsage,
     ],
   );
 
