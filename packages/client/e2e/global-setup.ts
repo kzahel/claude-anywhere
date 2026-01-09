@@ -22,7 +22,13 @@ export default async function globalSetup() {
   const serverRoot = join(repoRoot, "packages", "server");
   const clientDist = join(repoRoot, "packages", "client", "dist");
 
-  // Always build client to ensure we test latest code
+  // Build shared first (client depends on it), then client
+  console.log("[E2E] Building shared package...");
+  execSync("pnpm --filter @yep-anywhere/shared build", {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+
   console.log("[E2E] Building client...");
   execSync("pnpm --filter @yep-anywhere/client build", {
     cwd: repoRoot,
