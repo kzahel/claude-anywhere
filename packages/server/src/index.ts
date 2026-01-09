@@ -269,18 +269,21 @@ async function startServer() {
     }
   }
 
-  const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
-    console.log(`Server running at http://localhost:${info.port}`);
-    console.log(`Projects dir: ${config.claudeProjectsDir}`);
-    console.log(`Permission mode: ${config.defaultPermissionMode}`);
+  const server = serve(
+    { fetch: app.fetch, port: config.port, hostname: config.host },
+    (info) => {
+      console.log(`Server running at http://${config.host}:${info.port}`);
+      console.log(`Projects dir: ${config.claudeProjectsDir}`);
+      console.log(`Permission mode: ${config.defaultPermissionMode}`);
 
-    // Notify all connected clients that the backend has restarted
-    // This allows other tabs to clear their "reload needed" banner
-    eventBus.emit({
-      type: "backend-reloaded",
-      timestamp: new Date().toISOString(),
-    });
-  });
+      // Notify all connected clients that the backend has restarted
+      // This allows other tabs to clear their "reload needed" banner
+      eventBus.emit({
+        type: "backend-reloaded",
+        timestamp: new Date().toISOString(),
+      });
+    },
+  );
 
   // Attach unified WebSocket upgrade handler
   // This replaces both attachFrontendProxyUpgrade and injectWebSocket to avoid
@@ -298,6 +301,7 @@ async function startServer() {
   if (config.maintenancePort > 0) {
     startMaintenanceServer({
       port: config.maintenancePort,
+      host: config.host,
       mainServerPort: config.port,
     });
   }

@@ -72,23 +72,33 @@ USAGE:
   yepanywhere [OPTIONS]
 
 OPTIONS:
-  --help, -h        Show this help message
-  --version, -v     Show version number
+  --help, -h            Show this help message
+  --version, -v         Show version number
+  --port <number>       Server port (default: 3400)
+  --host <address>      Host/interface to bind to (default: localhost)
+                        Use 0.0.0.0 to bind all interfaces
 
 ENVIRONMENT VARIABLES:
   PORT                          Server port (default: 3400)
+  HOST                          Host/interface to bind (default: localhost)
   YEP_ANYWHERE_DATA_DIR         Data directory override
   YEP_ANYWHERE_PROFILE          Profile name (creates ~/.yep-anywhere-{profile}/)
   AUTH_ENABLED                  Enable cookie auth (default: false)
   LOG_LEVEL                     Log level: fatal, error, warn, info, debug, trace
-  MAINTENANCE_PORT              Maintenance server port (default: PORT + 1, 0 to disable)
+  MAINTENANCE_PORT              Maintenance server port (default: disabled)
 
 EXAMPLES:
-  # Start with defaults (port 3400)
+  # Start with defaults (port 3400, localhost only)
   yepanywhere
 
   # Start on custom port
-  PORT=8000 yepanywhere
+  yepanywhere --port 8000
+
+  # Bind to all interfaces (accessible from network)
+  yepanywhere --host 0.0.0.0
+
+  # Custom port and host
+  yepanywhere --port 8000 --host 0.0.0.0
 
   # Use development profile (separate data directory)
   YEP_ANYWHERE_PROFILE=dev yepanywhere
@@ -97,7 +107,7 @@ EXAMPLES:
   AUTH_ENABLED=true yepanywhere
 
 DOCUMENTATION:
-  For full documentation, see: https://github.com/your-org/yepanywhere
+  For full documentation, see: https://github.com/kzahel/yepanywhere
 
 DATA DIRECTORY:
   Default: ~/.yep-anywhere/
@@ -135,6 +145,37 @@ if (args.includes("--help") || args.includes("-h")) {
 if (args.includes("--version") || args.includes("-v")) {
   showVersion();
   process.exit(0);
+}
+
+// Parse --port option
+const portIndex = args.indexOf("--port");
+if (portIndex !== -1) {
+  const portValue = args[portIndex + 1];
+  if (!portValue || portValue.startsWith("-")) {
+    console.error("Error: --port requires a value (e.g., --port 8000)");
+    process.exit(1);
+  }
+  const portNum = Number.parseInt(portValue, 10);
+  if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
+    console.error("Error: --port must be a valid port number (1-65535)");
+    process.exit(1);
+  }
+  process.env.PORT = portValue;
+  // Remove --port and its value from args
+  args.splice(portIndex, 2);
+}
+
+// Parse --host option
+const hostIndex = args.indexOf("--host");
+if (hostIndex !== -1) {
+  const hostValue = args[hostIndex + 1];
+  if (!hostValue || hostValue.startsWith("-")) {
+    console.error("Error: --host requires a value (e.g., --host 0.0.0.0)");
+    process.exit(1);
+  }
+  process.env.HOST = hostValue;
+  // Remove --host and its value from args
+  args.splice(hostIndex, 2);
 }
 
 // If there are unknown arguments, show error and help

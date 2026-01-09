@@ -26,16 +26,17 @@ Each provider also has a session reader for loading persisted sessions from disk
 
 ## Provider Comparison
 
-| Aspect | Claude | Codex | Gemini |
-|--------|--------|-------|--------|
-| **Integration** | Node.js SDK | Node.js SDK | CLI subprocess |
-| **Auth** | API key or OAuth | OAuth + API key | OAuth |
-| **Session Format** | JSONL (DAG) | JSONL (Linear) | JSON (Linear) |
-| **Storage** | `~/.claude/projects/` | `~/.codex/sessions/` | `~/.gemini/tmp/` |
-| **Message Pattern** | Continuous stream | Turn-based events | Per-message spawn |
-| **Context Window** | 200K tokens | 200K tokens | 1M tokens |
-| **Subagents** | Yes (Task tool) | No | No |
-| **Local Models** | No | Yes | No |
+| Aspect | Claude | Codex | Codex-OSS | Gemini | OpenCode |
+|--------|--------|-------|-----------|--------|----------|
+| **Integration** | Node.js SDK | Node.js SDK | Node.js SDK | CLI subprocess | HTTP/SSE subprocess |
+| **Auth** | API key or OAuth | OAuth + API key | Local model config | OAuth | Per-provider config |
+| **Session Format** | JSONL (DAG) | JSONL (Linear) | JSONL (Linear) | JSON (Linear) | SQLite |
+| **Storage** | `~/.claude/projects/` | `~/.codex/sessions/` | `~/.codex/sessions/` | `~/.gemini/tmp/` | `~/.local/share/opencode/` |
+| **Message Pattern** | Continuous stream | Turn-based events | Turn-based events | Per-message spawn | SSE stream |
+| **Context Window** | 200K tokens | 200K tokens | Varies by model | 1M tokens | Varies by model |
+| **Subagents** | Yes (Task tool) | No | No | No | No |
+| **Local Models** | No | Yes | Yes | No | Yes (Ollama, LM Studio, llama.cpp) |
+| **Edit Transparency** | Full | Black box | Full (shell-only) | N/A (read-only) | Full |
 
 ---
 

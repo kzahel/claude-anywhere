@@ -44,7 +44,9 @@ export interface Config {
   defaultPermissionMode: PermissionMode;
   /** Server port */
   port: number;
-  /** Maintenance server port (default: main port + 1). Set to 0 to disable. */
+  /** Host/interface to bind to (default: localhost). Use 0.0.0.0 to bind all interfaces. */
+  host: string;
+  /** Maintenance server port (default: 0 = disabled). Set to enable (e.g., PORT + 1). */
   maintenancePort: number;
   /** Use mock SDK instead of real Claude SDK */
   useMockSdk: boolean;
@@ -88,9 +90,6 @@ export interface Config {
  * Load configuration from environment variables with defaults.
  */
 export function loadConfig(): Config {
-  // Determine if we're in production mode
-  const isProduction = process.env.NODE_ENV === "production";
-
   // SERVE_FRONTEND defaults to true (unified server mode)
   // Set SERVE_FRONTEND=false to disable frontend serving (API-only mode)
   const serveFrontend = process.env.SERVE_FRONTEND !== "false";
@@ -111,11 +110,10 @@ export function loadConfig(): Config {
     idleTimeoutMs: parseIntOrDefault(process.env.IDLE_TIMEOUT, 5 * 60) * 1000,
     defaultPermissionMode: parsePermissionMode(process.env.PERMISSION_MODE),
     port: parseIntOrDefault(process.env.PORT, 3400),
-    // Maintenance port defaults to main port + 1, set to 0 to disable
-    maintenancePort: parseIntOrDefault(
-      process.env.MAINTENANCE_PORT,
-      parseIntOrDefault(process.env.PORT, 3400) + 1,
-    ),
+    // Host defaults to localhost for security, use 0.0.0.0 to expose externally
+    host: process.env.HOST ?? "localhost",
+    // Maintenance port disabled by default, set to enable (e.g., PORT + 1)
+    maintenancePort: parseIntOrDefault(process.env.MAINTENANCE_PORT, 0),
     useMockSdk: process.env.USE_MOCK_SDK === "true",
     maxWorkers: parseIntOrDefault(process.env.MAX_WORKERS, 0),
     idlePreemptThresholdMs:

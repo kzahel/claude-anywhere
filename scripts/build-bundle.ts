@@ -26,7 +26,7 @@ const SHARED_DIST = path.join(ROOT_DIR, "packages/shared/dist");
 const STAGING_DIR = path.join(ROOT_DIR, "dist/npm-package");
 
 // Version for npm package - update this when releasing
-const NPM_VERSION = "0.1.1";
+const NPM_VERSION = "0.1.2";
 
 interface StepResult {
   step: string;

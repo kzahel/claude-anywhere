@@ -72,6 +72,8 @@ export function incrementConnectionStat(
 export interface MaintenanceServerOptions {
   /** Port to listen on (default: main port + 1) */
   port: number;
+  /** Host/interface to bind to (default: localhost) */
+  host?: string;
   /** Optional: main server reference for status reporting */
   mainServerPort?: number;
 }
@@ -84,7 +86,7 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
   stop: () => void;
   server: http.Server;
 } {
-  const { port, mainServerPort } = options;
+  const { port, host = "localhost", mainServerPort } = options;
   const startTime = Date.now();
 
   const server = http.createServer(async (req, res) => {
@@ -187,8 +189,8 @@ export function startMaintenanceServer(options: MaintenanceServerOptions): {
     }
   });
 
-  server.listen(port, () => {
-    console.log(`[Maintenance] Server running at http://localhost:${port}`);
+  server.listen(port, host, () => {
+    console.log(`[Maintenance] Server running at http://${host}:${port}`);
   });
 
   // Handle errors gracefully
