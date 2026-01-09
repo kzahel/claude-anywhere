@@ -20,6 +20,8 @@ const SESSION_ID_BYTES = 32;
 export interface AuthState {
   /** Schema version for future migrations */
   version: number;
+  /** Whether auth is enabled (can be enabled via settings UI) */
+  enabled?: boolean;
   /** Account credentials (undefined = setup mode) */
   account?: {
     /** bcrypt-hashed password */
@@ -109,6 +111,13 @@ export class AuthService {
   }
 
   /**
+   * Check if auth is enabled (via settings).
+   */
+  isEnabled(): boolean {
+    return this.state.enabled === true;
+  }
+
+  /**
    * Check if an account has been set up.
    */
   hasAccount(): boolean {
@@ -116,7 +125,39 @@ export class AuthService {
   }
 
   /**
+   * Get the path to the auth state file (for recovery instructions).
+   */
+  getFilePath(): string {
+    return this.filePath;
+  }
+
+  /**
+   * Enable auth with a password. Creates account if needed.
+   * This is the main way to enable auth from the settings UI.
+   */
+  async enableAuth(password: string): Promise<boolean> {
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    this.state.enabled = true;
+    this.state.account = {
+      passwordHash,
+      createdAt: new Date().toISOString(),
+    };
+    await this.save();
+    return true;
+  }
+
+  /**
+   * Disable auth (clears enabled flag but keeps account for re-enabling).
+   */
+  async disableAuth(): Promise<void> {
+    this.state.enabled = false;
+    this.state.sessions = {}; // Clear all sessions
+    await this.save();
+  }
+
+  /**
    * Create the initial account. Only works if no account exists.
+   * @deprecated Use enableAuth instead which also sets the enabled flag.
    */
   async createAccount(password: string): Promise<boolean> {
     if (this.state.account) {

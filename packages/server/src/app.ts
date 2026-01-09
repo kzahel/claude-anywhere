@@ -90,8 +90,8 @@ export interface AppOptions {
   maxQueueSize?: number;
   /** AuthService for cookie-based auth (optional) */
   authService?: AuthService;
-  /** Whether auth is enabled */
-  authEnabled?: boolean;
+  /** Whether auth is disabled by env var (--auth-disable). Bypasses all auth. */
+  authDisabled?: boolean;
 }
 
 export interface AppResult {
@@ -111,25 +111,26 @@ export function createApp(options: AppOptions): AppResult {
   app.use("/api/*", corsMiddleware);
   app.use("/api/*", requireCustomHeader);
 
-  // Auth middleware (if authService is provided and enabled)
-  if (options.authService && options.authEnabled !== false) {
+  // Auth middleware (if authService is provided)
+  // The middleware checks authService.isEnabled() dynamically
+  if (options.authService) {
     app.use(
       "/api/*",
       createAuthMiddleware({
         authService: options.authService,
-        enabled: true,
+        authDisabled: options.authDisabled,
       }),
     );
   }
 
-  // Auth routes (always mounted if authService is provided, even if auth is disabled)
-  // This allows checking auth status and setting up account
+  // Auth routes (always mounted if authService is provided)
+  // This allows checking auth status and enabling/disabling from settings
   if (options.authService) {
     app.route(
       "/api/auth",
       createAuthRoutes({
         authService: options.authService,
-        authEnabled: options.authEnabled,
+        authDisabled: options.authDisabled,
       }),
     );
   }

@@ -11,8 +11,14 @@ import { YepAnywhereLogo } from "../components/YepAnywhereLogo";
 import { useAuth } from "../contexts/AuthContext";
 
 export function LoginPage() {
-  const { isSetupMode, login, setupAccount, isLoading, authDisabled } =
-    useAuth();
+  const {
+    isSetupMode,
+    login,
+    setupAccount,
+    isLoading,
+    authEnabled,
+    authDisabledByEnv,
+  } = useAuth();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -24,12 +30,12 @@ export function LoginPage() {
   const from =
     (location.state as { from?: string } | null)?.from ?? "/projects";
 
-  // If auth is disabled, redirect away from login page
+  // If auth is not enabled or disabled by env, redirect away from login page
   useEffect(() => {
-    if (!isLoading && authDisabled) {
+    if (!isLoading && (!authEnabled || authDisabledByEnv)) {
       navigate("/projects", { replace: true });
     }
-  }, [isLoading, authDisabled, navigate]);
+  }, [isLoading, authEnabled, authDisabledByEnv, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,6 +142,14 @@ export function LoginPage() {
         {isSetupMode && (
           <p className="login-hint">
             This password will be used to access Yep Anywhere from any device.
+          </p>
+        )}
+
+        {!isSetupMode && (
+          <p className="login-recovery-hint">
+            Forgot your password? Restart the server with{" "}
+            <code>--auth-disable</code> to bypass authentication, then disable
+            or reset auth in Settings.
           </p>
         )}
       </div>

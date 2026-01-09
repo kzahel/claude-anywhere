@@ -146,16 +146,12 @@ async function startServer() {
   await authService.initialize();
 
   // Log auth status
-  if (config.authEnabled) {
-    if (authService.hasAccount()) {
-      console.log("[Auth] Cookie auth enabled (account configured)");
-    } else {
-      console.log(
-        "[Auth] Cookie auth enabled (setup required - visit /settings)",
-      );
-    }
+  if (config.authDisabled) {
+    console.log("[Auth] Cookie auth disabled by --auth-disable flag");
+  } else if (authService.isEnabled()) {
+    console.log("[Auth] Cookie auth enabled (configured in settings)");
   } else {
-    console.log("[Auth] Cookie auth disabled (AUTH_ENABLED=false)");
+    console.log("[Auth] Cookie auth not enabled (enable in Settings)");
   }
 
   // Load VAPID keys if available (run 'pnpm setup-vapid' to generate)
@@ -202,7 +198,7 @@ async function startServer() {
     pushService,
     recentsService,
     authService,
-    authEnabled: config.authEnabled,
+    authDisabled: config.authDisabled,
     // Note: frontendProxy not passed - will be added below
   });
 

@@ -25,13 +25,21 @@ interface AuthContextValue {
   isSetupMode: boolean;
   /** Whether auth check is in progress */
   isLoading: boolean;
-  /** Whether auth is disabled on the server */
-  authDisabled: boolean;
+  /** Whether auth is enabled in settings */
+  authEnabled: boolean;
+  /** Whether auth is disabled by --auth-disable flag (for recovery) */
+  authDisabledByEnv: boolean;
+  /** Path to auth.json file (for recovery instructions) */
+  authFilePath: string;
   /** Login with password */
   login: (password: string) => Promise<void>;
   /** Logout current session */
   logout: () => Promise<void>;
-  /** Create initial account (setup mode only) */
+  /** Enable auth with a password (from settings) */
+  enableAuth: (password: string) => Promise<void>;
+  /** Disable auth (requires authenticated session) */
+  disableAuth: () => Promise<void>;
+  /** Create initial account (setup mode only) - deprecated, use enableAuth */
   setupAccount: (password: string) => Promise<void>;
   /** Change password */
   changePassword: (
@@ -52,30 +60,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isSetupMode, setIsSetupMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [authDisabled, setAuthDisabled] = useState(false);
+  const [authEnabled, setAuthEnabled] = useState(false);
+  const [authDisabledByEnv, setAuthDisabledByEnv] = useState(false);
+  const [authFilePath, setAuthFilePath] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
 
   const checkAuth = useCallback(async () => {
     try {
       const status = await api.getAuthStatus();
-      // Check if auth is enabled on the server
-      if (status.enabled === false) {
-        setIsAuthenticated(true);
-        setIsSetupMode(false);
-        setAuthDisabled(true);
-      } else {
-        setIsAuthenticated(status.authenticated);
-        setIsSetupMode(status.setupRequired);
-        setAuthDisabled(false);
-      }
+      setAuthEnabled(status.enabled);
+      setAuthDisabledByEnv(status.disabledByEnv);
+      setAuthFilePath(status.authFilePath);
+      setIsAuthenticated(status.authenticated);
+      setIsSetupMode(status.setupRequired);
     } catch (error) {
       // If we get a network error or the endpoint doesn't exist,
-      // assume auth is disabled (for backward compatibility)
-      console.warn("[Auth] Auth check failed, assuming auth disabled:", error);
+      // assume auth is not enabled (for backward compatibility)
+      console.warn(
+        "[Auth] Auth check failed, assuming auth not enabled:",
+        error,
+      );
       setIsAuthenticated(true);
       setIsSetupMode(false);
-      setAuthDisabled(true);
+      setAuthEnabled(false);
+      setAuthDisabledByEnv(false);
     } finally {
       setIsLoading(false);
     }
@@ -86,17 +95,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
     checkAuth();
   }, [checkAuth]);
 
-  // Redirect to login if not authenticated and not already on login page
+  // Redirect to login if not authenticated and auth is enabled
   useEffect(() => {
     if (
       !isLoading &&
       !isAuthenticated &&
-      !authDisabled &&
+      authEnabled &&
+      !authDisabledByEnv &&
       location.pathname !== "/login"
     ) {
       navigate("/login", { state: { from: location.pathname } });
     }
-  }, [isLoading, isAuthenticated, authDisabled, location.pathname, navigate]);
+  }, [
+    isLoading,
+    isAuthenticated,
+    authEnabled,
+    authDisabledByEnv,
+    location.pathname,
+    navigate,
+  ]);
 
   const login = useCallback(async (password: string) => {
     await api.login(password);
@@ -110,8 +127,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
     navigate("/login");
   }, [navigate]);
 
+  const enableAuth = useCallback(async (password: string) => {
+    await api.enableAuth(password);
+    setAuthEnabled(true);
+    setIsAuthenticated(true);
+    setIsSetupMode(false);
+  }, []);
+
+  const disableAuth = useCallback(async () => {
+    await api.disableAuth();
+    setAuthEnabled(false);
+    setIsAuthenticated(true); // No auth needed after disabling
+  }, []);
+
   const setupAccount = useCallback(async (password: string) => {
     await api.setupAccount(password);
+    setAuthEnabled(true);
     setIsAuthenticated(true);
     setIsSetupMode(false);
   }, []);
@@ -129,9 +160,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         isAuthenticated,
         isSetupMode,
         isLoading,
-        authDisabled,
+        authEnabled,
+        authDisabledByEnv,
+        authFilePath,
         login,
         logout,
+        enableAuth,
+        disableAuth,
         setupAccount,
         changePassword,
         checkAuth,

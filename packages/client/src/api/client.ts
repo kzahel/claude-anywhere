@@ -106,9 +106,16 @@ export type { UploadedFile } from "@yep-anywhere/shared";
 const API_BASE = "/api";
 
 export interface AuthStatus {
+  /** Whether auth is enabled in settings */
   enabled: boolean;
+  /** Whether user has a valid session (or auth is disabled) */
   authenticated: boolean;
+  /** Whether initial account setup is needed */
   setupRequired: boolean;
+  /** Whether auth is bypassed by --auth-disable flag (for recovery) */
+  disabledByEnv: boolean;
+  /** Path to auth.json file (for recovery instructions) */
+  authFilePath: string;
 }
 
 export async function fetchJSON<T>(
@@ -481,6 +488,20 @@ export const api = {
   // Auth API
   getAuthStatus: () => fetchJSON<AuthStatus>("/auth/status"),
 
+  /** Enable auth with a password (main way to enable from settings UI) */
+  enableAuth: (password: string) =>
+    fetchJSON<{ success: boolean }>("/auth/enable", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+
+  /** Disable auth (requires authenticated session) */
+  disableAuth: () =>
+    fetchJSON<{ success: boolean }>("/auth/disable", {
+      method: "POST",
+    }),
+
+  /** @deprecated Use enableAuth instead */
   setupAccount: (password: string) =>
     fetchJSON<{ success: boolean }>("/auth/setup", {
       method: "POST",

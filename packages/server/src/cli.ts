@@ -77,13 +77,15 @@ OPTIONS:
   --port <number>       Server port (default: 3400)
   --host <address>      Host/interface to bind to (default: localhost)
                         Use 0.0.0.0 to bind all interfaces
+  --auth-disable        Disable authentication (bypass auth even if enabled in settings)
+                        Use this to recover if you forget your password
 
 ENVIRONMENT VARIABLES:
   PORT                          Server port (default: 3400)
   HOST                          Host/interface to bind (default: localhost)
   YEP_ANYWHERE_DATA_DIR         Data directory override
   YEP_ANYWHERE_PROFILE          Profile name (creates ~/.yep-anywhere-{profile}/)
-  AUTH_ENABLED                  Enable cookie auth (default: false)
+  AUTH_DISABLED                 Disable auth (bypass even if enabled in settings)
   LOG_LEVEL                     Log level: fatal, error, warn, info, debug, trace
   MAINTENANCE_PORT              Maintenance server port (default: disabled)
 
@@ -103,8 +105,8 @@ EXAMPLES:
   # Use development profile (separate data directory)
   YEP_ANYWHERE_PROFILE=dev yepanywhere
 
-  # Enable authentication
-  AUTH_ENABLED=true yepanywhere
+  # Bypass auth if you forgot your password
+  yepanywhere --auth-disable
 
 DOCUMENTATION:
   For full documentation, see: https://github.com/kzahel/yepanywhere
@@ -176,6 +178,13 @@ if (hostIndex !== -1) {
   process.env.HOST = hostValue;
   // Remove --host and its value from args
   args.splice(hostIndex, 2);
+}
+
+// Parse --auth-disable flag
+const authDisableIndex = args.indexOf("--auth-disable");
+if (authDisableIndex !== -1) {
+  process.env.AUTH_DISABLED = "true";
+  args.splice(authDisableIndex, 1);
 }
 
 // If there are unknown arguments, show error and help

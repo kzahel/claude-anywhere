@@ -41,6 +41,7 @@ Server state is stored in a data directory (default: `~/.yep-anywhere/`). This i
 - `notifications.json` - Last-seen timestamps
 - `push-subscriptions.json` - Web push subscriptions
 - `vapid.json` - VAPID keys for push
+- `auth.json` - Authentication state (password hash, sessions)
 
 ### Running Multiple Instances
 

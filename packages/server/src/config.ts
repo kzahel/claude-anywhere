@@ -78,8 +78,8 @@ export interface Config {
   logToFile: boolean;
   /** Whether to log to console. Default: true */
   logToConsole: boolean;
-  /** Whether cookie-based auth is enabled. Default: false (enable in settings) */
-  authEnabled: boolean;
+  /** Whether cookie-based auth is disabled by env var (--auth-disable or AUTH_DISABLED=true). Used for recovery. */
+  authDisabled: boolean;
   /** Cookie signing secret. Auto-generated if not provided. */
   authCookieSecret?: string;
   /** Session TTL in milliseconds. Default: 30 days */
@@ -154,8 +154,8 @@ export function loadConfig(): Config {
     ),
     logToFile: process.env.LOG_TO_FILE !== "false",
     logToConsole: process.env.LOG_TO_CONSOLE !== "false",
-    // Auth configuration (disabled by default, enable with AUTH_ENABLED=true or in settings)
-    authEnabled: process.env.AUTH_ENABLED === "true",
+    // Auth disabled override (for recovery if user forgets password)
+    authDisabled: process.env.AUTH_DISABLED === "true",
     authCookieSecret: process.env.AUTH_COOKIE_SECRET,
     authSessionTtlMs:
       parseIntOrDefault(process.env.AUTH_SESSION_TTL_DAYS, 30) *

@@ -10,8 +10,8 @@ export const SESSION_COOKIE_NAME = "yep-anywhere-session";
 
 export interface AuthRoutesDeps {
   authService: AuthService;
-  /** Whether auth is enabled. If false, status returns enabled: false */
-  authEnabled?: boolean;
+  /** Whether auth is disabled by env var (--auth-disable). Overrides settings. */
+  authDisabled?: boolean;
 }
 
 interface SetupBody {
@@ -29,30 +29,57 @@ interface ChangePasswordBody {
 
 export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
   const app = new Hono();
-  const { authService, authEnabled = true } = deps;
+  const { authService, authDisabled = false } = deps;
 
   /**
    * GET /api/auth/status
    * Check authentication status
+   *
+   * Returns:
+   * - enabled: whether auth is enabled (from settings)
+   * - authenticated: whether user has valid session
+   * - setupRequired: whether initial setup is needed (enabled but no account)
+   * - disabledByEnv: whether auth is disabled by --auth-disable flag
+   * - authFilePath: path to auth.json (for recovery instructions)
    */
   app.get("/status", async (c) => {
-    // If auth is disabled, return early with enabled: false
-    if (!authEnabled) {
+    const isEnabled = authService.isEnabled();
+
+    // If auth is disabled by env var, it overrides settings
+    if (authDisabled) {
       return c.json({
-        enabled: false,
-        authenticated: true,
+        enabled: isEnabled,
+        authenticated: true, // Bypass auth
         setupRequired: false,
+        disabledByEnv: true,
+        authFilePath: authService.getFilePath(),
       });
     }
 
+    // If auth is not enabled in settings, no auth required
+    if (!isEnabled) {
+      return c.json({
+        enabled: false,
+        authenticated: true, // No auth needed
+        setupRequired: false,
+        disabledByEnv: false,
+        authFilePath: authService.getFilePath(),
+      });
+    }
+
+    // Auth is enabled - check session
     const sessionId = getCookie(c, SESSION_COOKIE_NAME);
     const hasAccount = authService.hasAccount();
 
     if (!hasAccount) {
+      // This shouldn't happen normally since enableAuth creates account,
+      // but handle edge case
       return c.json({
         enabled: true,
         authenticated: false,
         setupRequired: true,
+        disabledByEnv: false,
+        authFilePath: authService.getFilePath(),
       });
     }
 
@@ -61,6 +88,8 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
         enabled: true,
         authenticated: false,
         setupRequired: false,
+        disabledByEnv: false,
+        authFilePath: authService.getFilePath(),
       });
     }
 
@@ -69,12 +98,71 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       enabled: true,
       authenticated: valid,
       setupRequired: false,
+      disabledByEnv: false,
+      authFilePath: authService.getFilePath(),
     });
+  });
+
+  /**
+   * POST /api/auth/enable
+   * Enable auth with a password (main way to enable from settings UI)
+   */
+  app.post("/enable", async (c) => {
+    const body = await c.req.json<SetupBody>();
+
+    if (!body.password || typeof body.password !== "string") {
+      return c.json({ error: "Password is required" }, 400);
+    }
+
+    if (body.password.length < 8) {
+      return c.json({ error: "Password must be at least 8 characters" }, 400);
+    }
+
+    const success = await authService.enableAuth(body.password);
+    if (!success) {
+      return c.json({ error: "Failed to enable auth" }, 500);
+    }
+
+    // Auto-login after enabling
+    const userAgent = c.req.header("User-Agent");
+    const sessionId = await authService.createSession(userAgent);
+
+    setCookie(c, SESSION_COOKIE_NAME, sessionId, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+      path: "/",
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+    });
+
+    return c.json({ success: true });
+  });
+
+  /**
+   * POST /api/auth/disable
+   * Disable auth (requires authenticated session)
+   */
+  app.post("/disable", async (c) => {
+    // Require authenticated session to disable
+    const sessionId = getCookie(c, SESSION_COOKIE_NAME);
+    if (!sessionId || !(await authService.validateSession(sessionId))) {
+      return c.json({ error: "Not authenticated" }, 401);
+    }
+
+    await authService.disableAuth();
+
+    // Clear the session cookie
+    deleteCookie(c, SESSION_COOKIE_NAME, {
+      path: "/",
+    });
+
+    return c.json({ success: true });
   });
 
   /**
    * POST /api/auth/setup
    * Create the initial account (only works when no account exists)
+   * @deprecated Use /api/auth/enable instead
    */
   app.post("/setup", async (c) => {
     if (authService.hasAccount()) {
@@ -91,7 +179,8 @@ export function createAuthRoutes(deps: AuthRoutesDeps): Hono {
       return c.json({ error: "Password must be at least 8 characters" }, 400);
     }
 
-    const success = await authService.createAccount(body.password);
+    // Use enableAuth to also set the enabled flag
+    const success = await authService.enableAuth(body.password);
     if (!success) {
       return c.json({ error: "Failed to create account" }, 500);
     }
