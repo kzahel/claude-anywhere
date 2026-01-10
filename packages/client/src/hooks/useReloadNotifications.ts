@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { fetchJSON } from "../api/client";
 import {
   type SourceChangeEvent,
   type WorkerActivityEvent,
@@ -22,8 +23,6 @@ interface DevStatus {
   backendDirty?: boolean;
 }
 
-const API_BASE = "/api";
-
 /**
  * Hook to manage reload notifications when running in manual reload mode.
  * Listens for source-change events via the global activityBus.
@@ -46,9 +45,8 @@ export function useReloadNotifications() {
   // Sync dev status and worker activity from server
   const syncFromServer = useCallback(() => {
     // Sync dev status
-    fetch(`${API_BASE}/dev/status`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: DevStatus | null) => {
+    fetchJSON<DevStatus>("/dev/status")
+      .then((data) => {
         if (data && !data.backendDirty) {
           setPendingReloads((prev) => ({ ...prev, backend: false }));
         }
@@ -58,9 +56,8 @@ export function useReloadNotifications() {
       });
 
     // Sync worker activity
-    fetch(`${API_BASE}/status/workers`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: WorkerActivityEvent | null) => {
+    fetchJSON<WorkerActivityEvent>("/status/workers")
+      .then((data) => {
         if (data) setWorkerActivity(data);
       })
       .catch(() => {
@@ -70,12 +67,8 @@ export function useReloadNotifications() {
 
   // Check if we're in dev mode and get persisted dirty state
   useEffect(() => {
-    fetch(`${API_BASE}/dev/status`)
-      .then((res) => {
-        if (res.ok) return res.json();
-        throw new Error("Dev routes not available");
-      })
-      .then((data: DevStatus) => {
+    fetchJSON<DevStatus>("/dev/status")
+      .then((data) => {
         setDevStatus(data);
         if (data.backendDirty) {
           setPendingReloads((prev) => ({ ...prev, backend: true }));
@@ -146,11 +139,8 @@ export function useReloadNotifications() {
   const reloadBackend = useCallback(async () => {
     console.log("[ReloadNotifications] Requesting backend reload...");
     try {
-      const res = await fetch(`${API_BASE}/dev/reload`, {
-        method: "POST",
-        headers: { "X-Yep-Anywhere": "true" },
-      });
-      console.log("[ReloadNotifications] Reload response:", res.status);
+      await fetchJSON<{ success: boolean }>("/dev/reload", { method: "POST" });
+      console.log("[ReloadNotifications] Reload completed");
       setPendingReloads((prev) => ({ ...prev, backend: false }));
     } catch (err) {
       console.log("[ReloadNotifications] Reload error (may be expected):", err);

@@ -14,6 +14,13 @@ const DEFAULT_SETTINGS: DeveloperModeSettings = {
 };
 
 function loadSettings(): DeveloperModeSettings {
+  // Guard for SSR/test environments where localStorage may not be fully available
+  if (
+    typeof localStorage === "undefined" ||
+    typeof localStorage.getItem !== "function"
+  ) {
+    return DEFAULT_SETTINGS;
+  }
   const stored = localStorage.getItem(DEV_MODE_KEY);
   if (!stored) return DEFAULT_SETTINGS;
   try {
@@ -24,6 +31,13 @@ function loadSettings(): DeveloperModeSettings {
 }
 
 function saveSettings(settings: DeveloperModeSettings) {
+  // Guard for SSR/test environments where localStorage may not be fully available
+  if (
+    typeof localStorage === "undefined" ||
+    typeof localStorage.setItem !== "function"
+  ) {
+    return;
+  }
   localStorage.setItem(DEV_MODE_KEY, JSON.stringify(settings));
 }
 
