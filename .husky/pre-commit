@@ -1,4 +1,6 @@
-pnpm biome check --write --staged
+# Run biome on staged files, but don't fail if no files match
+# (e.g., when only markdown or other non-code files are staged)
+pnpm biome check --write --staged --no-errors-on-unmatched
 
 # Beads sync (if bd is available)
 if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then
