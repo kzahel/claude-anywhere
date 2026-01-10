@@ -1662,13 +1662,13 @@ a.sidebar-nav-item {
 }
 
 .recent-sessions-badge.needs-input {
-  background-color: var(--status-needs-attention-bg);
-  color: var(--status-needs-attention);
+  background-color: var(--status-badge-input-bg);
+  color: var(--status-badge-input-text);
 }
 
 .recent-sessions-badge.external {
-  background-color: var(--status-external-bg);
-  color: var(--status-external);
+  background-color: var(--status-badge-external-bg);
+  color: var(--status-badge-external-text);
 }
 
 .session-messages {

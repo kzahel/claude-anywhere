@@ -478,6 +478,31 @@ export const api = {
     return `/api/projects/${projectId}/files/raw?${params.toString()}`;
   },
 
+  /**
+   * Expand diff context to show full file.
+   * Returns syntax-highlighted diff with the entire file as context.
+   */
+  expandDiffContext: (
+    projectId: string,
+    filePath: string,
+    oldString: string,
+    newString: string,
+    originalFile?: string | null,
+  ) =>
+    fetchJSON<{
+      structuredPatch: Array<{
+        oldStart: number;
+        oldLines: number;
+        newStart: number;
+        newLines: number;
+        lines: string[];
+      }>;
+      diffHtml: string;
+    }>(`/projects/${projectId}/diff/expand`, {
+      method: "POST",
+      body: JSON.stringify({ filePath, oldString, newString, originalFile }),
+    }),
+
   // Inbox API
   getInbox: (projectId?: string) =>
     fetchJSON<InboxResponse>(

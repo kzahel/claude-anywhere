@@ -54,12 +54,6 @@ export {
   isConversationMessage,
 } from "@yep-anywhere/shared";
 
-// Re-export branded ID types and utilities
-export { toUrlProjectId, fromUrlProjectId } from "@yep-anywhere/shared";
-
-// Re-export message helpers (from lib for convenience)
-export { getMessageId } from "./lib/mergeMessages";
-
 /**
  * Content block for rendering - loosely typed to handle all possible fields.
  * Uses AppContentBlock from shared as the base.
@@ -164,6 +158,3 @@ export interface Project {
   activeExternalCount: number;
   lastActivity: string | null;
 }
-
-// Re-export session display title utility from shared
-export { getSessionDisplayTitle } from "@yep-anywhere/shared";

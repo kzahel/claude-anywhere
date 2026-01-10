@@ -2839,6 +2839,54 @@ details[open] .collapsible__icon {
   overflow: auto;
 }
 
+/* Diff context expansion controls */
+.diff-context-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.diff-context-path {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-context-toggle {
+  padding: 0.25rem 0.75rem;
+  font-size: var(--font-size-base);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.diff-context-toggle:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.diff-context-toggle:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.diff-context-error {
+  color: var(--text-error);
+  font-size: var(--font-size-sm);
+}
+
 /* Plain code display (fallback and large files) */
 .code-highlighter-plain {
   display: grid;
@@ -3329,3 +3377,7 @@ pre.code-highlighter-plain code {
   max-width: 100%;
   height: auto;
 }
+
+/* Note: When "Show full context" is clicked in the diff modal, JS automatically
+   scrolls to the first .line-deleted or .line-inserted element. This uses
+   scrollIntoView({ block: "center" }) in EditRenderer.tsx. */

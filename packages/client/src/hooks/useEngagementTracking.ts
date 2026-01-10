@@ -68,6 +68,8 @@ export function useEngagementTracking(options: UseEngagementTrackingOptions) {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track if component is mounted
   const mountedRef = useRef(true);
+  // Track if this is the first time activityAt became available (initial navigation)
+  const isInitialLoadRef = useRef(true);
 
   // Check if there's content that needs to be marked as seen.
   // This includes:
@@ -97,6 +99,12 @@ export function useEngagementTracking(options: UseEngagementTrackingOptions) {
     // Don't re-mark if we've already marked this activity
     if (markedSeenRef.current === activityAt) return;
 
+    // Check engagement NOW, before the debounce.
+    // If user is engaged when we decide to mark seen, follow through.
+    // The debounce is just to avoid API spam, not to re-validate engagement.
+    if (!isEngaged()) return;
+    if (!hasNewContent()) return;
+
     // Clear any pending debounce
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -105,8 +113,8 @@ export function useEngagementTracking(options: UseEngagementTrackingOptions) {
     // Debounce the API call
     debounceTimerRef.current = setTimeout(async () => {
       if (!mountedRef.current) return;
-      if (!isEngaged()) return;
-      if (!hasNewContent()) return;
+      // Re-check hasNewContent in case it changed during debounce,
+      // but don't re-check engagement (we already validated it)
 
       try {
         // Record the file's updatedAt, not activityAt
@@ -179,16 +187,41 @@ export function useEngagementTracking(options: UseEngagementTrackingOptions) {
     };
   }, [enabled, hasNewContent, isEngaged, markSeen]);
 
-  // Check for new content when activityAt changes
+  // Handle initial navigation: when activityAt first becomes available,
+  // mark as seen if there's new content. No engagement check needed -
+  // the user navigating to this session IS engagement.
+  // After initial load, we rely on interaction/focus handlers.
   useEffect(() => {
     if (!enabled) return;
-    if (!activityAt) return;
+    if (!activityAt || !updatedAt) return;
+    if (!isInitialLoadRef.current) return;
 
-    // If content is new and user is engaged, mark as seen
-    if (hasNewContent() && isEngaged()) {
-      markSeen();
+    // Mark that we've handled initial load
+    isInitialLoadRef.current = false;
+
+    // If there's new content, mark it as seen after a brief debounce
+    if (hasNewContent()) {
+      // Clear any pending debounce
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+
+      debounceTimerRef.current = setTimeout(async () => {
+        if (!mountedRef.current) return;
+        if (markedSeenRef.current === activityAt) return;
+
+        try {
+          await api.markSessionSeen(sessionId, updatedAt);
+          markedSeenRef.current = activityAt;
+        } catch (error) {
+          console.warn(
+            "[useEngagementTracking] Failed to mark session as seen:",
+            error,
+          );
+        }
+      }, DEBOUNCE_MS);
     }
-  }, [enabled, activityAt, hasNewContent, isEngaged, markSeen]);
+  }, [enabled, sessionId, activityAt, updatedAt, hasNewContent]);
 
   // Cleanup
   useEffect(() => {

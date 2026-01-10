@@ -11,7 +11,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SessionListItem } from "../components/SessionListItem";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { useNavigationLayout } from "../layouts";
-import { toUrlProjectId } from "../types";
+import { getSessionDisplayTitle, toUrlProjectId } from "../utils";
 
 // Long-press threshold for entering selection mode on mobile
 const LONG_PRESS_MS = 500;
@@ -621,8 +621,8 @@ export function GlobalSessionsPage() {
                       <SessionListItem
                         sessionId={session.id}
                         projectId={session.projectId}
-                        title={session.title}
-                        fullTitle={session.customTitle || session.title}
+                        title={getSessionDisplayTitle(session)}
+                        fullTitle={getSessionDisplayTitle(session)}
                         updatedAt={session.updatedAt}
                         hasUnread={session.hasUnread}
                         processState={session.processState}

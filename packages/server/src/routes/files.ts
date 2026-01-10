@@ -4,9 +4,11 @@ import { extname, normalize, resolve } from "node:path";
 import {
   type FileContentResponse,
   type FileMetadata,
+  type PatchHunk,
   isUrlProjectId,
 } from "@yep-anywhere/shared";
 import { Hono } from "hono";
+import { computeEditAugment } from "../augments/edit-augments.js";
 import { highlightFile } from "../highlighting/index.js";
 import type { ProjectScanner } from "../projects/scanner.js";
 
@@ -474,6 +476,88 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
 
     // Convert Buffer to Uint8Array for Response compatibility
     return new Response(new Uint8Array(content), { headers });
+  });
+
+  /**
+   * POST /api/projects/:projectId/diff/expand
+   * Compute an expanded diff with full file context.
+   * Body:
+   *   - filePath: relative path to file
+   *   - oldString: the original text being replaced
+   *   - newString: the new text to insert
+   *   - originalFile: (optional) full file content if already known
+   */
+  routes.post("/:projectId/diff/expand", async (c) => {
+    const projectId = c.req.param("projectId");
+
+    // Validate project ID format
+    if (!isUrlProjectId(projectId)) {
+      return c.json({ error: "Invalid project ID format" }, 400);
+    }
+
+    // Parse body
+    let body: {
+      filePath: string;
+      oldString: string;
+      newString: string;
+      originalFile?: string | null;
+    };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+
+    const { filePath, oldString, newString, originalFile } = body;
+
+    if (
+      !filePath ||
+      typeof oldString !== "string" ||
+      typeof newString !== "string"
+    ) {
+      return c.json(
+        { error: "Missing required fields: filePath, oldString, newString" },
+        400,
+      );
+    }
+
+    // Get full file content
+    let fullContent = originalFile;
+    if (!fullContent) {
+      // Get project
+      const project = await deps.scanner.getProject(projectId);
+      if (!project) {
+        return c.json({ error: "Project not found" }, 404);
+      }
+
+      // Resolve and validate file path
+      const resolvedPath = resolveFilePath(project.path, filePath);
+      if (!resolvedPath) {
+        return c.json({ error: "Invalid file path" }, 400);
+      }
+
+      // Read file content
+      try {
+        fullContent = await readFile(resolvedPath, "utf-8");
+      } catch {
+        return c.json({ error: "Failed to read file" }, 500);
+      }
+    }
+
+    // Compute new content by applying the edit
+    const newContent = fullContent.replace(oldString, newString);
+
+    // Compute augment with large context (entire file)
+    const augment = await computeEditAugment(
+      "expand",
+      { file_path: filePath, old_string: fullContent, new_string: newContent },
+      999999, // Full file context
+    );
+
+    return c.json({
+      structuredPatch: augment.structuredPatch as PatchHunk[],
+      diffHtml: augment.diffHtml,
+    });
   });
 
   return routes;

@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentContentProvider } from "../../contexts/AgentContentContext";
+import { SessionMetadataProvider } from "../../contexts/SessionMetadataContext";
 import type { AgentContentMap } from "../../hooks/useSession";
 import type { Message } from "../../types";
 
@@ -39,7 +40,7 @@ const sampleAgentMessages: Message[] = [
   },
 ];
 
-// Wrapper component with AgentContentProvider
+// Wrapper component with AgentContentProvider and SessionMetadataProvider
 function TestWrapper({
   children,
   agentContent = {},
@@ -50,7 +51,11 @@ function TestWrapper({
   toolUseToAgent?: Map<string, string>;
 }) {
   return (
-    <div data-project-id="proj-1" data-session-id="session-1">
+    <SessionMetadataProvider
+      projectId="proj-1"
+      projectPath="/test/project"
+      sessionId="session-1"
+    >
       <AgentContentProvider
         agentContent={agentContent}
         setAgentContent={() => {}}
@@ -60,7 +65,7 @@ function TestWrapper({
       >
         {children}
       </AgentContentProvider>
-    </div>
+    </SessionMetadataProvider>
   );
 }
 

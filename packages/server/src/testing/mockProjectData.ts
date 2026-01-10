@@ -2,8 +2,19 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+/**
+ * Get the Claude sessions directory, respecting CLAUDE_SESSIONS_DIR env var.
+ * This ensures e2e tests use isolated directories instead of ~/.claude/projects.
+ */
+function getClaudeSessionsDir(): string {
+  if (process.env.CLAUDE_SESSIONS_DIR) {
+    return process.env.CLAUDE_SESSIONS_DIR;
+  }
+  return path.join(os.homedir(), ".claude", "projects");
+}
+
 export function setupMockProjects() {
-  const claudeDir = path.join(os.homedir(), ".claude", "projects");
+  const claudeDir = getClaudeSessionsDir();
   const hostname = os.hostname();
   // Project path encoded with / replaced by - (per scanner.ts)
   // Using /tmp/mockproject to avoid permission issues with root paths
@@ -43,7 +54,7 @@ export function setupMockProjects() {
  * Call this in test teardown to avoid leaving test sessions in ~/.claude/.
  */
 export function cleanupMockProjects() {
-  const claudeDir = path.join(os.homedir(), ".claude", "projects");
+  const claudeDir = getClaudeSessionsDir();
   const hostname = os.hostname();
   const mockProjectPath = path.join(os.tmpdir(), "mockproject");
   const encodedPath = mockProjectPath.replace(/\//g, "-");

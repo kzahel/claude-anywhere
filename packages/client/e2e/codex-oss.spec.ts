@@ -134,29 +134,5 @@ test.describe("CodexOSS Provider", () => {
   });
 });
 
-test.describe("CodexOSS Session Creation", () => {
-  test("can start a session with codex-oss provider via API", async ({
-    baseURL,
-  }) => {
-    // Create a session via API
-    const response = await fetch(
-      `${baseURL}/api/projects/${projectId}/sessions`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Yep-Anywhere": "true",
-        },
-        body: JSON.stringify({
-          message: "What is 2+2?",
-          provider: "codex-oss",
-        }),
-      },
-    );
-
-    expect(response.ok).toBe(true);
-    const data = await response.json();
-    expect(data.sessionId).toBeDefined();
-    expect(data.processId).toBeDefined();
-  });
-});
+// Note: Session creation tests that spawn real processes are in
+// packages/server/test/e2e/real-sdk.e2e.test.ts (requires REAL_SDK_TESTS=true)

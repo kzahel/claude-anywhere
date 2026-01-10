@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import { extractSessionIdFromFileEvent } from "../lib/sessionFile";
-import { type Project, type SessionSummary, toUrlProjectId } from "../types";
+import type { Project, SessionSummary } from "../types";
+import { toUrlProjectId } from "../utils";
 import {
   type FileChangeEvent,
   type ProcessStateEvent,

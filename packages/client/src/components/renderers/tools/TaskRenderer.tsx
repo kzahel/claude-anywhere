@@ -9,6 +9,7 @@ import {
 import type { ZodError } from "zod";
 import { AgentContentContext } from "../../../contexts/AgentContentContext";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { useSessionMetadata } from "../../../contexts/SessionMetadataContext";
 import { classifyToolError } from "../../../lib/classifyToolError";
 import { preprocessMessages } from "../../../lib/preprocessMessages";
 import { validateToolResult } from "../../../lib/validateToolResult";
@@ -171,6 +172,7 @@ function TaskInline({
   status: "pending" | "complete" | "error" | "aborted";
   toolUseId?: string;
 }) {
+  const { projectId, sessionId } = useSessionMetadata();
   const context = useContext(AgentContentContext);
   const {
     reportValidationError,
@@ -300,10 +302,6 @@ function TaskInline({
     const loadContent = async () => {
       setIsLoadingContent(true);
       try {
-        const sessionEl = document.querySelector("[data-session-id]");
-        const projectEl = document.querySelector("[data-project-id]");
-        const projectId = projectEl?.getAttribute("data-project-id") || "";
-        const sessionId = sessionEl?.getAttribute("data-session-id") || "";
         await context.loadAgentContent(projectId, sessionId, agentId);
       } finally {
         setIsLoadingContent(false);
@@ -311,7 +309,7 @@ function TaskInline({
     };
 
     loadContent();
-  }, [isExpanded, agentId, context]);
+  }, [isExpanded, agentId, context, projectId, sessionId]);
 
   // Store validation errors for inline warning display
   const [validationErrors, setValidationErrors] = useState<ZodError | null>(
@@ -351,10 +349,6 @@ function TaskInline({
       setIsExpanded(true);
       setIsLoadingContent(true);
       try {
-        const sessionEl = document.querySelector("[data-session-id]");
-        const projectEl = document.querySelector("[data-project-id]");
-        const projectId = projectEl?.getAttribute("data-project-id") || "";
-        const sessionId = sessionEl?.getAttribute("data-session-id") || "";
         await context.loadAgentContent(projectId, sessionId, agentId);
       } finally {
         setIsLoadingContent(false);

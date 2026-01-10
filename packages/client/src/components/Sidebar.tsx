@@ -4,7 +4,7 @@ import type { GlobalSessionItem } from "../api/client";
 import { useGlobalSessions } from "../hooks/useGlobalSessions";
 import { useNeedsAttentionBadge } from "../hooks/useNeedsAttentionBadge";
 import { useRecentProjects } from "../hooks/useRecentProjects";
-import { toUrlProjectId } from "../types";
+import { getSessionDisplayTitle, toUrlProjectId } from "../utils";
 import { AgentsNavItem } from "./AgentsNavItem";
 import { SessionListItem } from "./SessionListItem";
 import {
@@ -360,8 +360,8 @@ export function Sidebar({
                       key={session.id}
                       sessionId={session.id}
                       projectId={session.projectId}
-                      title={session.title}
-                      fullTitle={session.customTitle || session.title}
+                      title={getSessionDisplayTitle(session)}
+                      fullTitle={getSessionDisplayTitle(session)}
                       provider={session.provider}
                       status={session.status}
                       pendingInputType={session.pendingInputType}
@@ -409,8 +409,8 @@ export function Sidebar({
                       key={session.id}
                       sessionId={session.id}
                       projectId={session.projectId}
-                      title={session.title}
-                      fullTitle={session.customTitle || session.title}
+                      title={getSessionDisplayTitle(session)}
+                      fullTitle={getSessionDisplayTitle(session)}
                       provider={session.provider}
                       status={session.status}
                       pendingInputType={session.pendingInputType}
@@ -456,8 +456,8 @@ export function Sidebar({
                     key={session.id}
                     sessionId={session.id}
                     projectId={session.projectId}
-                    title={session.title}
-                    fullTitle={session.customTitle || session.title}
+                    title={getSessionDisplayTitle(session)}
+                    fullTitle={getSessionDisplayTitle(session)}
                     provider={session.provider}
                     status={session.status}
                     pendingInputType={session.pendingInputType}

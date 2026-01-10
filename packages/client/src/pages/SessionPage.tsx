@@ -13,6 +13,7 @@ import { RecentSessionsDropdown } from "../components/RecentSessionsDropdown";
 import { SessionMenu } from "../components/SessionMenu";
 import { ToolApprovalPanel } from "../components/ToolApprovalPanel";
 import { AgentContentProvider } from "../contexts/AgentContentContext";
+import { SessionMetadataProvider } from "../contexts/SessionMetadataContext";
 import {
   StreamingMarkdownProvider,
   useStreamingMarkdownContext,
@@ -33,7 +34,7 @@ import {
 } from "../hooks/useSession";
 import { useNavigationLayout } from "../layouts";
 import { preprocessMessages } from "../lib/preprocessMessages";
-import { getSessionDisplayTitle } from "../types";
+import { getSessionDisplayTitle } from "../utils";
 
 export function SessionPage() {
   const { projectId, sessionId } = useParams<{
@@ -829,32 +830,34 @@ function SessionPageContent({
           </div>
         )}
 
-        <main
-          className="session-messages"
-          data-project-id={projectId}
-          data-session-id={sessionId}
-        >
+        <main className="session-messages">
           {loading ? (
             <div className="loading">Loading session...</div>
           ) : (
-            <AgentContentProvider
-              agentContent={agentContent}
-              setAgentContent={setAgentContent}
-              toolUseToAgent={toolUseToAgent}
+            <SessionMetadataProvider
               projectId={projectId}
+              projectPath={project?.path ?? null}
               sessionId={sessionId}
             >
-              <MessageList
-                messages={messages}
-                isProcessing={
-                  status.state === "owned" && processState === "running"
-                }
-                scrollTrigger={scrollTrigger}
-                pendingMessages={pendingMessages}
-                markdownAugments={markdownAugments}
-                activeToolApproval={activeToolApproval}
-              />
-            </AgentContentProvider>
+              <AgentContentProvider
+                agentContent={agentContent}
+                setAgentContent={setAgentContent}
+                toolUseToAgent={toolUseToAgent}
+                projectId={projectId}
+                sessionId={sessionId}
+              >
+                <MessageList
+                  messages={messages}
+                  isProcessing={
+                    status.state === "owned" && processState === "running"
+                  }
+                  scrollTrigger={scrollTrigger}
+                  pendingMessages={pendingMessages}
+                  markdownAugments={markdownAugments}
+                  activeToolApproval={activeToolApproval}
+                />
+              </AgentContentProvider>
+            </SessionMetadataProvider>
           )}
         </main>
 

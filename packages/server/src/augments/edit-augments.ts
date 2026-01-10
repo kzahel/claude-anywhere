@@ -304,11 +304,13 @@ async function highlightDiffWithSyntax(
  *
  * @param toolUseId - The tool_use ID to associate with this augment
  * @param input - The Edit tool input containing file_path, old_string, new_string
+ * @param contextLines - Number of context lines to include (default: 3)
  * @returns EditAugment with structuredPatch and highlighted diff HTML
  */
 export async function computeEditAugment(
   toolUseId: string,
   input: EditInput,
+  contextLines: number = CONTEXT_LINES,
 ): Promise<EditAugment> {
   const { file_path, old_string, new_string } = input;
 
@@ -320,7 +322,7 @@ export async function computeEditAugment(
     new_string,
     "", // oldHeader
     "", // newHeader
-    { context: CONTEXT_LINES },
+    { context: contextLines },
   );
 
   // Convert hunks to our format

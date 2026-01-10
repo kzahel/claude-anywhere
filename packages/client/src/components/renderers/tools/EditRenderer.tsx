@@ -1,6 +1,8 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ZodError } from "zod";
 import { useSchemaValidationContext } from "../../../contexts/SchemaValidationContext";
+import { useSessionMetadata } from "../../../contexts/SessionMetadataContext";
+import { useExpandedDiff } from "../../../hooks/useExpandedDiff";
 import {
   classifyToolError,
   getErrorClassSuffix,
@@ -201,32 +203,103 @@ function EditToolUse({ input }: { input: EditInputWithAugment }) {
 }
 
 /**
- * Modal content for viewing complete diff
+ * Get relative file path by stripping project path prefix
+ */
+function getRelativePath(filePath: string, projectPath: string | null): string {
+  if (projectPath && filePath.startsWith(projectPath)) {
+    // Strip project path and leading slash
+    const relative = filePath.slice(projectPath.length);
+    return relative.startsWith("/") ? relative.slice(1) : relative;
+  }
+  return filePath;
+}
+
+/**
+ * Modal content for viewing complete diff with optional full file context
  */
 function DiffModalContent({
   diffHtml,
   structuredPatch,
+  filePath,
+  oldString,
+  newString,
+  originalFile,
 }: {
   diffHtml?: string;
   structuredPatch: PatchHunk[];
+  filePath: string;
+  oldString: string;
+  newString: string;
+  originalFile?: string | null;
 }) {
-  // Prefer pre-highlighted HTML from server
-  if (diffHtml) {
-    return (
-      <div className="diff-modal-content">
-        <HighlightedDiff diffHtml={diffHtml} />
-      </div>
-    );
-  }
+  const { projectPath } = useSessionMetadata();
+  const [showFullContext, setShowFullContext] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  // Don't pass originalFile - it may be truncated from JSONL.
+  // Let the server read the full file from disk.
+  const { loading, error, result, fetchExpandedDiff } = useExpandedDiff({
+    filePath,
+    oldString,
+    newString,
+  });
 
-  // Fallback: combine all hunks (plain text)
-  const diffText = structuredPatch
-    .map((hunk) => hunk.lines.join("\n"))
-    .join("\n");
+  const handleToggle = useCallback(async () => {
+    if (!showFullContext && !result) {
+      await fetchExpandedDiff();
+    }
+    setShowFullContext(!showFullContext);
+  }, [showFullContext, result, fetchExpandedDiff]);
+
+  // Scroll to the first changed line when showing full context
+  useEffect(() => {
+    if (showFullContext && result && contentRef.current) {
+      // Wait for DOM to update with new content
+      requestAnimationFrame(() => {
+        const firstChange = contentRef.current?.querySelector(
+          ".line-deleted, .line-inserted",
+        );
+        if (firstChange) {
+          firstChange.scrollIntoView({ block: "center", behavior: "instant" });
+        }
+      });
+    }
+  }, [showFullContext, result]);
+
+  // Use expanded result when showing full context
+  const displayHtml =
+    showFullContext && result?.diffHtml ? result.diffHtml : diffHtml;
+  const displayPatch =
+    showFullContext && result?.structuredPatch
+      ? result.structuredPatch
+      : structuredPatch;
+
+  // Strip project path prefix for display
+  const displayPath = getRelativePath(filePath, projectPath);
 
   return (
-    <div className="diff-modal-content">
-      <DiffLines lines={diffText.split("\n")} />
+    <div className="diff-modal-content" ref={contentRef}>
+      <div className="diff-context-controls">
+        <span className="diff-context-path">{displayPath}</span>
+        <button
+          type="button"
+          className="diff-context-toggle"
+          onClick={handleToggle}
+          disabled={loading}
+        >
+          {loading
+            ? "Loading..."
+            : showFullContext
+              ? "Show diff only"
+              : "Show full context"}
+        </button>
+        {error && <span className="diff-context-error">{error}</span>}
+      </div>
+
+      {displayHtml ? (
+        <HighlightedDiff diffHtml={displayHtml} />
+      ) : (
+        <DiffLines lines={displayPatch.flatMap((h) => h.lines)} />
+      )}
     </div>
   );
 }
@@ -284,6 +357,9 @@ function EditCollapsedPreview({
   // Use result data if available, fall back to input
   const filePath = result?.filePath ?? input.file_path;
   const fileName = getFileName(filePath);
+  const oldString = result?.oldString ?? input.old_string;
+  const newString = result?.newString ?? input.new_string;
+  const originalFile = result?.originalFile;
 
   // Get structuredPatch - prefer result, then input augment
   const structuredPatch =
@@ -392,6 +468,10 @@ function EditCollapsedPreview({
           <DiffModalContent
             diffHtml={diffHtml}
             structuredPatch={structuredPatch}
+            filePath={filePath}
+            oldString={oldString}
+            newString={newString}
+            originalFile={originalFile}
           />
         </Modal>
       )}
@@ -436,6 +516,9 @@ function EditInteractiveSummary({
 
   const filePath = result?.filePath ?? input.file_path;
   const fileName = getFileName(filePath);
+  const oldString = result?.oldString ?? input.old_string;
+  const newString = result?.newString ?? input.new_string;
+  const originalFile = result?.originalFile;
 
   // Get structuredPatch - prefer result, then input augment
   const structuredPatch =
@@ -485,6 +568,10 @@ function EditInteractiveSummary({
           <DiffModalContent
             diffHtml={diffHtml}
             structuredPatch={structuredPatch}
+            filePath={filePath}
+            oldString={oldString}
+            newString={newString}
+            originalFile={originalFile}
           />
         </Modal>
       )}
@@ -687,7 +774,13 @@ function EditToolResult({
           }
           onClose={() => setShowModal(false)}
         >
-          <DiffModalContent structuredPatch={result.structuredPatch} />
+          <DiffModalContent
+            structuredPatch={result.structuredPatch}
+            filePath={result.filePath}
+            oldString={result.oldString ?? input?.old_string ?? ""}
+            newString={result.newString ?? input?.new_string ?? ""}
+            originalFile={result.originalFile}
+          />
         </Modal>
       )}
     </>
