@@ -377,10 +377,10 @@ Tasks:
 - [x] Test: live streaming works over WS (ws-transport.e2e.test.ts)
 
 ### Phase 2d: File Upload
-- [ ] Server: handle upload_start/chunk/end messages
-- [ ] Server: pipe to existing upload handler
-- [ ] Client: WebSocketConnection.upload() with progress
-- [ ] Test: file uploads work over WS
+- [x] Server: handle upload_start/chunk/end messages
+- [x] Server: pipe to existing upload handler
+- [x] Client: WebSocketConnection.upload() with progress
+- [x] Test: file uploads work over WS
 
 ### Phase 2e: Integration Testing
 - [ ] Switch app to WebSocketConnection
