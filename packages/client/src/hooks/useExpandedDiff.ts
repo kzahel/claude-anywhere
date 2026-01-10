@@ -12,12 +12,16 @@ interface UseExpandedDiffOptions {
   filePath: string;
   oldString: string;
   newString: string;
-  originalFile?: string | null;
+  /** Complete file content from SDK Edit result (never truncated, verified up to 150KB+) */
+  originalFile: string;
 }
 
 /**
  * Hook to fetch an expanded diff with full file context from the server.
  * The server computes the diff with syntax highlighting and word-level diffs.
+ *
+ * Uses originalFile from the SDK's Edit tool result directly - the SDK never
+ * truncates this field (verified up to 150KB+ files).
  */
 export function useExpandedDiff(options: UseExpandedDiffOptions) {
   const { projectId } = useSessionMetadata();

@@ -481,26 +481,23 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
   /**
    * POST /api/projects/:projectId/diff/expand
    * Compute an expanded diff with full file context.
+   *
+   * Uses originalFile from the SDK's Edit tool result directly - the SDK never
+   * truncates this field (verified up to 150KB+ files).
+   *
    * Body:
-   *   - filePath: relative path to file
+   *   - filePath: path to file (for syntax highlighting detection)
    *   - oldString: the original text being replaced
    *   - newString: the new text to insert
-   *   - originalFile: (optional) full file content if already known
+   *   - originalFile: complete file content from SDK Edit result
    */
   routes.post("/:projectId/diff/expand", async (c) => {
-    const projectId = c.req.param("projectId");
-
-    // Validate project ID format
-    if (!isUrlProjectId(projectId)) {
-      return c.json({ error: "Invalid project ID format" }, 400);
-    }
-
     // Parse body
     let body: {
       filePath: string;
       oldString: string;
       newString: string;
-      originalFile?: string | null;
+      originalFile: string;
     };
     try {
       body = await c.req.json();
@@ -513,73 +510,27 @@ export function createFilesRoutes(deps: FilesDeps): Hono {
     if (
       !filePath ||
       typeof oldString !== "string" ||
-      typeof newString !== "string"
+      typeof newString !== "string" ||
+      typeof originalFile !== "string"
     ) {
       return c.json(
-        { error: "Missing required fields: filePath, oldString, newString" },
+        {
+          error:
+            "Missing required fields: filePath, oldString, newString, originalFile",
+        },
         400,
       );
     }
 
-    // Get project first - needed for path resolution
-    const project = await deps.scanner.getProject(projectId);
-    if (!project) {
-      return c.json({ error: "Project not found" }, 404);
-    }
-
-    // Convert absolute path to relative if it's within project root
-    let relativePath = filePath;
-    const projectRoot = resolve(project.path);
-    if (filePath.startsWith(`${projectRoot}/`)) {
-      relativePath = filePath.slice(projectRoot.length + 1);
-    } else if (filePath.startsWith("/")) {
-      // Absolute path outside project - reject
-      return c.json({ error: "Invalid file path" }, 400);
-    }
-
-    // Resolve and validate file path
-    const resolvedPath = resolveFilePath(project.path, relativePath);
-    if (!resolvedPath) {
-      return c.json({ error: "Invalid file path" }, 400);
-    }
-
-    // Read current file content from disk
-    let currentContent: string;
-    try {
-      currentContent = await readFile(resolvedPath, "utf-8");
-    } catch {
-      return c.json({ error: "Failed to read file" }, 500);
-    }
-
-    // Determine old and new full file content based on current state
-    let oldFullContent: string;
-    let newFullContent: string;
-
-    if (currentContent.includes(oldString)) {
-      // Edit not yet applied - oldString is still in the file
-      oldFullContent = currentContent;
-      newFullContent = currentContent.replace(oldString, newString);
-    } else if (currentContent.includes(newString)) {
-      // Edit already applied - newString is in the file
-      // Reconstruct the old content by reversing the edit
-      oldFullContent = currentContent.replace(newString, oldString);
-      newFullContent = currentContent;
-    } else {
-      // Neither found - file has changed significantly, use originalFile if provided
-      if (originalFile) {
-        oldFullContent = originalFile;
-        newFullContent = originalFile.replace(oldString, newString);
-      } else {
-        return c.json({ error: "Cannot locate edit in current file" }, 400);
-      }
-    }
+    // Compute the new file content by applying the edit
+    const newFullContent = originalFile.replace(oldString, newString);
 
     // Compute augment with large context (entire file)
     const augment = await computeEditAugment(
       "expand",
       {
         file_path: filePath,
-        old_string: oldFullContent,
+        old_string: originalFile,
         new_string: newFullContent,
       },
       999999, // Full file context

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import type { BeadsIssue } from "../api/client";
+import { FilterDropdown } from "../components/FilterDropdown";
 import { PageHeader } from "../components/PageHeader";
 import { useBeadsList } from "../hooks/useBeads";
 import { useProjects } from "../hooks/useProjects";
 import { useNavigationLayout } from "../layouts";
-import type { Project } from "../types";
 
 const STORAGE_KEY = "beads-selected-project";
 
@@ -110,7 +110,7 @@ function IssueCard({ issue }: IssueCardProps) {
 }
 
 interface ProjectSelectorProps {
-  projects: Project[];
+  projects: { id: string; name: string }[];
   selectedId: string | null;
   onSelect: (projectId: string) => void;
 }
@@ -120,21 +120,24 @@ function ProjectSelector({
   selectedId,
   onSelect,
 }: ProjectSelectorProps) {
+  const options = projects.map((project) => ({
+    value: project.id,
+    label: project.name,
+  }));
+
   return (
-    <select
-      className="beads-project-selector"
-      value={selectedId ?? ""}
-      onChange={(e) => onSelect(e.target.value)}
-    >
-      <option value="" disabled>
-        Select a project...
-      </option>
-      {projects.map((project) => (
-        <option key={project.id} value={project.id}>
-          {project.name}
-        </option>
-      ))}
-    </select>
+    <FilterDropdown
+      label="Project"
+      options={options}
+      selected={selectedId ? [selectedId] : []}
+      onChange={(selected) => {
+        if (selected.length > 0 && selected[0]) {
+          onSelect(selected[0]);
+        }
+      }}
+      multiSelect={false}
+      placeholder="Select a project..."
+    />
   );
 }
 
@@ -340,6 +343,15 @@ function IssuesList({ issues }: { issues: BeadsIssue[] }) {
           <p>No tasks yet.</p>
           <p>
             Create one with <code>bd create "Task title"</code>
+          </p>
+          <p className="beads-learn-more">
+            <a
+              href="https://github.com/steveyegge/beads"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Learn more about Beads
+            </a>
           </p>
         </div>
       )}

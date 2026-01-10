@@ -6128,6 +6128,20 @@ a.sidebar-nav-item {
   border-radius: var(--radius-sm);
 }
 
+.beads-learn-more {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.beads-learn-more a {
+  color: var(--text-muted);
+  text-decoration: underline;
+}
+
+.beads-learn-more a:hover {
+  color: var(--link-color);
+}
+
 .beads-not-initialized {
   text-align: center;
   padding: var(--space-4);
@@ -6160,18 +6174,6 @@ a.sidebar-nav-item {
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-4);
-}
-
-/* Project selector dropdown */
-
-.beads-project-selector:focus {
-  outline: none;
-  border-color: var(--link-color);
-}
-
-.beads-project-selector option {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
 }
 
 /* Refresh button */

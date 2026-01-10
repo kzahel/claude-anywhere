@@ -215,7 +215,8 @@ function getRelativePath(filePath: string, projectPath: string | null): string {
 }
 
 /**
- * Modal content for viewing complete diff with optional full file context
+ * Modal content for viewing complete diff with optional full file context.
+ * Full context toggle is only available when originalFile is provided.
  */
 function DiffModalContent({
   diffHtml,
@@ -230,27 +231,30 @@ function DiffModalContent({
   filePath: string;
   oldString: string;
   newString: string;
+  /** Complete file content from SDK Edit result (never truncated). Null for file creation. */
   originalFile?: string | null;
 }) {
   const { projectPath } = useSessionMetadata();
   const [showFullContext, setShowFullContext] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
-  // Pass originalFile as fallback for edits where the file has been heavily modified
-  // since the edit was made (neither oldString nor newString can be found).
-  // It may be truncated, but it's better than failing.
+
+  // Only fetch expanded diff when originalFile is available (not for file creation)
+  // The SDK's originalFile is never truncated - it's the complete file content.
+  const canExpandContext = !!originalFile;
   const { loading, error, result, fetchExpandedDiff } = useExpandedDiff({
     filePath,
     oldString,
     newString,
-    originalFile,
+    originalFile: originalFile ?? "", // Empty string won't be used if canExpandContext is false
   });
 
   const handleToggle = useCallback(async () => {
+    if (!canExpandContext) return;
     if (!showFullContext && !result) {
       await fetchExpandedDiff();
     }
     setShowFullContext(!showFullContext);
-  }, [showFullContext, result, fetchExpandedDiff]);
+  }, [canExpandContext, showFullContext, result, fetchExpandedDiff]);
 
   // Scroll to the first changed line when showing full context
   useEffect(() => {
@@ -282,18 +286,20 @@ function DiffModalContent({
     <div className="diff-modal-content" ref={contentRef}>
       <div className="diff-context-controls">
         <span className="diff-context-path">{displayPath}</span>
-        <button
-          type="button"
-          className="diff-context-toggle"
-          onClick={handleToggle}
-          disabled={loading}
-        >
-          {loading
-            ? "Loading..."
-            : showFullContext
-              ? "Show diff only"
-              : "Show full context"}
-        </button>
+        {canExpandContext && (
+          <button
+            type="button"
+            className="diff-context-toggle"
+            onClick={handleToggle}
+            disabled={loading}
+          >
+            {loading
+              ? "Loading..."
+              : showFullContext
+                ? "Show diff only"
+                : "Show full context"}
+          </button>
+        )}
         {error && <span className="diff-context-error">{error}</span>}
       </div>
 

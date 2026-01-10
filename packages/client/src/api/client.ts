@@ -481,13 +481,14 @@ export const api = {
   /**
    * Expand diff context to show full file.
    * Returns syntax-highlighted diff with the entire file as context.
+   * Uses originalFile from SDK Edit result (never truncated, verified up to 150KB+).
    */
   expandDiffContext: (
     projectId: string,
     filePath: string,
     oldString: string,
     newString: string,
-    originalFile?: string | null,
+    originalFile: string,
   ) =>
     fetchJSON<{
       structuredPatch: Array<{
