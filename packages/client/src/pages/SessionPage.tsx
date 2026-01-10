@@ -1,7 +1,7 @@
 import type { ProviderName, UploadedFile } from "@yep-anywhere/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { api, uploadFile } from "../api/client";
+import { api } from "../api/client";
 import { ClaudeLoginModal } from "../components/ClaudeLoginModal";
 import { MessageInput, type UploadProgress } from "../components/MessageInput";
 import { MessageInputToolbar } from "../components/MessageInputToolbar";
@@ -20,6 +20,7 @@ import {
 } from "../contexts/StreamingMarkdownContext";
 import { useToastContext } from "../contexts/ToastContext";
 import { useClaudeLogin } from "../hooks/useClaudeLogin";
+import { useConnection } from "../hooks/useConnection";
 import { useDeveloperMode } from "../hooks/useDeveloperMode";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import type { DraftControls } from "../hooks/useDraftPersistence";
@@ -149,6 +150,9 @@ function SessionPageContent({
 
   // Claude CLI login flow (for /login command)
   const claudeLogin = useClaudeLogin();
+
+  // Connection for uploads (uses WebSocket when enabled)
+  const connection = useConnection();
 
   // Developer mode settings (hold mode is experimental)
   const { holdModeEnabled } = useDeveloperMode();
@@ -456,7 +460,7 @@ function SessionPageContent({
         ]);
 
         try {
-          const uploaded = await uploadFile(projectId, sessionId, file, {
+          const uploaded = await connection.upload(projectId, sessionId, file, {
             onProgress: (bytesUploaded) => {
               setUploadProgress((prev) =>
                 prev.map((p) =>
@@ -484,7 +488,7 @@ function SessionPageContent({
         }
       }
     },
-    [projectId, sessionId, showToast],
+    [projectId, sessionId, showToast, connection],
   );
 
   const handleRemoveAttachment = useCallback((id: string) => {

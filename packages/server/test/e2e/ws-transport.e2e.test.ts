@@ -10,6 +10,12 @@ import type {
   RelayResponse,
   RelaySubscribe,
   RelayUnsubscribe,
+  RelayUploadChunk,
+  RelayUploadComplete,
+  RelayUploadEnd,
+  RelayUploadError,
+  RelayUploadProgress,
+  RelayUploadStart,
   YepMessage,
 } from "@yep-anywhere/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -18,6 +24,7 @@ import { createApp } from "../../src/app.js";
 import { attachUnifiedUpgradeHandler } from "../../src/frontend/index.js";
 import { createWsRelayRoutes } from "../../src/routes/ws-relay.js";
 import { MockClaudeSDK } from "../../src/sdk/mock.js";
+import { UploadManager } from "../../src/uploads/manager.js";
 import { EventBus } from "../../src/watcher/index.js";
 
 /**
@@ -64,12 +71,16 @@ describe("WebSocket Transport E2E", () => {
 
     // Add WebSocket relay route
     const baseUrl = "http://localhost:0";
+    const uploadManager = new UploadManager({
+      uploadsDir: join(testDir, "uploads"),
+    });
     const wsRelayHandler = createWsRelayRoutes({
       upgradeWebSocket,
       app,
       baseUrl,
       supervisor,
       eventBus,
+      uploadManager,
     });
     app.get("/api/ws", wsRelayHandler);
 
@@ -556,6 +567,312 @@ describe("WebSocket Transport E2E", () => {
       const response2 = await sendRequest(ws2, request2);
       expect(response2.status).toBe(200);
       ws2.close();
+    });
+  });
+
+  describe("File Upload (Phase 2d)", () => {
+    // Helper to collect upload messages
+    function collectUploadMessages(
+      ws: WebSocket,
+      uploadId: string,
+      timeoutMs = 5000,
+    ): Promise<YepMessage[]> {
+      return new Promise((resolve) => {
+        const messages: YepMessage[] = [];
+        const timeout = setTimeout(() => {
+          ws.off("message", handler);
+          resolve(messages);
+        }, timeoutMs);
+
+        const handler = (data: WebSocket.RawData) => {
+          const msg = JSON.parse(data.toString()) as YepMessage;
+          if (
+            (msg.type === "upload_progress" ||
+              msg.type === "upload_complete" ||
+              msg.type === "upload_error") &&
+            msg.uploadId === uploadId
+          ) {
+            messages.push(msg);
+            if (msg.type === "upload_complete" || msg.type === "upload_error") {
+              clearTimeout(timeout);
+              ws.off("message", handler);
+              resolve(messages);
+            }
+          }
+        };
+
+        ws.on("message", handler);
+      });
+    }
+
+    it("should successfully upload a small file", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const uploadId = randomUUID();
+        const projectId = "test-project";
+        const sessionId = "test-session";
+        const filename = "test.txt";
+        const fileContent = "Hello, World!";
+        const fileSize = fileContent.length;
+
+        // Start collecting messages before sending
+        const messagesPromise = collectUploadMessages(ws, uploadId);
+
+        // Send upload_start
+        const startMsg: RelayUploadStart = {
+          type: "upload_start",
+          uploadId,
+          projectId,
+          sessionId,
+          filename,
+          size: fileSize,
+          mimeType: "text/plain",
+        };
+        ws.send(JSON.stringify(startMsg));
+
+        // Wait a bit for start to process
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Send chunk (base64 encoded)
+        const base64Content = Buffer.from(fileContent).toString("base64");
+        const chunkMsg: RelayUploadChunk = {
+          type: "upload_chunk",
+          uploadId,
+          offset: 0,
+          data: base64Content,
+        };
+        ws.send(JSON.stringify(chunkMsg));
+
+        // Send upload_end
+        const endMsg: RelayUploadEnd = {
+          type: "upload_end",
+          uploadId,
+        };
+        ws.send(JSON.stringify(endMsg));
+
+        // Wait for completion
+        const messages = await messagesPromise;
+
+        // Should have at least one message
+        expect(messages.length).toBeGreaterThanOrEqual(1);
+
+        // Last message should be upload_complete
+        const lastMsg = messages[messages.length - 1];
+        expect(lastMsg.type).toBe("upload_complete");
+
+        const completeMsg = lastMsg as RelayUploadComplete;
+        expect(completeMsg.file).toBeDefined();
+        expect(completeMsg.file.originalName).toBe(filename);
+        expect(completeMsg.file.size).toBe(fileSize);
+      } finally {
+        ws.close();
+      }
+    });
+
+    it("should upload a larger file in multiple chunks", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const uploadId = randomUUID();
+        const projectId = "test-project";
+        const sessionId = "test-session";
+        const filename = "large.bin";
+        // Create a 200KB file (larger than the 64KB progress interval)
+        const fileSize = 200 * 1024;
+        const fileContent = Buffer.alloc(fileSize, "X");
+
+        // Start collecting messages
+        const messagesPromise = collectUploadMessages(ws, uploadId);
+
+        // Send upload_start
+        const startMsg: RelayUploadStart = {
+          type: "upload_start",
+          uploadId,
+          projectId,
+          sessionId,
+          filename,
+          size: fileSize,
+          mimeType: "application/octet-stream",
+        };
+        ws.send(JSON.stringify(startMsg));
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Send in 64KB chunks
+        const chunkSize = 64 * 1024;
+        let offset = 0;
+        while (offset < fileSize) {
+          const end = Math.min(offset + chunkSize, fileSize);
+          const chunk = fileContent.slice(offset, end);
+          const chunkMsg: RelayUploadChunk = {
+            type: "upload_chunk",
+            uploadId,
+            offset,
+            data: chunk.toString("base64"),
+          };
+          ws.send(JSON.stringify(chunkMsg));
+          offset = end;
+        }
+
+        // Send upload_end
+        const endMsg: RelayUploadEnd = {
+          type: "upload_end",
+          uploadId,
+        };
+        ws.send(JSON.stringify(endMsg));
+
+        // Wait for completion
+        const messages = await messagesPromise;
+
+        // Should have multiple progress messages plus complete
+        expect(messages.length).toBeGreaterThanOrEqual(2);
+
+        // Check we got progress updates
+        const progressMsgs = messages.filter(
+          (m) => m.type === "upload_progress",
+        ) as RelayUploadProgress[];
+        expect(progressMsgs.length).toBeGreaterThanOrEqual(1);
+
+        // Last message should be upload_complete
+        const lastMsg = messages[messages.length - 1];
+        expect(lastMsg.type).toBe("upload_complete");
+
+        const completeMsg = lastMsg as RelayUploadComplete;
+        expect(completeMsg.file.size).toBe(fileSize);
+      } finally {
+        ws.close();
+      }
+    });
+
+    it("should return error for invalid offset", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const uploadId = randomUUID();
+        const projectId = "test-project";
+        const sessionId = "test-session";
+
+        // Start collecting messages
+        const messagesPromise = collectUploadMessages(ws, uploadId);
+
+        // Send upload_start
+        const startMsg: RelayUploadStart = {
+          type: "upload_start",
+          uploadId,
+          projectId,
+          sessionId,
+          filename: "test.txt",
+          size: 100,
+          mimeType: "text/plain",
+        };
+        ws.send(JSON.stringify(startMsg));
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Send chunk with wrong offset (should be 0)
+        const chunkMsg: RelayUploadChunk = {
+          type: "upload_chunk",
+          uploadId,
+          offset: 50, // Wrong offset!
+          data: Buffer.from("test").toString("base64"),
+        };
+        ws.send(JSON.stringify(chunkMsg));
+
+        // Wait for error
+        const messages = await messagesPromise;
+
+        expect(messages.length).toBeGreaterThanOrEqual(1);
+        const lastMsg = messages[messages.length - 1];
+        expect(lastMsg.type).toBe("upload_error");
+
+        const errorMsg = lastMsg as RelayUploadError;
+        expect(errorMsg.error).toContain("Invalid offset");
+      } finally {
+        ws.close();
+      }
+    });
+
+    it("should return error for unknown upload ID", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const uploadId = randomUUID();
+
+        // Start collecting messages
+        const messagesPromise = collectUploadMessages(ws, uploadId, 2000);
+
+        // Send chunk for non-existent upload
+        const chunkMsg: RelayUploadChunk = {
+          type: "upload_chunk",
+          uploadId,
+          offset: 0,
+          data: Buffer.from("test").toString("base64"),
+        };
+        ws.send(JSON.stringify(chunkMsg));
+
+        // Wait for error
+        const messages = await messagesPromise;
+
+        expect(messages.length).toBe(1);
+        expect(messages[0].type).toBe("upload_error");
+
+        const errorMsg = messages[0] as RelayUploadError;
+        expect(errorMsg.error).toContain("Upload not found");
+      } finally {
+        ws.close();
+      }
+    });
+
+    it("should return error for duplicate upload ID", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const uploadId = randomUUID();
+        const projectId = "test-project";
+        const sessionId = "test-session";
+
+        // Send first upload_start
+        const startMsg1: RelayUploadStart = {
+          type: "upload_start",
+          uploadId,
+          projectId,
+          sessionId,
+          filename: "test1.txt",
+          size: 10,
+          mimeType: "text/plain",
+        };
+        ws.send(JSON.stringify(startMsg1));
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Start collecting messages for the duplicate
+        const messagesPromise = collectUploadMessages(ws, uploadId, 2000);
+
+        // Send duplicate upload_start with same ID
+        const startMsg2: RelayUploadStart = {
+          type: "upload_start",
+          uploadId,
+          projectId,
+          sessionId,
+          filename: "test2.txt",
+          size: 10,
+          mimeType: "text/plain",
+        };
+        ws.send(JSON.stringify(startMsg2));
+
+        // Wait for error
+        const messages = await messagesPromise;
+
+        // Should get an error for the duplicate
+        const errorMsgs = messages.filter(
+          (m) => m.type === "upload_error",
+        ) as RelayUploadError[];
+        expect(errorMsgs.length).toBe(1);
+        expect(errorMsgs[0].error).toContain("already in use");
+      } finally {
+        ws.close();
+      }
     });
   });
 });

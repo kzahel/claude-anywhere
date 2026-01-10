@@ -4,6 +4,12 @@ import type {
   RelayResponse,
   RelaySubscribe,
   RelayUnsubscribe,
+  RelayUploadChunk,
+  RelayUploadComplete,
+  RelayUploadEnd,
+  RelayUploadError,
+  RelayUploadProgress,
+  RelayUploadStart,
   RemoteClientMessage,
   UploadedFile,
   YepMessage,
@@ -34,6 +40,16 @@ function generateId(): string {
  * - Environments where SSE is problematic
  * - Future relay/secure connection support
  */
+/** Default chunk size for file uploads (64KB) */
+const DEFAULT_CHUNK_SIZE = 64 * 1024;
+
+/** Handlers for pending uploads */
+interface PendingUpload {
+  resolve: (file: UploadedFile) => void;
+  reject: (error: Error) => void;
+  onProgress?: (bytesUploaded: number) => void;
+}
+
 export class WebSocketConnection implements Connection {
   readonly mode = "direct" as const; // Will change to "secure" in Phase 3
 
@@ -46,6 +62,7 @@ export class WebSocketConnection implements Connection {
       timeout: ReturnType<typeof setTimeout>;
     }
   >();
+  private pendingUploads = new Map<string, PendingUpload>();
   private subscriptions = new Map<string, StreamHandlers>();
   private connectionPromise: Promise<void> | null = null;
   private reconnectAttempts = 0;
@@ -115,6 +132,12 @@ export class WebSocketConnection implements Connection {
           this.pendingRequests.delete(id);
         }
 
+        // Reject any pending uploads
+        for (const [id, pending] of this.pendingUploads) {
+          pending.reject(new Error("WebSocket connection closed"));
+          this.pendingUploads.delete(id);
+        }
+
         // Notify all subscriptions of closure
         for (const [id, handlers] of this.subscriptions) {
           handlers.onError?.(new Error("WebSocket connection closed"));
@@ -171,10 +194,15 @@ export class WebSocketConnection implements Connection {
         break;
 
       case "upload_progress":
+        this.handleUploadProgress(msg);
+        break;
+
       case "upload_complete":
+        this.handleUploadComplete(msg);
+        break;
+
       case "upload_error":
-        // Phase 2d - upload progress
-        console.log("[WebSocketConnection] Received upload message:", msg);
+        this.handleUploadError(msg);
         break;
 
       default:
@@ -223,6 +251,38 @@ export class WebSocketConnection implements Connection {
     clearTimeout(pending.timeout);
     this.pendingRequests.delete(response.id);
     pending.resolve(response);
+  }
+
+  /**
+   * Handle upload progress message.
+   */
+  private handleUploadProgress(msg: RelayUploadProgress): void {
+    const pending = this.pendingUploads.get(msg.uploadId);
+    if (pending?.onProgress) {
+      pending.onProgress(msg.bytesReceived);
+    }
+  }
+
+  /**
+   * Handle upload complete message.
+   */
+  private handleUploadComplete(msg: RelayUploadComplete): void {
+    const pending = this.pendingUploads.get(msg.uploadId);
+    if (pending) {
+      this.pendingUploads.delete(msg.uploadId);
+      pending.resolve(msg.file);
+    }
+  }
+
+  /**
+   * Handle upload error message.
+   */
+  private handleUploadError(msg: RelayUploadError): void {
+    const pending = this.pendingUploads.get(msg.uploadId);
+    if (pending) {
+      this.pendingUploads.delete(msg.uploadId);
+      pending.reject(new Error(msg.error));
+    }
   }
 
   /**
@@ -420,18 +480,104 @@ export class WebSocketConnection implements Connection {
   }
 
   /**
-   * Upload a file to a session.
-   * Phase 2d - not yet implemented.
+   * Upload a file to a session via WebSocket relay protocol.
    */
   async upload(
-    _projectId: string,
-    _sessionId: string,
-    _file: File,
-    _options?: UploadOptions,
+    projectId: string,
+    sessionId: string,
+    file: File,
+    options?: UploadOptions,
   ): Promise<UploadedFile> {
-    throw new Error(
-      "WebSocketConnection.upload() not yet implemented (Phase 2d)",
-    );
+    await this.ensureConnected();
+
+    const uploadId = generateId();
+    const chunkSize = options?.chunkSize ?? DEFAULT_CHUNK_SIZE;
+
+    // Create promise that will resolve when upload completes
+    const uploadPromise = new Promise<UploadedFile>((resolve, reject) => {
+      this.pendingUploads.set(uploadId, {
+        resolve,
+        reject,
+        onProgress: options?.onProgress,
+      });
+
+      // Handle abort signal
+      if (options?.signal) {
+        options.signal.addEventListener("abort", () => {
+          this.pendingUploads.delete(uploadId);
+          reject(new Error("Upload aborted"));
+        });
+      }
+    });
+
+    try {
+      // Send upload_start
+      const startMsg: RelayUploadStart = {
+        type: "upload_start",
+        uploadId,
+        projectId,
+        sessionId,
+        filename: file.name,
+        size: file.size,
+        mimeType: file.type || "application/octet-stream",
+      };
+      this.send(startMsg);
+
+      // Read and send chunks
+      let offset = 0;
+      const reader = file.stream().getReader();
+
+      while (true) {
+        // Check if aborted
+        if (options?.signal?.aborted) {
+          reader.cancel();
+          throw new Error("Upload aborted");
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        // Process the chunk (may be larger than chunkSize, so we split it)
+        let chunkOffset = 0;
+        while (chunkOffset < value.length) {
+          const chunkEnd = Math.min(chunkOffset + chunkSize, value.length);
+          const chunk = value.slice(chunkOffset, chunkEnd);
+
+          // Base64 encode the chunk
+          const base64 = btoa(
+            Array.from(chunk)
+              .map((b) => String.fromCharCode(b))
+              .join(""),
+          );
+
+          // Send chunk
+          const chunkMsg: RelayUploadChunk = {
+            type: "upload_chunk",
+            uploadId,
+            offset,
+            data: base64,
+          };
+          this.send(chunkMsg);
+
+          offset += chunk.length;
+          chunkOffset = chunkEnd;
+        }
+      }
+
+      // Send upload_end
+      const endMsg: RelayUploadEnd = {
+        type: "upload_end",
+        uploadId,
+      };
+      this.send(endMsg);
+
+      // Wait for completion
+      return await uploadPromise;
+    } catch (err) {
+      // Clean up pending upload on error
+      this.pendingUploads.delete(uploadId);
+      throw err;
+    }
   }
 
   /**
@@ -450,6 +596,12 @@ export class WebSocketConnection implements Connection {
       pending.reject(new Error("Connection closed"));
     }
     this.pendingRequests.clear();
+
+    // Clear pending uploads
+    for (const [id, pending] of this.pendingUploads) {
+      pending.reject(new Error("Connection closed"));
+    }
+    this.pendingUploads.clear();
 
     // Close WebSocket
     if (this.ws) {

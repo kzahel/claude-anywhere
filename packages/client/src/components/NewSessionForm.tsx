@@ -14,10 +14,11 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { type UploadedFile, api, uploadFile } from "../api/client";
+import { type UploadedFile, api } from "../api/client";
 import { ENTER_SENDS_MESSAGE } from "../constants";
 import { useToastContext } from "../contexts/ToastContext";
 import { useClaudeLogin } from "../hooks/useClaudeLogin";
+import { useConnection } from "../hooks/useConnection";
 import { useDraftPersistence } from "../hooks/useDraftPersistence";
 import {
   getModelSetting,
@@ -113,6 +114,9 @@ export function NewSessionForm({
 
   // Claude CLI login flow (for /login command)
   const claudeLogin = useClaudeLogin();
+
+  // Connection for uploads (uses WebSocket when enabled)
+  const connection = useConnection();
 
   // Toast for error messages
   const { showToast } = useToastContext();
@@ -301,7 +305,7 @@ export function NewSessionForm({
         // Step 2: Upload files to the real session folder
         for (const pendingFile of pendingFiles) {
           try {
-            const uploadedFile = await uploadFile(
+            const uploadedFile = await connection.upload(
               projectId,
               sessionId,
               pendingFile.file,

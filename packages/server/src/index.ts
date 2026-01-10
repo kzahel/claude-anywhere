@@ -35,6 +35,7 @@ import { detectClaudeCli } from "./sdk/cli-detection.js";
 import { initMessageLogger } from "./sdk/messageLogger.js";
 import { RealClaudeSDK } from "./sdk/real.js";
 import { ClaudeSessionReader } from "./sessions/reader.js";
+import { UploadManager } from "./uploads/manager.js";
 import { EventBus, FileWatcher, SourceWatcher } from "./watcher/index.js";
 
 // Allow many concurrent Claude sessions without listener warnings.
@@ -227,15 +228,19 @@ async function startServer() {
   });
   app.route("/api", uploadRoutes);
 
-  // Add WebSocket relay route for Phase 2b/2c
-  // This allows clients to make HTTP-like requests and subscriptions over WebSocket
+  // Add WebSocket relay route for Phase 2b/2c/2d
+  // This allows clients to make HTTP-like requests, subscriptions, and uploads over WebSocket
   const baseUrl = `http://${config.host}:${config.port}`;
+  const wsRelayUploadManager = new UploadManager({
+    maxUploadSizeBytes: config.maxUploadSizeBytes,
+  });
   const wsRelayHandler = createWsRelayRoutes({
     upgradeWebSocket,
     app,
     baseUrl,
     supervisor,
     eventBus,
+    uploadManager: wsRelayUploadManager,
   });
   app.get("/api/ws", wsRelayHandler);
 

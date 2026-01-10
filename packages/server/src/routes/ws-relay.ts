@@ -5,12 +5,19 @@ import type {
   RelayResponse,
   RelaySubscribe,
   RelayUnsubscribe,
+  RelayUploadChunk,
+  RelayUploadComplete,
+  RelayUploadEnd,
+  RelayUploadError,
+  RelayUploadProgress,
+  RelayUploadStart,
   RemoteClientMessage,
   YepMessage,
 } from "@yep-anywhere/shared";
 import type { Context, Hono } from "hono";
 import type { WSContext, WSEvents } from "hono/ws";
 import type { Supervisor } from "../supervisor/Supervisor.js";
+import type { UploadManager } from "../uploads/manager.js";
 import type { EventBus } from "../watcher/index.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: Complex third-party type from @hono/node-ws
@@ -26,6 +33,22 @@ export interface WsRelayDeps {
   supervisor: Supervisor;
   /** Event bus for subscribing to activity events */
   eventBus: EventBus;
+  /** Upload manager for handling file uploads */
+  uploadManager: UploadManager;
+}
+
+/** Tracks an active upload over WebSocket relay */
+interface RelayUploadState {
+  /** Client-provided upload ID */
+  clientUploadId: string;
+  /** Server-generated upload ID from UploadManager */
+  serverUploadId: string;
+  /** Expected total size */
+  expectedSize: number;
+  /** Bytes received (for offset validation) */
+  bytesReceived: number;
+  /** Last progress report sent */
+  lastProgressReport: number;
 }
 
 /**
@@ -38,10 +61,20 @@ export interface WsRelayDeps {
  * - request/response (Phase 2b)
  * - subscriptions for session and activity events (Phase 2c)
  */
+/** Progress report interval in bytes (64KB) */
+const PROGRESS_INTERVAL = 64 * 1024;
+
 export function createWsRelayRoutes(
   deps: WsRelayDeps,
 ): ReturnType<typeof deps.upgradeWebSocket> {
-  const { upgradeWebSocket, app, baseUrl, supervisor, eventBus } = deps;
+  const {
+    upgradeWebSocket,
+    app,
+    baseUrl,
+    supervisor,
+    eventBus,
+    uploadManager,
+  } = deps;
 
   const sendMessage = (ws: WSContext, msg: YepMessage) => {
     ws.send(JSON.stringify(msg));
@@ -60,6 +93,41 @@ export function createWsRelayRoutes(
       body: { error: message },
     };
     sendMessage(ws, response);
+  };
+
+  const sendUploadProgress = (
+    ws: WSContext,
+    uploadId: string,
+    bytesReceived: number,
+  ) => {
+    const msg: RelayUploadProgress = {
+      type: "upload_progress",
+      uploadId,
+      bytesReceived,
+    };
+    sendMessage(ws, msg);
+  };
+
+  const sendUploadComplete = (
+    ws: WSContext,
+    uploadId: string,
+    file: RelayUploadComplete["file"],
+  ) => {
+    const msg: RelayUploadComplete = {
+      type: "upload_complete",
+      uploadId,
+      file,
+    };
+    sendMessage(ws, msg);
+  };
+
+  const sendUploadError = (ws: WSContext, uploadId: string, error: string) => {
+    const msg: RelayUploadError = {
+      type: "upload_error",
+      uploadId,
+      error,
+    };
+    sendMessage(ws, msg);
   };
 
   /**
@@ -419,11 +487,180 @@ export function createWsRelayRoutes(
   };
 
   /**
+   * Handle upload_start message.
+   */
+  const handleUploadStart = async (
+    ws: WSContext,
+    uploads: Map<string, RelayUploadState>,
+    msg: RelayUploadStart,
+  ): Promise<void> => {
+    const { uploadId, projectId, sessionId, filename, size, mimeType } = msg;
+
+    // Check for duplicate upload ID
+    if (uploads.has(uploadId)) {
+      sendUploadError(ws, uploadId, "Upload ID already in use");
+      return;
+    }
+
+    try {
+      // Start upload via UploadManager
+      const { uploadId: serverUploadId } = await uploadManager.startUpload(
+        projectId,
+        sessionId,
+        filename,
+        size,
+        mimeType,
+      );
+
+      // Track the upload state
+      uploads.set(uploadId, {
+        clientUploadId: uploadId,
+        serverUploadId,
+        expectedSize: size,
+        bytesReceived: 0,
+        lastProgressReport: 0,
+      });
+
+      // Send initial progress (0 bytes)
+      sendUploadProgress(ws, uploadId, 0);
+
+      console.log(
+        `[WS Relay] Upload started: ${uploadId} (${filename}, ${size} bytes)`,
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to start upload";
+      sendUploadError(ws, uploadId, message);
+    }
+  };
+
+  /**
+   * Handle upload_chunk message.
+   */
+  const handleUploadChunk = async (
+    ws: WSContext,
+    uploads: Map<string, RelayUploadState>,
+    msg: RelayUploadChunk,
+  ): Promise<void> => {
+    const { uploadId, offset, data } = msg;
+
+    const state = uploads.get(uploadId);
+    if (!state) {
+      sendUploadError(ws, uploadId, "Upload not found");
+      return;
+    }
+
+    // Validate offset matches expected position
+    if (offset !== state.bytesReceived) {
+      sendUploadError(
+        ws,
+        uploadId,
+        `Invalid offset: expected ${state.bytesReceived}, got ${offset}`,
+      );
+      return;
+    }
+
+    try {
+      // Decode base64 chunk
+      const chunk = Buffer.from(data, "base64");
+
+      // Write chunk to UploadManager
+      const bytesReceived = await uploadManager.writeChunk(
+        state.serverUploadId,
+        chunk,
+      );
+
+      state.bytesReceived = bytesReceived;
+
+      // Send progress update periodically (every 64KB)
+      if (
+        bytesReceived - state.lastProgressReport >= PROGRESS_INTERVAL ||
+        bytesReceived === state.expectedSize
+      ) {
+        sendUploadProgress(ws, uploadId, bytesReceived);
+        state.lastProgressReport = bytesReceived;
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to write chunk";
+      sendUploadError(ws, uploadId, message);
+      // Clean up failed upload
+      uploads.delete(uploadId);
+      try {
+        await uploadManager.cancelUpload(state.serverUploadId);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  };
+
+  /**
+   * Handle upload_end message.
+   */
+  const handleUploadEnd = async (
+    ws: WSContext,
+    uploads: Map<string, RelayUploadState>,
+    msg: RelayUploadEnd,
+  ): Promise<void> => {
+    const { uploadId } = msg;
+
+    const state = uploads.get(uploadId);
+    if (!state) {
+      sendUploadError(ws, uploadId, "Upload not found");
+      return;
+    }
+
+    try {
+      // Complete the upload
+      const file = await uploadManager.completeUpload(state.serverUploadId);
+
+      // Remove from tracking
+      uploads.delete(uploadId);
+
+      // Send completion message
+      sendUploadComplete(ws, uploadId, file);
+
+      console.log(
+        `[WS Relay] Upload complete: ${uploadId} (${file.size} bytes)`,
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to complete upload";
+      sendUploadError(ws, uploadId, message);
+      // Clean up failed upload
+      uploads.delete(uploadId);
+      try {
+        await uploadManager.cancelUpload(state.serverUploadId);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+  };
+
+  /**
+   * Clean up all active uploads for a connection.
+   */
+  const cleanupUploads = async (
+    uploads: Map<string, RelayUploadState>,
+  ): Promise<void> => {
+    for (const [clientId, state] of uploads) {
+      try {
+        await uploadManager.cancelUpload(state.serverUploadId);
+        console.log(`[WS Relay] Cancelled upload on disconnect: ${clientId}`);
+      } catch (err) {
+        console.error(`[WS Relay] Error cancelling upload ${clientId}:`, err);
+      }
+    }
+    uploads.clear();
+  };
+
+  /**
    * Handle incoming WebSocket messages.
    */
   const handleMessage = async (
     ws: WSContext,
     subscriptions: Map<string, () => void>,
+    uploads: Map<string, RelayUploadState>,
     data: unknown,
   ): Promise<void> => {
     // Parse message
@@ -454,10 +691,15 @@ export function createWsRelayRoutes(
         break;
 
       case "upload_start":
+        await handleUploadStart(ws, uploads, msg);
+        break;
+
       case "upload_chunk":
+        await handleUploadChunk(ws, uploads, msg);
+        break;
+
       case "upload_end":
-        // Phase 2d - not yet implemented
-        sendError(ws, "uploads", 501, "Uploads not yet implemented");
+        await handleUploadEnd(ws, uploads, msg);
         break;
 
       default:
@@ -472,6 +714,8 @@ export function createWsRelayRoutes(
   return upgradeWebSocket((_c) => {
     // Track active subscriptions for this connection
     const subscriptions = new Map<string, () => void>();
+    // Track active uploads for this connection
+    const uploads = new Map<string, RelayUploadState>();
     // Message queue to serialize async message handling
     let messageQueue: Promise<void> = Promise.resolve();
 
@@ -483,13 +727,18 @@ export function createWsRelayRoutes(
       onMessage(evt, ws) {
         // Queue messages for sequential processing
         messageQueue = messageQueue.then(() =>
-          handleMessage(ws, subscriptions, evt.data).catch((err) => {
+          handleMessage(ws, subscriptions, uploads, evt.data).catch((err) => {
             console.error("[WS Relay] Unexpected error:", err);
           }),
         );
       },
 
       onClose(_evt, _ws) {
+        // Clean up all uploads
+        cleanupUploads(uploads).catch((err) => {
+          console.error("[WS Relay] Error cleaning up uploads:", err);
+        });
+
         // Clean up all subscriptions
         for (const [id, cleanup] of subscriptions) {
           try {

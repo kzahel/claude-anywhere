@@ -40,6 +40,7 @@ import {
 } from "./sdk/providers/__mocks__/index.js";
 import type { ProviderName } from "./sdk/providers/types.js";
 import { setupMockProjects } from "./testing/mockProjectData.js";
+import { UploadManager } from "./uploads/manager.js";
 import { EventBus, FileWatcher } from "./watcher/index.js";
 
 const config = loadConfig();
@@ -230,14 +231,16 @@ const scanner = new ProjectScanner();
 const uploadRoutes = createUploadRoutes({ scanner, upgradeWebSocket });
 app.route("/api", uploadRoutes);
 
-// Add WebSocket relay route for Phase 2b/2c
-// This allows clients to make HTTP-like requests and subscriptions over WebSocket
+// Add WebSocket relay route for Phase 2b/2c/2d
+// This allows clients to make HTTP-like requests, subscriptions, and uploads over WebSocket
+const wsRelayUploadManager = new UploadManager();
 const wsRelayHandler = createWsRelayRoutes({
   upgradeWebSocket,
   app,
   baseUrl: `http://localhost:${config.port}`,
   supervisor,
   eventBus,
+  uploadManager: wsRelayUploadManager,
 });
 app.get("/api/ws", wsRelayHandler);
 
