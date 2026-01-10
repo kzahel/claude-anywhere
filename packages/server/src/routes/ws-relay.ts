@@ -19,6 +19,11 @@ import type { WSContext, WSEvents } from "hono/ws";
 import {
   type StreamAugmenter,
   createStreamAugmenter,
+  extractIdFromAssistant,
+  extractMessageIdFromStart,
+  extractTextDelta,
+  extractTextFromAssistant,
+  isStreamingComplete,
 } from "../augments/index.js";
 import type { Supervisor } from "../supervisor/Supervisor.js";
 import type { UploadManager } from "../uploads/manager.js";
@@ -249,6 +254,9 @@ export function createWsRelayRoutes(
 
     let eventId = 0;
 
+    // Track current streaming message ID for text accumulation (for catch-up)
+    let currentStreamingMessageId: string | null = null;
+
     // Helper to send a relay event
     const sendEvent = (eventType: string, data: unknown) => {
       const relayEvent: RelayEvent = {
@@ -355,6 +363,31 @@ export function createWsRelayRoutes(
             await aug.processMessage(message);
 
             sendEvent("message", message);
+
+            // Track message ID for text accumulation (for catch-up)
+            // This ensures late-joining clients get streaming content
+            const startMessageId =
+              extractMessageIdFromStart(message) ??
+              extractIdFromAssistant(message);
+            if (startMessageId) {
+              currentStreamingMessageId = startMessageId;
+            }
+
+            // Accumulate text for late-joining clients
+            const textDelta =
+              extractTextDelta(message) ?? extractTextFromAssistant(message);
+            if (textDelta && currentStreamingMessageId) {
+              process.accumulateStreamingText(
+                currentStreamingMessageId,
+                textDelta,
+              );
+            }
+
+            // Clear accumulated text when streaming ends
+            if (isStreamingComplete(message)) {
+              currentStreamingMessageId = null;
+              process.clearStreamingText();
+            }
             break;
           }
 
@@ -409,6 +442,12 @@ export function createWsRelayRoutes(
     subscriptions.set(subscriptionId, () => {
       clearInterval(heartbeatInterval);
       unsubscribe();
+      // Clear streaming text accumulator to prevent stale catch-up data
+      // This is important when client disconnects mid-stream
+      if (currentStreamingMessageId) {
+        process.clearStreamingText();
+        currentStreamingMessageId = null;
+      }
     });
 
     console.log(

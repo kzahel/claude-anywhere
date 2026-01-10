@@ -30,16 +30,20 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
   const mountedUrlRef = useRef<string | null>(null);
   // Track if using WebSocket
   const useWebSocketRef = useRef(false);
+  // Track pending WebSocket connection to handle race conditions
+  // When sessionId changes during async import, we need to close the old subscription
+  const pendingWsSessionRef = useRef<string | null>(null);
 
   const connect = useCallback(() => {
     if (!url) {
       // Reset tracking when URL becomes null so we can reconnect later
       // (e.g., when status goes idle → owned again for the same session)
       mountedUrlRef.current = null;
+      pendingWsSessionRef.current = null;
       return;
     }
 
-    // Don't create duplicate connections
+    // Don't create duplicate connections (including pending async connections)
     if (eventSourceRef.current || wsSubscriptionRef.current) return;
 
     // Skip StrictMode double-mount (same URL, already connected once)
@@ -61,8 +65,25 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
 
   const connectWebSocket = useCallback(
     (sessionId: string) => {
+      // Track which session we're trying to connect to
+      // This handles race conditions when sessionId changes during async import
+      pendingWsSessionRef.current = sessionId;
+
       // Lazy import to avoid circular dependencies
       import("../lib/connection").then(({ getWebSocketConnection }) => {
+        // Check if we're still supposed to connect to this session
+        // If sessionId changed during the async import, abort this connection
+        if (pendingWsSessionRef.current !== sessionId) {
+          return;
+        }
+
+        // Close any existing subscription before creating a new one
+        // This handles the case where cleanup ran but async import was pending
+        if (wsSubscriptionRef.current) {
+          wsSubscriptionRef.current.close();
+          wsSubscriptionRef.current = null;
+        }
+
         const connection = getWebSocketConnection();
         const handlers = {
           onEvent: (
@@ -181,6 +202,8 @@ export function useSSE(url: string | null, options: UseSSEOptions) {
       eventSourceRef.current = null;
       wsSubscriptionRef.current?.close();
       wsSubscriptionRef.current = null;
+      // Clear pending session to prevent stale async imports from creating subscriptions
+      pendingWsSessionRef.current = null;
       // Reset mountedUrlRef so the next mount can connect
       // This is needed for StrictMode where cleanup runs between mounts
       mountedUrlRef.current = null;
