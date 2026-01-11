@@ -24,8 +24,10 @@ import type {
   YepMessage,
 } from "@yep-anywhere/shared";
 import {
+  BinaryEnvelopeError,
   BinaryFormat,
   BinaryFrameError,
+  MIN_BINARY_ENVELOPE_LENGTH,
   decodeJsonFrame,
   // Binary framing utilities
   encodeJsonFrame,
@@ -34,6 +36,7 @@ import {
   isSrpClientHello,
   isSrpClientProof,
   isSrpSessionResume,
+  parseBinaryEnvelope,
 } from "@yep-anywhere/shared";
 import type { Context, Hono } from "hono";
 import type { WSContext, WSEvents } from "hono/ws";
@@ -50,8 +53,10 @@ import {
 import {
   SrpServerSession,
   decrypt,
+  decryptBinaryEnvelope,
   deriveSecretboxKey,
   encrypt,
+  encryptToBinaryEnvelope,
 } from "../crypto/index.js";
 import type {
   RemoteAccessService,
@@ -100,8 +105,10 @@ interface ConnectionState {
   username: string | null;
   /** Persistent session ID for resumption (set after successful auth) */
   sessionId: string | null;
-  /** Whether client sent binary frames (respond with binary if true) */
+  /** Whether client sent binary frames (respond with binary if true) - Phase 0 */
   useBinaryFrames: boolean;
+  /** Whether client sent binary encrypted frames (respond with binary encrypted if true) - Phase 1 */
+  useBinaryEncrypted: boolean;
 }
 
 /** Tracks an active upload over WebSocket relay */
@@ -169,19 +176,31 @@ type SendFn = (msg: YepMessage) => void;
 /**
  * Create an encryption-aware send function for a connection.
  * Automatically encrypts messages when the connection is authenticated with a session key.
- * Uses binary frames when the client has sent binary frames (Phase 0 binary protocol).
+ * Uses binary frames when the client has sent binary frames (Phase 0/1 binary protocol).
  */
 const createSendFn = (ws: WSContext, connState: ConnectionState): SendFn => {
   return (msg: YepMessage) => {
     if (connState.authState === "authenticated" && connState.sessionKey) {
       const plaintext = JSON.stringify(msg);
-      const { nonce, ciphertext } = encrypt(plaintext, connState.sessionKey);
-      const envelope: EncryptedEnvelope = {
-        type: "encrypted",
-        nonce,
-        ciphertext,
-      };
-      ws.send(JSON.stringify(envelope));
+
+      if (connState.useBinaryEncrypted) {
+        // Phase 1: Binary encrypted envelope
+        // Wire format: [version][nonce][ciphertext] where ciphertext decrypts to [format][payload]
+        const envelope = encryptToBinaryEnvelope(
+          plaintext,
+          connState.sessionKey,
+        );
+        ws.send(envelope);
+      } else {
+        // Legacy: JSON encrypted envelope
+        const { nonce, ciphertext } = encrypt(plaintext, connState.sessionKey);
+        const envelope: EncryptedEnvelope = {
+          type: "encrypted",
+          nonce,
+          ciphertext,
+        };
+        ws.send(JSON.stringify(envelope));
+      }
     } else if (connState.useBinaryFrames) {
       // Client sent binary frames, respond with binary
       ws.send(encodeJsonFrame(msg));
@@ -1055,8 +1074,47 @@ export function createWsRelayRoutes(
   };
 
   /**
+   * Check if binary data looks like a binary encrypted envelope.
+   * Binary envelope: [1 byte: version 0x01][24 bytes: nonce][ciphertext]
+   * vs Phase 0 binary: [1 byte: format 0x01-0x03][payload]
+   *
+   * We can distinguish them because:
+   * - Binary envelope starts with version 0x01 and is at least MIN_BINARY_ENVELOPE_LENGTH bytes
+   * - Binary envelope is only valid when authenticated (has session key)
+   * - Phase 0 format bytes 0x02-0x03 are clearly not version 0x01
+   */
+  const isBinaryEncryptedEnvelope = (
+    bytes: Uint8Array,
+    connState: ConnectionState,
+  ): boolean => {
+    // Must be authenticated with a session key to receive encrypted data
+    if (connState.authState !== "authenticated" || !connState.sessionKey) {
+      return false;
+    }
+    // Must be at least minimum envelope length
+    if (bytes.length < MIN_BINARY_ENVELOPE_LENGTH) {
+      return false;
+    }
+    // First byte must be version 0x01
+    if (bytes[0] !== 0x01) {
+      return false;
+    }
+    // For Phase 0 binary frames, a format byte 0x01 followed by valid JSON
+    // typically starts with '{' (0x7B) or '[' (0x5B) at position 1.
+    // For binary envelope, position 1-24 is the nonce (random bytes).
+    // We use a heuristic: if bytes[1] is a printable ASCII char that starts JSON,
+    // it's likely Phase 0 format. Otherwise, treat as binary envelope.
+    const secondByte = bytes[1];
+    if (secondByte === 0x7b || secondByte === 0x5b) {
+      // '{' or '[' - likely Phase 0 JSON frame
+      return false;
+    }
+    return true;
+  };
+
+  /**
    * Handle incoming WebSocket messages.
-   * Supports both text frames (JSON) and binary frames (format byte + payload).
+   * Supports both text frames (JSON) and binary frames (format byte + payload or encrypted envelope).
    */
   const handleMessage = async (
     ws: WSContext,
@@ -1068,31 +1126,105 @@ export function createWsRelayRoutes(
   ): Promise<void> => {
     // Parse message - handle both binary and text frames
     let parsed: unknown;
+    // Track if this message was a binary encrypted envelope
+    let wasBinaryEncrypted = false;
 
     if (isBinaryData(data)) {
-      // Binary frame - decode format byte + payload
-      try {
-        const { format, payload } = (() => {
-          // Convert Buffer to Uint8Array for consistent handling
-          const bytes =
-            data instanceof ArrayBuffer ? new Uint8Array(data) : data;
-          if (bytes.length === 0) {
-            throw new BinaryFrameError("Empty binary frame", "UNKNOWN_FORMAT");
+      // Convert Buffer to Uint8Array for consistent handling
+      const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+
+      if (bytes.length === 0) {
+        console.warn("[WS Relay] Empty binary frame");
+        return;
+      }
+
+      // Check if this is a binary encrypted envelope (Phase 1)
+      if (isBinaryEncryptedEnvelope(bytes, connState) && connState.sessionKey) {
+        try {
+          // Decrypt binary envelope
+          const decrypted = decryptBinaryEnvelope(bytes, connState.sessionKey);
+          if (!decrypted) {
+            console.warn("[WS Relay] Failed to decrypt binary envelope");
+            return;
           }
-          const format = bytes[0] as number;
-          // Validate format byte - only 0x01-0x03 are valid
-          if (
-            format !== BinaryFormat.JSON &&
-            format !== BinaryFormat.BINARY_UPLOAD &&
-            format !== BinaryFormat.COMPRESSED_JSON
-          ) {
-            throw new BinaryFrameError(
-              `Unknown format byte: 0x${format.toString(16).padStart(2, "0")}`,
-              "UNKNOWN_FORMAT",
+
+          // Mark client as using binary encrypted frames
+          connState.useBinaryEncrypted = true;
+          wasBinaryEncrypted = true;
+
+          // Parse decrypted JSON
+          try {
+            const msg = JSON.parse(decrypted) as RemoteClientMessage;
+            // Route by message type (skip the encryption check below)
+            switch (msg.type) {
+              case "request":
+                await handleRequest(msg, send);
+                break;
+
+              case "subscribe":
+                handleSubscribe(subscriptions, msg, send);
+                break;
+
+              case "unsubscribe":
+                handleUnsubscribe(subscriptions, msg);
+                break;
+
+              case "upload_start":
+                await handleUploadStart(uploads, msg, send);
+                break;
+
+              case "upload_chunk":
+                await handleUploadChunk(uploads, msg, send);
+                break;
+
+              case "upload_end":
+                await handleUploadEnd(uploads, msg, send);
+                break;
+
+              default:
+                console.warn(
+                  "[WS Relay] Unknown message type:",
+                  (msg as { type?: string }).type,
+                );
+            }
+            return;
+          } catch {
+            console.warn(
+              "[WS Relay] Failed to parse decrypted binary envelope",
             );
+            return;
           }
-          return { format, payload: bytes.slice(1) };
-        })();
+        } catch (err) {
+          if (err instanceof BinaryEnvelopeError) {
+            console.warn(
+              `[WS Relay] Binary envelope error (${err.code}):`,
+              err.message,
+            );
+            if (err.code === "UNKNOWN_VERSION") {
+              ws.close(4002, err.message);
+            }
+          } else {
+            console.warn("[WS Relay] Failed to process binary envelope:", err);
+          }
+          return;
+        }
+      }
+
+      // Phase 0: Binary frame with format byte + payload
+      try {
+        const format = bytes[0] as number;
+        // Validate format byte - only 0x01-0x03 are valid
+        if (
+          format !== BinaryFormat.JSON &&
+          format !== BinaryFormat.BINARY_UPLOAD &&
+          format !== BinaryFormat.COMPRESSED_JSON
+        ) {
+          throw new BinaryFrameError(
+            `Unknown format byte: 0x${format.toString(16).padStart(2, "0")}`,
+            "UNKNOWN_FORMAT",
+          );
+        }
+        const payload = bytes.slice(1);
 
         // Mark client as using binary frames
         connState.useBinaryFrames = true;
@@ -1165,7 +1297,7 @@ export function createWsRelayRoutes(
       return;
     }
 
-    // Handle encrypted messages
+    // Handle encrypted messages (JSON envelope format - legacy)
     let msg: RemoteClientMessage;
     if (isEncryptedEnvelope(parsed)) {
       if (connState.authState !== "authenticated" || !connState.sessionKey) {
@@ -1264,6 +1396,7 @@ export function createWsRelayRoutes(
       username: null,
       sessionId: null,
       useBinaryFrames: false,
+      useBinaryEncrypted: false,
     };
     // Encryption-aware send function (created on open, captures connState)
     let send: SendFn;

@@ -1,7 +1,13 @@
 /**
- * Binary framing utilities for WebSocket relay protocol (Phase 0).
+ * Binary framing utilities for WebSocket relay protocol.
  *
- * Wire format for unencrypted binary frames:
+ * Phase 0 - Unencrypted binary frames:
+ * [1 byte: format][payload]
+ *
+ * Phase 1 - Encrypted binary envelope:
+ * [1 byte: version][24 bytes: nonce][ciphertext]
+ *
+ * The ciphertext decrypts to:
  * [1 byte: format][payload]
  *
  * Format values:
@@ -148,4 +154,184 @@ export function isBinaryData(data: unknown): data is ArrayBuffer | Uint8Array {
     return true;
   }
   return false;
+}
+
+// =============================================================================
+// Phase 1: Binary Encrypted Envelope
+// =============================================================================
+
+/**
+ * Version byte values for binary encrypted envelope.
+ * The version byte is outside the ciphertext to allow for protocol evolution.
+ */
+export const BinaryEnvelopeVersion = {
+  /** Initial binary format (format byte inside ciphertext) */
+  V1: 0x01,
+} as const;
+
+export type BinaryEnvelopeVersionValue =
+  (typeof BinaryEnvelopeVersion)[keyof typeof BinaryEnvelopeVersion];
+
+/** Length of NaCl secretbox nonce (24 bytes) */
+export const NONCE_LENGTH = 24;
+
+/** Length of version byte (1 byte) */
+export const VERSION_LENGTH = 1;
+
+/** Minimum binary envelope length: version (1) + nonce (24) + MAC (16) + format (1) */
+export const MIN_BINARY_ENVELOPE_LENGTH =
+  VERSION_LENGTH + NONCE_LENGTH + 16 + 1;
+
+/** Error thrown when binary envelope parsing fails */
+export class BinaryEnvelopeError extends Error {
+  constructor(
+    message: string,
+    public readonly code:
+      | "UNKNOWN_VERSION"
+      | "INVALID_LENGTH"
+      | "DECRYPTION_FAILED"
+      | "INVALID_FORMAT",
+  ) {
+    super(message);
+    this.name = "BinaryEnvelopeError";
+  }
+}
+
+/**
+ * Parsed components of a binary encrypted envelope.
+ * Used for decryption - provides version, nonce, and ciphertext separately.
+ */
+export interface BinaryEnvelopeComponents {
+  /** Protocol version (0x01 = initial) */
+  version: BinaryEnvelopeVersionValue;
+  /** Random 24-byte nonce */
+  nonce: Uint8Array;
+  /** Encrypted payload (format byte + inner payload) */
+  ciphertext: Uint8Array;
+}
+
+/**
+ * Parse a binary encrypted envelope into its components.
+ *
+ * Wire format: [1 byte: version][24 bytes: nonce][ciphertext]
+ *
+ * @param data - ArrayBuffer or Uint8Array containing the envelope
+ * @returns Parsed components (version, nonce, ciphertext)
+ * @throws BinaryEnvelopeError if envelope is invalid
+ */
+export function parseBinaryEnvelope(
+  data: ArrayBuffer | Uint8Array,
+): BinaryEnvelopeComponents {
+  const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+
+  if (bytes.length < MIN_BINARY_ENVELOPE_LENGTH) {
+    throw new BinaryEnvelopeError(
+      `Binary envelope too short: ${bytes.length} bytes (minimum ${MIN_BINARY_ENVELOPE_LENGTH})`,
+      "INVALID_LENGTH",
+    );
+  }
+
+  const version = bytes[0] as number;
+
+  // Validate version byte
+  if (version !== BinaryEnvelopeVersion.V1) {
+    throw new BinaryEnvelopeError(
+      `Unknown envelope version: 0x${version.toString(16).padStart(2, "0")}`,
+      "UNKNOWN_VERSION",
+    );
+  }
+
+  const nonce = bytes.slice(VERSION_LENGTH, VERSION_LENGTH + NONCE_LENGTH);
+  const ciphertext = bytes.slice(VERSION_LENGTH + NONCE_LENGTH);
+
+  return {
+    version: version as BinaryEnvelopeVersionValue,
+    nonce,
+    ciphertext,
+  };
+}
+
+/**
+ * Create a binary encrypted envelope from components.
+ *
+ * @param nonce - 24-byte random nonce
+ * @param ciphertext - Encrypted payload
+ * @param version - Protocol version (default: V1)
+ * @returns ArrayBuffer containing [version][nonce][ciphertext]
+ */
+export function createBinaryEnvelope(
+  nonce: Uint8Array,
+  ciphertext: Uint8Array,
+  version: BinaryEnvelopeVersionValue = BinaryEnvelopeVersion.V1,
+): ArrayBuffer {
+  if (nonce.length !== NONCE_LENGTH) {
+    throw new BinaryEnvelopeError(
+      `Invalid nonce length: ${nonce.length} (expected ${NONCE_LENGTH})`,
+      "INVALID_LENGTH",
+    );
+  }
+
+  const buffer = new ArrayBuffer(
+    VERSION_LENGTH + NONCE_LENGTH + ciphertext.length,
+  );
+  const view = new Uint8Array(buffer);
+
+  view[0] = version;
+  view.set(nonce, VERSION_LENGTH);
+  view.set(ciphertext, VERSION_LENGTH + NONCE_LENGTH);
+
+  return buffer;
+}
+
+/**
+ * Prepend a format byte to a payload.
+ * Used before encryption to create the inner payload.
+ *
+ * @param format - Format byte (0x01 = JSON, 0x02 = binary upload, 0x03 = compressed)
+ * @param payload - Raw payload bytes
+ * @returns Uint8Array with [format][payload]
+ */
+export function prependFormatByte(
+  format: BinaryFormatValue,
+  payload: Uint8Array,
+): Uint8Array {
+  const result = new Uint8Array(1 + payload.length);
+  result[0] = format;
+  result.set(payload, 1);
+  return result;
+}
+
+/**
+ * Extract format byte and payload from decrypted data.
+ *
+ * @param decrypted - Decrypted bytes from envelope
+ * @returns Object with format byte and payload
+ * @throws BinaryEnvelopeError if format byte is invalid
+ */
+export function extractFormatAndPayload(decrypted: Uint8Array): {
+  format: BinaryFormatValue;
+  payload: Uint8Array;
+} {
+  if (decrypted.length === 0) {
+    throw new BinaryEnvelopeError("Empty decrypted payload", "INVALID_FORMAT");
+  }
+
+  const format = decrypted[0] as number;
+
+  // Validate format byte
+  if (
+    format !== BinaryFormat.JSON &&
+    format !== BinaryFormat.BINARY_UPLOAD &&
+    format !== BinaryFormat.COMPRESSED_JSON
+  ) {
+    throw new BinaryEnvelopeError(
+      `Unknown format byte: 0x${format.toString(16).padStart(2, "0")}`,
+      "INVALID_FORMAT",
+    );
+  }
+
+  return {
+    format: format as BinaryFormatValue,
+    payload: decrypted.slice(1),
+  };
 }

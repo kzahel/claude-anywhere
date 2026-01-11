@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  BinaryEnvelopeError,
+  BinaryEnvelopeVersion,
   BinaryFormat,
   BinaryFrameError,
+  MIN_BINARY_ENVELOPE_LENGTH,
+  NONCE_LENGTH,
+  VERSION_LENGTH,
+  createBinaryEnvelope,
   decodeBinaryFrame,
   decodeJsonFrame,
   encodeJsonFrame,
+  extractFormatAndPayload,
   isBinaryData,
+  parseBinaryEnvelope,
+  prependFormatByte,
 } from "../src/binary-framing.js";
 
 describe("binary-framing", () => {
@@ -325,6 +334,263 @@ describe("binary-framing", () => {
 
     it("is instanceof Error", () => {
       const err = new BinaryFrameError("test", "UNKNOWN_FORMAT");
+      expect(err).toBeInstanceOf(Error);
+    });
+  });
+});
+
+// =============================================================================
+// Phase 1: Binary Encrypted Envelope Tests
+// =============================================================================
+
+describe("binary-envelope (Phase 1)", () => {
+  describe("BinaryEnvelopeVersion constants", () => {
+    it("has correct values", () => {
+      expect(BinaryEnvelopeVersion.V1).toBe(0x01);
+    });
+  });
+
+  describe("constants", () => {
+    it("NONCE_LENGTH is 24", () => {
+      expect(NONCE_LENGTH).toBe(24);
+    });
+
+    it("VERSION_LENGTH is 1", () => {
+      expect(VERSION_LENGTH).toBe(1);
+    });
+
+    it("MIN_BINARY_ENVELOPE_LENGTH is correct", () => {
+      // version (1) + nonce (24) + MAC (16) + format (1) = 42
+      expect(MIN_BINARY_ENVELOPE_LENGTH).toBe(42);
+    });
+  });
+
+  describe("prependFormatByte", () => {
+    it("prepends format byte 0x01 to JSON payload", () => {
+      const payload = new TextEncoder().encode('{"test":"data"}');
+      const result = prependFormatByte(BinaryFormat.JSON, payload);
+
+      expect(result[0]).toBe(BinaryFormat.JSON);
+      expect(result.slice(1)).toEqual(payload);
+    });
+
+    it("prepends format byte 0x02 to binary payload", () => {
+      const payload = new Uint8Array([0xff, 0xfe, 0xfd]);
+      const result = prependFormatByte(BinaryFormat.BINARY_UPLOAD, payload);
+
+      expect(result[0]).toBe(BinaryFormat.BINARY_UPLOAD);
+      expect(result.slice(1)).toEqual(payload);
+    });
+
+    it("prepends format byte 0x03 to compressed payload", () => {
+      const payload = new Uint8Array([0x1f, 0x8b, 0x08]); // gzip magic
+      const result = prependFormatByte(BinaryFormat.COMPRESSED_JSON, payload);
+
+      expect(result[0]).toBe(BinaryFormat.COMPRESSED_JSON);
+      expect(result.slice(1)).toEqual(payload);
+    });
+
+    it("handles empty payload", () => {
+      const payload = new Uint8Array(0);
+      const result = prependFormatByte(BinaryFormat.JSON, payload);
+
+      expect(result.length).toBe(1);
+      expect(result[0]).toBe(BinaryFormat.JSON);
+    });
+  });
+
+  describe("extractFormatAndPayload", () => {
+    it("extracts format 0x01 and payload", () => {
+      const data = new Uint8Array([BinaryFormat.JSON, 0x7b, 0x7d]); // 0x01 + "{}"
+      const { format, payload } = extractFormatAndPayload(data);
+
+      expect(format).toBe(BinaryFormat.JSON);
+      expect(new TextDecoder().decode(payload)).toBe("{}");
+    });
+
+    it("extracts format 0x02 and binary payload", () => {
+      const data = new Uint8Array([BinaryFormat.BINARY_UPLOAD, 0xff, 0xfe]);
+      const { format, payload } = extractFormatAndPayload(data);
+
+      expect(format).toBe(BinaryFormat.BINARY_UPLOAD);
+      expect(payload).toEqual(new Uint8Array([0xff, 0xfe]));
+    });
+
+    it("throws for empty input", () => {
+      const data = new Uint8Array(0);
+      expect(() => extractFormatAndPayload(data)).toThrow(BinaryEnvelopeError);
+      try {
+        extractFormatAndPayload(data);
+      } catch (err) {
+        expect((err as BinaryEnvelopeError).code).toBe("INVALID_FORMAT");
+      }
+    });
+
+    it("throws for unknown format byte", () => {
+      const data = new Uint8Array([0x00, 0x01, 0x02]); // 0x00 is invalid
+      expect(() => extractFormatAndPayload(data)).toThrow(BinaryEnvelopeError);
+      try {
+        extractFormatAndPayload(data);
+      } catch (err) {
+        expect((err as BinaryEnvelopeError).code).toBe("INVALID_FORMAT");
+        expect((err as BinaryEnvelopeError).message).toContain("0x00");
+      }
+    });
+
+    it("round-trips with prependFormatByte", () => {
+      const original = new TextEncoder().encode('{"round":"trip"}');
+      const withFormat = prependFormatByte(BinaryFormat.JSON, original);
+      const { format, payload } = extractFormatAndPayload(withFormat);
+
+      expect(format).toBe(BinaryFormat.JSON);
+      expect(payload).toEqual(original);
+    });
+  });
+
+  describe("createBinaryEnvelope", () => {
+    it("creates envelope with correct structure", () => {
+      const nonce = new Uint8Array(NONCE_LENGTH).fill(0x42);
+      const ciphertext = new Uint8Array([0xaa, 0xbb, 0xcc]);
+
+      const envelope = createBinaryEnvelope(nonce, ciphertext);
+      const view = new Uint8Array(envelope);
+
+      expect(view[0]).toBe(BinaryEnvelopeVersion.V1);
+      expect(view.slice(VERSION_LENGTH, VERSION_LENGTH + NONCE_LENGTH)).toEqual(
+        nonce,
+      );
+      expect(view.slice(VERSION_LENGTH + NONCE_LENGTH)).toEqual(ciphertext);
+    });
+
+    it("uses provided version", () => {
+      const nonce = new Uint8Array(NONCE_LENGTH);
+      const ciphertext = new Uint8Array([0x00]);
+
+      const envelope = createBinaryEnvelope(
+        nonce,
+        ciphertext,
+        BinaryEnvelopeVersion.V1,
+      );
+      const view = new Uint8Array(envelope);
+
+      expect(view[0]).toBe(0x01);
+    });
+
+    it("throws for wrong nonce length", () => {
+      const shortNonce = new Uint8Array(16);
+      const ciphertext = new Uint8Array([0x00]);
+
+      expect(() => createBinaryEnvelope(shortNonce, ciphertext)).toThrow(
+        BinaryEnvelopeError,
+      );
+    });
+
+    it("handles large ciphertext", () => {
+      const nonce = new Uint8Array(NONCE_LENGTH);
+      const ciphertext = new Uint8Array(100000).fill(0xab);
+
+      const envelope = createBinaryEnvelope(nonce, ciphertext);
+      expect(envelope.byteLength).toBe(VERSION_LENGTH + NONCE_LENGTH + 100000);
+    });
+  });
+
+  describe("parseBinaryEnvelope", () => {
+    it("parses valid envelope", () => {
+      const nonce = new Uint8Array(NONCE_LENGTH).fill(0x42);
+      // Ciphertext needs to be at least 17 bytes (16 MAC + 1 format byte minimum)
+      const ciphertext = new Uint8Array(17).fill(0xaa);
+      const envelope = createBinaryEnvelope(nonce, ciphertext);
+
+      const parsed = parseBinaryEnvelope(envelope);
+
+      expect(parsed.version).toBe(BinaryEnvelopeVersion.V1);
+      expect(parsed.nonce).toEqual(nonce);
+      expect(parsed.ciphertext).toEqual(ciphertext);
+    });
+
+    it("works with Uint8Array input", () => {
+      const nonce = new Uint8Array(NONCE_LENGTH).fill(0x11);
+      // Ciphertext needs to be at least 17 bytes (16 MAC + 1 format byte minimum)
+      const ciphertext = new Uint8Array(17).fill(0x22);
+      const envelope = createBinaryEnvelope(nonce, ciphertext);
+
+      const parsed = parseBinaryEnvelope(new Uint8Array(envelope));
+
+      expect(parsed.version).toBe(BinaryEnvelopeVersion.V1);
+      expect(parsed.nonce).toEqual(nonce);
+    });
+
+    it("throws for too-short envelope", () => {
+      const tooShort = new ArrayBuffer(MIN_BINARY_ENVELOPE_LENGTH - 1);
+      expect(() => parseBinaryEnvelope(tooShort)).toThrow(BinaryEnvelopeError);
+      try {
+        parseBinaryEnvelope(tooShort);
+      } catch (err) {
+        expect((err as BinaryEnvelopeError).code).toBe("INVALID_LENGTH");
+      }
+    });
+
+    it("throws for unknown version byte", () => {
+      // Create valid-length envelope with wrong version
+      const buffer = new ArrayBuffer(MIN_BINARY_ENVELOPE_LENGTH);
+      const view = new Uint8Array(buffer);
+      view[0] = 0x02; // Invalid version
+
+      expect(() => parseBinaryEnvelope(buffer)).toThrow(BinaryEnvelopeError);
+      try {
+        parseBinaryEnvelope(buffer);
+      } catch (err) {
+        expect((err as BinaryEnvelopeError).code).toBe("UNKNOWN_VERSION");
+        expect((err as BinaryEnvelopeError).message).toContain("0x02");
+      }
+    });
+
+    it("throws for version 0x00", () => {
+      const buffer = new ArrayBuffer(MIN_BINARY_ENVELOPE_LENGTH);
+      const view = new Uint8Array(buffer);
+      view[0] = 0x00;
+
+      expect(() => parseBinaryEnvelope(buffer)).toThrow(BinaryEnvelopeError);
+    });
+
+    it("round-trips with createBinaryEnvelope", () => {
+      const nonce = new Uint8Array(NONCE_LENGTH);
+      // Fill with pseudo-random values
+      for (let i = 0; i < NONCE_LENGTH; i++) {
+        nonce[i] = (i * 7) % 256;
+      }
+      const ciphertext = new Uint8Array([
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+        0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+      ]);
+
+      const envelope = createBinaryEnvelope(nonce, ciphertext);
+      const parsed = parseBinaryEnvelope(envelope);
+
+      expect(parsed.version).toBe(BinaryEnvelopeVersion.V1);
+      expect(parsed.nonce).toEqual(nonce);
+      expect(parsed.ciphertext).toEqual(ciphertext);
+    });
+  });
+
+  describe("BinaryEnvelopeError", () => {
+    it("has correct name", () => {
+      const err = new BinaryEnvelopeError("test", "UNKNOWN_VERSION");
+      expect(err.name).toBe("BinaryEnvelopeError");
+    });
+
+    it("has correct message", () => {
+      const err = new BinaryEnvelopeError("custom message", "INVALID_LENGTH");
+      expect(err.message).toBe("custom message");
+    });
+
+    it("has correct code", () => {
+      const err = new BinaryEnvelopeError("test", "DECRYPTION_FAILED");
+      expect(err.code).toBe("DECRYPTION_FAILED");
+    });
+
+    it("is instanceof Error", () => {
+      const err = new BinaryEnvelopeError("test", "INVALID_FORMAT");
       expect(err).toBeInstanceOf(Error);
     });
   });

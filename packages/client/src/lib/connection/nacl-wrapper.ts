@@ -2,7 +2,17 @@
  * NaCl secretbox encryption helpers for relay protocol (browser-compatible).
  *
  * Uses TweetNaCl for XSalsa20-Poly1305 authenticated encryption.
+ * Supports both JSON envelope format (Phase 2) and binary envelope format (Phase 1).
  */
+import {
+  BinaryEnvelopeError,
+  BinaryFormat,
+  type BinaryFormatValue,
+  createBinaryEnvelope,
+  extractFormatAndPayload,
+  parseBinaryEnvelope,
+  prependFormatByte,
+} from "@yep-anywhere/shared";
 import nacl from "tweetnacl";
 
 /** Nonce length for secretbox (24 bytes) */
@@ -112,4 +122,138 @@ export function deriveSecretboxKey(srpSessionKey: Uint8Array): Uint8Array {
  */
 export function generateRandomKey(): Uint8Array {
   return nacl.randomBytes(KEY_LENGTH);
+}
+
+// =============================================================================
+// Phase 1: Binary Encrypted Envelope
+// =============================================================================
+
+/**
+ * Encrypt a message to binary envelope format.
+ * Wire format: [1 byte: version][24 bytes: nonce][ciphertext]
+ * Where ciphertext decrypts to: [1 byte: format][payload]
+ *
+ * @param plaintext - UTF-8 string to encrypt (will be JSON format 0x01)
+ * @param key - 32-byte secret key
+ * @returns ArrayBuffer containing the binary envelope
+ */
+export function encryptToBinaryEnvelope(
+  plaintext: string,
+  key: Uint8Array,
+): ArrayBuffer {
+  if (key.length !== KEY_LENGTH) {
+    throw new Error(`Key must be ${KEY_LENGTH} bytes, got ${key.length}`);
+  }
+
+  const nonce = generateNonce();
+  const message = new TextEncoder().encode(plaintext);
+
+  // Prepend format byte (0x01 for JSON)
+  const innerPayload = prependFormatByte(BinaryFormat.JSON, message);
+
+  // Encrypt the inner payload
+  const ciphertext = nacl.secretbox(innerPayload, nonce, key);
+
+  // Create the binary envelope
+  return createBinaryEnvelope(nonce, ciphertext);
+}
+
+/**
+ * Encrypt raw bytes to binary envelope format with a specified format byte.
+ *
+ * @param data - Raw bytes to encrypt
+ * @param format - Format byte (0x01 = JSON, 0x02 = binary upload, 0x03 = compressed)
+ * @param key - 32-byte secret key
+ * @returns ArrayBuffer containing the binary envelope
+ */
+export function encryptBytesToBinaryEnvelope(
+  data: Uint8Array,
+  format: BinaryFormatValue,
+  key: Uint8Array,
+): ArrayBuffer {
+  if (key.length !== KEY_LENGTH) {
+    throw new Error(`Key must be ${KEY_LENGTH} bytes, got ${key.length}`);
+  }
+
+  const nonce = generateNonce();
+
+  // Prepend format byte
+  const innerPayload = prependFormatByte(format, data);
+
+  // Encrypt the inner payload
+  const ciphertext = nacl.secretbox(innerPayload, nonce, key);
+
+  // Create the binary envelope
+  return createBinaryEnvelope(nonce, ciphertext);
+}
+
+/**
+ * Decrypt a binary envelope and return the plaintext string.
+ * Expects format byte 0x01 (JSON).
+ *
+ * @param data - Binary envelope (ArrayBuffer or Uint8Array)
+ * @param key - 32-byte secret key
+ * @returns Decrypted plaintext string, or null if decryption failed
+ * @throws BinaryEnvelopeError if envelope format is invalid or format byte is not 0x01
+ */
+export function decryptBinaryEnvelope(
+  data: ArrayBuffer | Uint8Array,
+  key: Uint8Array,
+): string | null {
+  if (key.length !== KEY_LENGTH) {
+    throw new Error(`Key must be ${KEY_LENGTH} bytes, got ${key.length}`);
+  }
+
+  // Parse envelope components
+  const { nonce, ciphertext } = parseBinaryEnvelope(data);
+
+  // Decrypt
+  const decrypted = nacl.secretbox.open(ciphertext, nonce, key);
+  if (!decrypted) {
+    return null;
+  }
+
+  // Extract format byte and payload
+  const { format, payload } = extractFormatAndPayload(decrypted);
+
+  // For now, only support JSON format
+  if (format !== BinaryFormat.JSON) {
+    throw new BinaryEnvelopeError(
+      `Expected JSON format (0x01), got 0x${format.toString(16).padStart(2, "0")}`,
+      "INVALID_FORMAT",
+    );
+  }
+
+  // Decode UTF-8 payload
+  return new TextDecoder().decode(payload);
+}
+
+/**
+ * Decrypt a binary envelope and return raw bytes with format info.
+ * Supports all format types (JSON, binary upload, compressed).
+ *
+ * @param data - Binary envelope (ArrayBuffer or Uint8Array)
+ * @param key - 32-byte secret key
+ * @returns Object with format byte and payload bytes, or null if decryption failed
+ * @throws BinaryEnvelopeError if envelope format is invalid
+ */
+export function decryptBinaryEnvelopeRaw(
+  data: ArrayBuffer | Uint8Array,
+  key: Uint8Array,
+): { format: BinaryFormatValue; payload: Uint8Array } | null {
+  if (key.length !== KEY_LENGTH) {
+    throw new Error(`Key must be ${KEY_LENGTH} bytes, got ${key.length}`);
+  }
+
+  // Parse envelope components
+  const { nonce, ciphertext } = parseBinaryEnvelope(data);
+
+  // Decrypt
+  const decrypted = nacl.secretbox.open(ciphertext, nonce, key);
+  if (!decrypted) {
+    return null;
+  }
+
+  // Extract format byte and payload
+  return extractFormatAndPayload(decrypted);
 }

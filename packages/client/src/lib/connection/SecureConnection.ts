@@ -27,6 +27,7 @@ import type {
   YepMessage,
 } from "@yep-anywhere/shared";
 import {
+  isBinaryData,
   isEncryptedEnvelope,
   isSrpError,
   isSrpServerChallenge,
@@ -34,7 +35,13 @@ import {
   isSrpSessionInvalid,
   isSrpSessionResumed,
 } from "@yep-anywhere/shared";
-import { decrypt, deriveSecretboxKey, encrypt } from "./nacl-wrapper";
+import {
+  decrypt,
+  decryptBinaryEnvelope,
+  deriveSecretboxKey,
+  encrypt,
+  encryptToBinaryEnvelope,
+} from "./nacl-wrapper";
 import { SrpClientSession } from "./srp-client";
 import {
   type Connection,
@@ -328,6 +335,8 @@ export class SecureConnection implements Connection {
       this.connectionState = "connecting";
 
       const ws = new WebSocket(this.wsUrl);
+      // Set binaryType to receive ArrayBuffer instead of Blob for binary frames
+      ws.binaryType = "arraybuffer";
 
       // Create auth handlers that will be set by the Promise executor
       // These are guaranteed to be set before any callbacks fire
@@ -589,38 +598,55 @@ export class SecureConnection implements Connection {
 
   /**
    * Handle incoming WebSocket messages (after authentication).
+   * Supports both binary envelope (Phase 1) and JSON envelope (legacy) formats.
    */
   private handleMessage(data: unknown): void {
-    if (typeof data !== "string") {
-      console.warn("[SecureConnection] Ignoring non-string message");
-      return;
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(data);
-    } catch {
-      console.warn("[SecureConnection] Failed to parse message:", data);
-      return;
-    }
-
-    // All messages after auth should be encrypted
-    if (!isEncryptedEnvelope(parsed)) {
-      console.warn(
-        "[SecureConnection] Received unencrypted message after auth",
-      );
-      return;
-    }
-
     // Decrypt the message
     if (!this.sessionKey) {
       console.warn("[SecureConnection] No session key for decryption");
       return;
     }
 
-    const decrypted = decrypt(parsed.nonce, parsed.ciphertext, this.sessionKey);
-    if (!decrypted) {
-      console.warn("[SecureConnection] Failed to decrypt message");
+    let decrypted: string | null = null;
+
+    // Handle binary data (Phase 1 binary envelope)
+    if (isBinaryData(data)) {
+      try {
+        decrypted = decryptBinaryEnvelope(data, this.sessionKey);
+        if (!decrypted) {
+          console.warn("[SecureConnection] Failed to decrypt binary envelope");
+          return;
+        }
+      } catch (err) {
+        console.warn("[SecureConnection] Binary envelope error:", err);
+        return;
+      }
+    } else if (typeof data === "string") {
+      // Handle text data (JSON envelope - legacy format)
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        console.warn("[SecureConnection] Failed to parse message:", data);
+        return;
+      }
+
+      // All messages after auth should be encrypted
+      if (!isEncryptedEnvelope(parsed)) {
+        console.warn(
+          "[SecureConnection] Received unencrypted message after auth",
+        );
+        return;
+      }
+
+      // Decrypt the legacy JSON envelope
+      decrypted = decrypt(parsed.nonce, parsed.ciphertext, this.sessionKey);
+      if (!decrypted) {
+        console.warn("[SecureConnection] Failed to decrypt JSON envelope");
+        return;
+      }
+    } else {
+      console.warn("[SecureConnection] Ignoring unknown message type");
       return;
     }
 
@@ -738,6 +764,7 @@ export class SecureConnection implements Connection {
 
   /**
    * Send an encrypted message over the WebSocket.
+   * Uses binary envelope format (Phase 1) for improved efficiency.
    */
   private send(msg: RemoteClientMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -748,13 +775,10 @@ export class SecureConnection implements Connection {
     }
 
     const plaintext = JSON.stringify(msg);
-    const { nonce, ciphertext } = encrypt(plaintext, this.sessionKey);
-    const envelope: EncryptedEnvelope = {
-      type: "encrypted",
-      nonce,
-      ciphertext,
-    };
-    this.ws.send(JSON.stringify(envelope));
+    // Use binary envelope format: [version][nonce][ciphertext]
+    // where ciphertext decrypts to [format byte][payload]
+    const envelope = encryptToBinaryEnvelope(plaintext, this.sessionKey);
+    this.ws.send(envelope);
   }
 
   /**

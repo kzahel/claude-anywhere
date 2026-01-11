@@ -18,6 +18,7 @@ import type {
   YepMessage,
 } from "@yep-anywhere/shared";
 import {
+  isBinaryData,
   isEncryptedEnvelope,
   isSrpError,
   isSrpServerChallenge,
@@ -34,8 +35,10 @@ import WebSocket from "ws";
 import { createApp } from "../../src/app.js";
 import {
   decrypt,
+  decryptBinaryEnvelope,
   deriveSecretboxKey,
   encrypt,
+  encryptToBinaryEnvelope,
 } from "../../src/crypto/index.js";
 import { attachUnifiedUpgradeHandler } from "../../src/frontend/index.js";
 import { RemoteAccessService } from "../../src/remote-access/index.js";
@@ -350,6 +353,7 @@ describe("Secure WebSocket Transport E2E", () => {
 
   /**
    * Send an encrypted request and wait for encrypted response.
+   * Handles both JSON envelope (legacy) and binary envelope (Phase 1) responses.
    */
   async function sendEncryptedRequest(
     ws: WebSocket,
@@ -363,32 +367,55 @@ describe("Secure WebSocket Transport E2E", () => {
       );
 
       const handler = (data: WebSocket.RawData) => {
-        const msg = JSON.parse(data.toString());
+        let decrypted: string | null = null;
 
-        if (!isEncryptedEnvelope(msg)) {
-          // Skip non-encrypted messages during SRP
-          return;
+        // The ws library may send data as Buffer even for text frames
+        // Try JSON envelope first (text format), then binary envelope
+        const dataStr = data.toString();
+
+        // First try to parse as JSON envelope (legacy format)
+        try {
+          const msg = JSON.parse(dataStr);
+          if (isEncryptedEnvelope(msg)) {
+            decrypted = decrypt(msg.nonce, msg.ciphertext, sessionKey);
+          }
+        } catch {
+          // Not valid JSON, might be binary envelope
         }
 
-        const decrypted = decrypt(msg.nonce, msg.ciphertext, sessionKey);
+        // If not JSON, try binary envelope (Phase 1)
+        if (
+          !decrypted &&
+          (Buffer.isBuffer(data) || data instanceof ArrayBuffer)
+        ) {
+          const bytes =
+            data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+          try {
+            decrypted = decryptBinaryEnvelope(bytes, sessionKey);
+          } catch {
+            return; // Not a valid binary envelope, skip
+          }
+        }
+
         if (!decrypted) {
-          clearTimeout(timeout);
-          ws.off("message", handler);
-          reject(new Error("Failed to decrypt response"));
-          return;
+          return; // Skip messages we couldn't decrypt
         }
 
-        const response = JSON.parse(decrypted) as YepMessage;
-        if (response.type === "response" && response.id === request.id) {
-          clearTimeout(timeout);
-          ws.off("message", handler);
-          resolve(response);
+        try {
+          const response = JSON.parse(decrypted) as YepMessage;
+          if (response.type === "response" && response.id === request.id) {
+            clearTimeout(timeout);
+            ws.off("message", handler);
+            resolve(response);
+          }
+        } catch {
+          return; // Couldn't parse decrypted content
         }
       };
 
       ws.on("message", handler);
 
-      // Send encrypted request
+      // Send encrypted request (JSON envelope format)
       const plaintext = JSON.stringify(request);
       const { nonce, ciphertext } = encrypt(plaintext, sessionKey);
       const envelope: EncryptedEnvelope = {
@@ -540,21 +567,48 @@ describe("Secure WebSocket Transport E2E", () => {
 
         const subscriptionId = randomUUID();
 
-        // Set up event collector
+        // Set up event collector - handle both binary and JSON responses
         const events: RelayEvent[] = [];
         const eventHandler = (data: WebSocket.RawData) => {
-          const msg = JSON.parse(data.toString());
-          if (!isEncryptedEnvelope(msg)) return;
+          let decrypted: string | null = null;
+          const dataStr = data.toString();
 
-          const decrypted = decrypt(msg.nonce, msg.ciphertext, sessionKey);
+          // First try to parse as JSON envelope (legacy format)
+          try {
+            const msg = JSON.parse(dataStr);
+            if (isEncryptedEnvelope(msg)) {
+              decrypted = decrypt(msg.nonce, msg.ciphertext, sessionKey);
+            }
+          } catch {
+            // Not valid JSON, might be binary envelope
+          }
+
+          // If not JSON, try binary envelope (Phase 1)
+          if (
+            !decrypted &&
+            (Buffer.isBuffer(data) || data instanceof ArrayBuffer)
+          ) {
+            const bytes =
+              data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+            try {
+              decrypted = decryptBinaryEnvelope(bytes, sessionKey);
+            } catch {
+              return;
+            }
+          }
+
           if (!decrypted) return;
 
-          const event = JSON.parse(decrypted) as YepMessage;
-          if (
-            event.type === "event" &&
-            event.subscriptionId === subscriptionId
-          ) {
-            events.push(event);
+          try {
+            const event = JSON.parse(decrypted) as YepMessage;
+            if (
+              event.type === "event" &&
+              event.subscriptionId === subscriptionId
+            ) {
+              events.push(event);
+            }
+          } catch {
+            return;
           }
         };
         ws.on("message", eventHandler);
@@ -574,6 +628,283 @@ describe("Secure WebSocket Transport E2E", () => {
 
         expect(events.length).toBeGreaterThanOrEqual(1);
         expect(events[0].eventType).toBe("connected");
+      } finally {
+        ws.close();
+      }
+    }, 15000);
+  });
+
+  describe("Binary Encrypted Transport (Phase 1)", () => {
+    /**
+     * Send a binary encrypted request and wait for binary encrypted response.
+     */
+    async function sendBinaryEncryptedRequest(
+      ws: WebSocket,
+      sessionKey: Uint8Array,
+      request: RelayRequest,
+    ): Promise<RelayResponse> {
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error("Request timeout")),
+          5000,
+        );
+
+        const handler = (data: WebSocket.RawData) => {
+          // Expect binary response
+          if (!Buffer.isBuffer(data) && !(data instanceof ArrayBuffer)) {
+            // Skip non-binary messages (shouldn't happen after we send binary)
+            return;
+          }
+
+          const bytes =
+            data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+
+          try {
+            const decrypted = decryptBinaryEnvelope(bytes, sessionKey);
+            if (!decrypted) {
+              return;
+            }
+
+            const response = JSON.parse(decrypted) as YepMessage;
+            if (response.type === "response" && response.id === request.id) {
+              clearTimeout(timeout);
+              ws.off("message", handler);
+              resolve(response);
+            }
+          } catch {
+            // Decryption or parsing failed, keep waiting
+          }
+        };
+
+        ws.on("message", handler);
+
+        // Send binary encrypted request
+        const plaintext = JSON.stringify(request);
+        const envelope = encryptToBinaryEnvelope(plaintext, sessionKey);
+        ws.send(envelope);
+      });
+    }
+
+    it("should handle binary encrypted GET request", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const sessionKey = await performSrpHandshakeV2(
+          ws,
+          TEST_USERNAME,
+          TEST_PASSWORD,
+        );
+
+        const request: RelayRequest = {
+          type: "request",
+          id: randomUUID(),
+          method: "GET",
+          path: "/health",
+        };
+
+        const response = await sendBinaryEncryptedRequest(
+          ws,
+          sessionKey,
+          request,
+        );
+
+        expect(response.status).toBe(200);
+        expect((response.body as { status: string }).status).toBe("ok");
+      } finally {
+        ws.close();
+      }
+    }, 15000);
+
+    it("should handle binary encrypted request for version endpoint", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const sessionKey = await performSrpHandshakeV2(
+          ws,
+          TEST_USERNAME,
+          TEST_PASSWORD,
+        );
+
+        const request: RelayRequest = {
+          type: "request",
+          id: randomUUID(),
+          method: "GET",
+          path: "/api/version",
+        };
+
+        const response = await sendBinaryEncryptedRequest(
+          ws,
+          sessionKey,
+          request,
+        );
+
+        expect(response.status).toBe(200);
+        expect(response.body).toHaveProperty("current");
+      } finally {
+        ws.close();
+      }
+    }, 15000);
+
+    it("should receive binary encrypted events when subscribing with binary", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const sessionKey = await performSrpHandshakeV2(
+          ws,
+          TEST_USERNAME,
+          TEST_PASSWORD,
+        );
+
+        const subscriptionId = randomUUID();
+
+        // Set up event collector for binary responses
+        const events: RelayEvent[] = [];
+        const eventHandler = (data: WebSocket.RawData) => {
+          if (!Buffer.isBuffer(data) && !(data instanceof ArrayBuffer)) {
+            return;
+          }
+
+          const bytes =
+            data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+
+          try {
+            const decrypted = decryptBinaryEnvelope(bytes, sessionKey);
+            if (!decrypted) return;
+
+            const event = JSON.parse(decrypted) as YepMessage;
+            if (
+              event.type === "event" &&
+              event.subscriptionId === subscriptionId
+            ) {
+              events.push(event);
+            }
+          } catch {
+            return;
+          }
+        };
+        ws.on("message", eventHandler);
+
+        // Send binary encrypted subscribe
+        const subscribe: RelaySubscribe = {
+          type: "subscribe",
+          subscriptionId,
+          channel: "activity",
+        };
+        const envelope = encryptToBinaryEnvelope(
+          JSON.stringify(subscribe),
+          sessionKey,
+        );
+        ws.send(envelope);
+
+        // Wait for connected event
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        expect(events.length).toBeGreaterThanOrEqual(1);
+        expect(events[0].eventType).toBe("connected");
+      } finally {
+        ws.close();
+      }
+    }, 15000);
+
+    it("should switch from JSON to binary envelope format correctly", async () => {
+      const ws = await connectWebSocket();
+
+      try {
+        const sessionKey = await performSrpHandshakeV2(
+          ws,
+          TEST_USERNAME,
+          TEST_PASSWORD,
+        );
+
+        // First, send a JSON encrypted request (legacy)
+        const request1: RelayRequest = {
+          type: "request",
+          id: randomUUID(),
+          method: "GET",
+          path: "/health",
+        };
+
+        // Wait for encrypted response (can be JSON or binary)
+        const response1Promise = new Promise<RelayResponse>(
+          (resolve, reject) => {
+            const timeout = setTimeout(
+              () => reject(new Error("Timeout waiting for response")),
+              5000,
+            );
+
+            const handler = (data: WebSocket.RawData) => {
+              let decrypted: string | null = null;
+              const dataStr = data.toString();
+
+              // First try to parse as JSON envelope (legacy format)
+              try {
+                const msg = JSON.parse(dataStr);
+                if (isEncryptedEnvelope(msg)) {
+                  decrypted = decrypt(msg.nonce, msg.ciphertext, sessionKey);
+                }
+              } catch {
+                // Not valid JSON, might be binary envelope
+              }
+
+              // If not JSON, try binary envelope (Phase 1)
+              if (
+                !decrypted &&
+                (Buffer.isBuffer(data) || data instanceof ArrayBuffer)
+              ) {
+                const bytes =
+                  data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+                try {
+                  decrypted = decryptBinaryEnvelope(bytes, sessionKey);
+                } catch {
+                  return;
+                }
+              }
+
+              if (!decrypted) return;
+
+              try {
+                const response = JSON.parse(decrypted) as YepMessage;
+                if (
+                  response.type === "response" &&
+                  response.id === request1.id
+                ) {
+                  clearTimeout(timeout);
+                  ws.off("message", handler);
+                  resolve(response);
+                }
+              } catch {
+                // Keep waiting
+              }
+            };
+
+            ws.on("message", handler);
+          },
+        );
+
+        // Send JSON encrypted request
+        const { nonce, ciphertext } = encrypt(
+          JSON.stringify(request1),
+          sessionKey,
+        );
+        ws.send(JSON.stringify({ type: "encrypted", nonce, ciphertext }));
+
+        const response1 = await response1Promise;
+        expect(response1.status).toBe(200);
+
+        // Now send a binary encrypted request
+        const request2: RelayRequest = {
+          type: "request",
+          id: randomUUID(),
+          method: "GET",
+          path: "/api/version",
+        };
+
+        const response2 = await sendBinaryEncryptedRequest(
+          ws,
+          sessionKey,
+          request2,
+        );
+        expect(response2.status).toBe(200);
       } finally {
         ws.close();
       }

@@ -1,10 +1,22 @@
+import {
+  BinaryEnvelopeError,
+  BinaryEnvelopeVersion,
+  BinaryFormat,
+  MIN_BINARY_ENVELOPE_LENGTH,
+  NONCE_LENGTH as SHARED_NONCE_LENGTH,
+  parseBinaryEnvelope,
+} from "@yep-anywhere/shared";
 import { describe, expect, it } from "vitest";
 import {
   KEY_LENGTH,
   NONCE_LENGTH,
   decrypt,
+  decryptBinaryEnvelope,
+  decryptBinaryEnvelopeRaw,
   deriveSecretboxKey,
   encrypt,
+  encryptBytesToBinaryEnvelope,
+  encryptToBinaryEnvelope,
   generateRandomKey,
 } from "../../src/crypto/nacl-wrapper.js";
 import { generateVerifier } from "../../src/crypto/srp-server.js";
@@ -314,4 +326,259 @@ describe("Integration: SRP + NaCl", () => {
 
     expect(decryptedResponse).toBe(response);
   }, 30000);
+});
+
+describe("Binary Encrypted Envelope (Phase 1)", () => {
+  describe("encryptToBinaryEnvelope", () => {
+    it("creates valid binary envelope", () => {
+      const key = generateRandomKey();
+      const message = '{"type":"request","id":"123"}';
+
+      const envelope = encryptToBinaryEnvelope(message, key);
+
+      expect(envelope).toBeInstanceOf(ArrayBuffer);
+      expect(envelope.byteLength).toBeGreaterThanOrEqual(
+        MIN_BINARY_ENVELOPE_LENGTH,
+      );
+
+      // Check version byte
+      const view = new Uint8Array(envelope);
+      expect(view[0]).toBe(BinaryEnvelopeVersion.V1);
+    });
+
+    it("produces different envelope for same message (random nonce)", () => {
+      const key = generateRandomKey();
+      const message = '{"test":"data"}';
+
+      const envelope1 = encryptToBinaryEnvelope(message, key);
+      const envelope2 = encryptToBinaryEnvelope(message, key);
+
+      const view1 = new Uint8Array(envelope1);
+      const view2 = new Uint8Array(envelope2);
+
+      // Nonces should be different (bytes 1-24)
+      let noncesDiffer = false;
+      for (let i = 1; i < 25; i++) {
+        if (view1[i] !== view2[i]) {
+          noncesDiffer = true;
+          break;
+        }
+      }
+      expect(noncesDiffer).toBe(true);
+    });
+
+    it("throws on invalid key length", () => {
+      const shortKey = new Uint8Array(16);
+      expect(() => encryptToBinaryEnvelope("test", shortKey)).toThrow();
+    });
+  });
+
+  describe("decryptBinaryEnvelope", () => {
+    it("round-trips JSON message", () => {
+      const key = generateRandomKey();
+      const original =
+        '{"type":"request","id":"test-123","path":"/api/sessions"}';
+
+      const envelope = encryptToBinaryEnvelope(original, key);
+      const decrypted = decryptBinaryEnvelope(envelope, key);
+
+      expect(decrypted).toBe(original);
+    });
+
+    it("handles unicode message", () => {
+      const key = generateRandomKey();
+      const original = '{"text":"Hello 世界 🌍 مرحبا"}';
+
+      const envelope = encryptToBinaryEnvelope(original, key);
+      const decrypted = decryptBinaryEnvelope(envelope, key);
+
+      expect(decrypted).toBe(original);
+    });
+
+    it("handles empty message", () => {
+      const key = generateRandomKey();
+      const original = "";
+
+      const envelope = encryptToBinaryEnvelope(original, key);
+      const decrypted = decryptBinaryEnvelope(envelope, key);
+
+      expect(decrypted).toBe("");
+    });
+
+    it("handles large message", () => {
+      const key = generateRandomKey();
+      const original = JSON.stringify({ data: "x".repeat(100000) });
+
+      const envelope = encryptToBinaryEnvelope(original, key);
+      const decrypted = decryptBinaryEnvelope(envelope, key);
+
+      expect(decrypted).toBe(original);
+    });
+
+    it("returns null for wrong key", () => {
+      const key1 = generateRandomKey();
+      const key2 = generateRandomKey();
+      const message = '{"test":"data"}';
+
+      const envelope = encryptToBinaryEnvelope(message, key1);
+      const decrypted = decryptBinaryEnvelope(envelope, key2);
+
+      expect(decrypted).toBeNull();
+    });
+
+    it("returns null for tampered ciphertext", () => {
+      const key = generateRandomKey();
+      const message = '{"test":"data"}';
+
+      const envelope = encryptToBinaryEnvelope(message, key);
+      const view = new Uint8Array(envelope);
+
+      // Tamper with ciphertext (after version + nonce)
+      view[30] ^= 0xff;
+
+      const decrypted = decryptBinaryEnvelope(envelope, key);
+      expect(decrypted).toBeNull();
+    });
+
+    it("throws for invalid version byte", () => {
+      const key = generateRandomKey();
+      const message = '{"test":"data"}';
+
+      const envelope = encryptToBinaryEnvelope(message, key);
+      const view = new Uint8Array(envelope);
+
+      // Set invalid version
+      view[0] = 0x02;
+
+      expect(() => decryptBinaryEnvelope(envelope, key)).toThrow(
+        BinaryEnvelopeError,
+      );
+    });
+
+    it("throws for too-short envelope", () => {
+      const key = generateRandomKey();
+      const tooShort = new ArrayBuffer(MIN_BINARY_ENVELOPE_LENGTH - 1);
+
+      expect(() => decryptBinaryEnvelope(tooShort, key)).toThrow(
+        BinaryEnvelopeError,
+      );
+    });
+
+    it("works with Uint8Array input", () => {
+      const key = generateRandomKey();
+      const original = '{"test":"uint8array"}';
+
+      const envelope = encryptToBinaryEnvelope(original, key);
+      const uint8View = new Uint8Array(envelope);
+      const decrypted = decryptBinaryEnvelope(uint8View, key);
+
+      expect(decrypted).toBe(original);
+    });
+  });
+
+  describe("encryptBytesToBinaryEnvelope", () => {
+    it("encrypts raw bytes with format 0x01 (JSON)", () => {
+      const key = generateRandomKey();
+      const data = new TextEncoder().encode('{"raw":"bytes"}');
+
+      const envelope = encryptBytesToBinaryEnvelope(
+        data,
+        BinaryFormat.JSON,
+        key,
+      );
+
+      expect(envelope).toBeInstanceOf(ArrayBuffer);
+      expect(new Uint8Array(envelope)[0]).toBe(BinaryEnvelopeVersion.V1);
+    });
+
+    it("encrypts raw bytes with format 0x02 (binary upload)", () => {
+      const key = generateRandomKey();
+      const data = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0x04]);
+
+      const envelope = encryptBytesToBinaryEnvelope(
+        data,
+        BinaryFormat.BINARY_UPLOAD,
+        key,
+      );
+
+      const result = decryptBinaryEnvelopeRaw(envelope, key);
+      expect(result).not.toBeNull();
+      expect(result?.format).toBe(BinaryFormat.BINARY_UPLOAD);
+      expect(result?.payload).toEqual(data);
+    });
+  });
+
+  describe("decryptBinaryEnvelopeRaw", () => {
+    it("returns format and payload", () => {
+      const key = generateRandomKey();
+      const message = '{"test":"raw"}';
+
+      const envelope = encryptToBinaryEnvelope(message, key);
+      const result = decryptBinaryEnvelopeRaw(envelope, key);
+
+      expect(result).not.toBeNull();
+      expect(result?.format).toBe(BinaryFormat.JSON);
+      expect(new TextDecoder().decode(result?.payload)).toBe(message);
+    });
+
+    it("handles binary upload format", () => {
+      const key = generateRandomKey();
+      const binaryData = new Uint8Array([0xff, 0xfe, 0xfd, 0xfc]);
+
+      const envelope = encryptBytesToBinaryEnvelope(
+        binaryData,
+        BinaryFormat.BINARY_UPLOAD,
+        key,
+      );
+      const result = decryptBinaryEnvelopeRaw(envelope, key);
+
+      expect(result).not.toBeNull();
+      expect(result?.format).toBe(BinaryFormat.BINARY_UPLOAD);
+      expect(result?.payload).toEqual(binaryData);
+    });
+
+    it("returns null for wrong key", () => {
+      const key1 = generateRandomKey();
+      const key2 = generateRandomKey();
+      const message = '{"test":"data"}';
+
+      const envelope = encryptToBinaryEnvelope(message, key1);
+      const result = decryptBinaryEnvelopeRaw(envelope, key2);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("parseBinaryEnvelope", () => {
+    it("extracts components correctly", () => {
+      const key = generateRandomKey();
+      const message = '{"test":"parse"}';
+
+      const envelope = encryptToBinaryEnvelope(message, key);
+      const { version, nonce, ciphertext } = parseBinaryEnvelope(envelope);
+
+      expect(version).toBe(BinaryEnvelopeVersion.V1);
+      expect(nonce.length).toBe(SHARED_NONCE_LENGTH);
+      expect(ciphertext.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("Cross-platform compatibility", () => {
+    it("binary envelope can be transmitted as ArrayBuffer", () => {
+      const key = generateRandomKey();
+      const original = '{"type":"cross-platform","id":"123"}';
+
+      // Encrypt on "server"
+      const envelope = encryptToBinaryEnvelope(original, key);
+
+      // Simulate transmission (convert to ArrayBuffer and back)
+      const transmitted = new ArrayBuffer(envelope.byteLength);
+      new Uint8Array(transmitted).set(new Uint8Array(envelope));
+
+      // Decrypt on "client"
+      const decrypted = decryptBinaryEnvelope(transmitted, key);
+
+      expect(decrypted).toBe(original);
+    });
+  });
 });
